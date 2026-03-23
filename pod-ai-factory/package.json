@@ -1,0 +1,50 @@
+{
+  "name": "pod-ai-factory",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "predev": "node scripts/check-root.js && kill-port 3000 3001",
+    "dev": "concurrently -c \"cyan.bold,magenta.bold\" -n \"BACKEND,FRONTEND\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "nodemon src/index.js",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "start": "concurrently -c \"cyan.bold,magenta.bold\" -n \"BACKEND,FRONTEND\" \"npm run start:backend\" \"npm run start:frontend\"",
+    "start:backend": "node src/index.js",
+    "start:frontend": "npm run start --prefix frontend",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.999.0",
+    "@prisma/client": "^5.15.0",
+    "archiver": "^7.0.1",
+    "bullmq": "^5.70.1",
+    "canvas": "^3.2.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "csv-parser": "^3.2.0",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "form-data": "^4.0.5",
+    "ioredis": "^5.9.3",
+    "multer": "^2.1.0",
+    "node-fetch": "^2.7.0",
+    "openai": "^6.25.0",
+    "pg": "^8.19.0",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "adm-zip": "^0.5.16",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "kill-port": "^2.0.1",
+    "nodemon": "^3.1.14",
+    "npm-run-all": "^4.1.5",
+    "prisma": "^5.15.0"
+  }
+}

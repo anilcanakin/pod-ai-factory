@@ -1,0 +1,31 @@
+{
+  "id": "1dba07ca-2636-4e71-9ba6-4cbfe7441c5d",
+  "name": "Smoke Test T-Shirt",
+  "category": "tshirt",
+  "baseImage": "base.png",
+  "maskImage": null,
+  "shadowImage": null,
+  "thumbnailImage": null,
+  "printArea": {
+    "x": 0.35,
+    "y": 0.24,
+    "width": 0.3,
+    "height": 0.34
+  },
+  "transform": {
+    "rotation": 0,
+    "opacity": 0.92,
+    "blendMode": "multiply"
+  },
+  "render": {
+    "renderMode": "flat",
+    "displacementMapPath": null,
+    "perspective": null
+  },
+  "meta": {
+    "view": "front",
+    "background": "studio",
+    "color": "white",
+    "hasHumanModel": false
+  }
+}

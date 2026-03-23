@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Workspace" ADD COLUMN     "concurrentJobCap" INTEGER NOT NULL DEFAULT 2,
+ADD COLUMN     "dailyImageCap" INTEGER NOT NULL DEFAULT 200;

@@ -30,15 +30,15 @@ export function Sidebar() {
     const pathname = usePathname();
 
     return (
-        <aside className="fixed left-0 top-0 h-screen w-56 flex flex-col bg-[#0d1526] border-r border-slate-800 z-20">
+        <aside className="fixed left-0 top-0 h-screen w-[220px] flex flex-col bg-bg-base border-r border-border-subtle z-20">
             {/* Logo */}
-            <div className="flex items-center gap-2.5 px-5 py-5 border-b border-slate-800">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+            <div className="flex items-center gap-2.5 px-5 py-5 border-b border-border-subtle">
+                <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
                     <Zap className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                    <span className="text-sm font-semibold text-white leading-none">POD AI</span>
-                    <span className="block text-[10px] text-slate-500 leading-none mt-0.5">Factory</span>
+                    <span className="text-sm font-semibold text-text-primary leading-none" style={{ fontFamily: "'Geist', system-ui, sans-serif", fontWeight: 600 }}>POD AI</span>
+                    <span className="block text-[10px] text-text-tertiary leading-none mt-0.5">Factory</span>
                 </div>
             </div>
 
@@ -51,13 +51,13 @@ export function Sidebar() {
                             key={href}
                             href={href}
                             className={cn(
-                                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
+                                'flex items-center gap-3 px-3 h-9 rounded-[8px] text-[13px] font-medium transition-all duration-150 relative',
                                 active
-                                    ? 'bg-blue-600/15 text-blue-400 border border-blue-600/20'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                                    ? 'bg-accent-subtle text-accent border-l-2 border-accent'
+                                    : 'text-text-secondary hover:text-text-primary hover:bg-[rgba(255,255,255,0.05)]'
                             )}
                         >
-                            <Icon className={cn('w-4 h-4 flex-shrink-0', active ? 'text-blue-400' : 'text-slate-500')} />
+                            <Icon className={cn('w-4 h-4 flex-shrink-0', active ? 'text-accent' : 'text-text-tertiary')} />
                             {label}
                         </Link>
                     );
@@ -65,14 +65,14 @@ export function Sidebar() {
             </nav>
 
             {/* Footer */}
-            <div className="px-4 py-4 border-t border-slate-800">
+            <div className="px-4 py-4 border-t border-border-subtle">
                 <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-accent to-purple-400 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
                         AD
                     </div>
                     <div className="min-w-0">
-                        <p className="text-xs font-medium text-slate-300 truncate">Workspace Admin</p>
-                        <p className="text-[10px] text-slate-500 truncate">
+                        <p className="text-xs font-medium text-text-primary truncate">Workspace Admin</p>
+                        <p className="text-[10px] text-text-tertiary truncate">
                             {process.env.NEXT_PUBLIC_APP_MODE === 'saas' ? 'Mode: SaaS' : 'Mode: Self-Hosted'}
                         </p>
                     </div>

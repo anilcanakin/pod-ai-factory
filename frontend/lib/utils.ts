@@ -32,17 +32,17 @@ export function sleep(ms: number) {
 
 export function getStatusColor(status: string): string {
     const map: Record<string, string> = {
-        COMPLETED: "text-green-400 bg-green-400/10 border-green-400/20",
-        APPROVED: "text-green-400 bg-green-400/10 border-green-400/20",
-        REJECTED: "text-red-400 bg-red-400/10 border-red-400/20",
-        PENDING: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
-        PROCESSING: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-        FAILED: "text-red-400 bg-red-400/10 border-red-400/20",
-        SUCCESS: "text-green-400 bg-green-400/10 border-green-400/20",
-        WINNER: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
-        LOW_SCORE: "text-red-400 bg-red-400/10 border-red-400/20",
+        COMPLETED: "text-success bg-success-subtle border-[rgba(34,197,94,0.20)]",
+        APPROVED: "text-accent bg-accent-subtle border-accent-border",
+        REJECTED: "text-danger bg-danger-subtle border-[rgba(239,68,68,0.20)]",
+        PENDING: "text-warn bg-warn-subtle border-[rgba(245,158,11,0.20)]",
+        PROCESSING: "text-accent bg-accent-subtle border-accent-border",
+        FAILED: "text-danger bg-danger-subtle border-[rgba(239,68,68,0.20)]",
+        SUCCESS: "text-success bg-success-subtle border-[rgba(34,197,94,0.20)]",
+        WINNER: "text-warn bg-warn-subtle border-[rgba(245,158,11,0.20)]",
+        LOW_SCORE: "text-danger bg-danger-subtle border-[rgba(239,68,68,0.20)]",
     };
-    return map[status] ?? "text-slate-400 bg-slate-400/10 border-slate-400/20";
+    return map[status] ?? "text-text-secondary bg-[rgba(255,255,255,0.05)] border-border-default";
 }
 
 export function truncateId(id: string, length = 8): string {

@@ -17,7 +17,7 @@ export function GalleryClient() {
     return (
         <Suspense fallback={
             <div className="flex items-center justify-center py-24">
-                <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
+                <Loader2 className="w-6 h-6 text-text-tertiary animate-spin" />
             </div>
         }>
             <GalleryInner />
@@ -167,82 +167,89 @@ function GalleryInner() {
 
     const approvedCount = images.filter(i => i.isApproved || i.status === 'APPROVED').length;
 
+    const FILTERS = ['all', 'PENDING', 'COMPLETED', 'APPROVED', 'REJECTED'] as const;
+
     return (
         <div className="space-y-5 animate-fade-in">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Gallery</h1>
-                    <p className="text-sm text-slate-400 mt-0.5">Review + approve generated designs</p>
+                    <h1 className="text-2xl font-bold text-text-primary">Gallery</h1>
+                    <p className="text-sm text-text-secondary mt-0.5">Review + approve generated designs</p>
                 </div>
                 {activeJobId && (
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+                    <div className="flex items-center gap-1.5 text-xs text-text-tertiary bg-bg-elevated px-3 py-1.5 rounded-[8px] border border-border-default">
                         <Info className="w-3 h-3" />
-                        <kbd className="px-1 bg-slate-700 rounded text-[10px]">A</kbd> approve ·
-                        <kbd className="px-1 bg-slate-700 rounded text-[10px]">R</kbd> reject ·
-                        <kbd className="px-1 bg-slate-700 rounded text-[10px]">←→</kbd> navigate ·
-                        <kbd className="px-1 bg-slate-700 rounded text-[10px]">Shift</kbd> range ·
-                        <kbd className="px-1 bg-slate-700 rounded text-[10px]">Esc</kbd> clear
+                        <kbd className="px-1 bg-bg-overlay rounded text-[10px]">A</kbd> approve ·
+                        <kbd className="px-1 bg-bg-overlay rounded text-[10px]">R</kbd> reject ·
+                        <kbd className="px-1 bg-bg-overlay rounded text-[10px]">←→</kbd> navigate ·
+                        <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Shift</kbd> range ·
+                        <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Esc</kbd> clear
                     </div>
                 )}
             </div>
 
             {/* Job ID bar */}
             <div className="flex items-center gap-3">
-                <div className="flex-1 relative">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <div className="relative w-60">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
                     <input
                         value={jobId}
                         onChange={e => setJobId(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && jobId.trim() && setActiveJobId(jobId.trim())}
-                        placeholder="Enter Job ID and press Enter…"
-                        className="w-full bg-[#1e293b] border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors"
+                        placeholder="Enter Job ID..."
+                        className="w-full bg-bg-elevated border border-border-default rounded-[8px] pl-9 pr-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors"
                     />
                 </div>
                 <button
                     onClick={() => jobId.trim() && setActiveJobId(jobId.trim())}
-                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+                    className="px-4 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-[8px] transition-colors"
                 >
                     Load
                 </button>
-            </div>
 
-            {/* Toolbar */}
-            {activeJobId && images.length > 0 && (
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex gap-1">
-                        {(['all', 'PENDING', 'COMPLETED', 'APPROVED', 'REJECTED'] as const).map(f => (
+                {/* Filter pills */}
+                {activeJobId && images.length > 0 && (
+                    <div className="flex gap-1.5 ml-4">
+                        {FILTERS.map(f => (
                             <button
                                 key={f}
                                 onClick={() => setFilter(f)}
                                 className={cn(
-                                    'px-2.5 py-1 text-xs rounded-md font-medium transition-colors',
-                                    filter === f ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:text-slate-200'
+                                    'px-3 py-1.5 text-xs rounded-full font-medium transition-all border',
+                                    filter === f
+                                        ? 'bg-accent-subtle text-accent border-accent-border'
+                                        : 'bg-bg-elevated text-text-secondary border-border-default hover:text-text-primary hover:border-border-strong'
                                 )}
                             >
-                                {f === 'all' ? 'All' : f}
+                                {f === 'all' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
                             </button>
                         ))}
                     </div>
+                )}
+            </div>
 
-                    <div className="ml-auto flex items-center gap-2 flex-wrap">
-                        {selected.size > 0 && <span className="text-xs text-blue-400 font-medium">{selected.size} selected</span>}
-                        <button onClick={selectAll} className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded border border-slate-700 hover:border-slate-600 transition-colors">Select All</button>
-                        {selected.size > 0 && (
-                            <>
-                                <button onClick={clearSelect} className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded border border-slate-700 hover:border-slate-600 transition-colors">Clear</button>
-                                <button onClick={bulkApprove} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600/80 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors">
-                                    <CheckCircle className="w-3.5 h-3.5" /> Approve {selected.size}
-                                </button>
-                                <button onClick={() => setBulkConfirm('reject')} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/80 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors">
-                                    <XCircle className="w-3.5 h-3.5" /> Reject {selected.size}
-                                </button>
-                            </>
-                        )}
-                        <button onClick={() => setBulkConfirm('pipeline')} className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-medium rounded-lg transition-colors">
-                            <Play className="w-3.5 h-3.5" /> Run Pipeline ({approvedCount} approved)
+            {/* Toolbar - bulk actions */}
+            {activeJobId && images.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                    {selected.size > 0 && <span className="text-xs text-accent font-medium">{selected.size} selected</span>}
+                    <button onClick={selectAll} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors">Select All</button>
+                    {selected.size > 0 && (
+                        <>
+                            <button onClick={clearSelect} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors">Clear</button>
+                            <button onClick={bulkApprove} className="flex items-center gap-1.5 px-3 py-1.5 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-xs font-medium rounded-[6px] border border-[rgba(34,197,94,0.20)] transition-colors">
+                                <CheckCircle className="w-3.5 h-3.5" /> Approve {selected.size}
+                            </button>
+                            <button onClick={() => setBulkConfirm('reject')} className="flex items-center gap-1.5 px-3 py-1.5 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-xs font-medium rounded-[6px] border border-[rgba(239,68,68,0.20)] transition-colors">
+                                <XCircle className="w-3.5 h-3.5" /> Reject {selected.size}
+                            </button>
+                        </>
+                    )}
+                    <div className="ml-auto flex items-center gap-2">
+                        <button onClick={() => setBulkConfirm('pipeline')} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-subtle hover:bg-[rgba(124,58,237,0.18)] text-accent text-xs font-medium rounded-[6px] border border-accent-border transition-colors">
+                            <Play className="w-3.5 h-3.5" /> Run Pipeline ({approvedCount})
                         </button>
-                        <a href={apiExport.bundleUrl(activeJobId)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium rounded-lg transition-colors" target="_blank" rel="noopener noreferrer">
+                        <a href={apiExport.bundleUrl(activeJobId)} className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated hover:bg-bg-overlay text-text-primary text-xs font-medium rounded-[6px] border border-border-default transition-colors" target="_blank" rel="noopener noreferrer">
                             <Download className="w-3.5 h-3.5" /> Bundle
                         </a>
                     </div>
@@ -251,21 +258,21 @@ function GalleryInner() {
 
             {/* Gallery Grid */}
             {!activeJobId ? (
-                <div className="flex flex-col items-center justify-center py-24 text-slate-500">
+                <div className="flex flex-col items-center justify-center py-24 text-text-tertiary">
                     <ImageIcon className="w-12 h-12 mb-3 opacity-30" />
                     <p className="text-sm">Enter a Job ID to load images</p>
-                    <p className="text-xs text-slate-600 mt-1">You can find Job IDs from the Factory page after a run</p>
+                    <p className="text-xs text-text-tertiary mt-1">You can find Job IDs from the Factory page after a run</p>
                 </div>
             ) : isLoading ? (
                 <div className="masonry-grid">
                     {[...Array(8)].map((_, i) => (
                         <div key={i} className="masonry-item">
-                            <div className={cn('bg-[#1e293b] rounded-xl animate-pulse', i % 3 === 0 ? 'h-48' : i % 3 === 1 ? 'h-36' : 'h-56')} />
+                            <div className={cn('rounded-[10px] skeleton-shimmer', i % 3 === 0 ? 'h-48' : i % 3 === 1 ? 'h-36' : 'h-56')} />
                         </div>
                     ))}
                 </div>
             ) : filtered.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+                <div className="flex flex-col items-center justify-center py-20 text-text-tertiary">
                     <ImageIcon className="w-10 h-10 mb-2 opacity-30" />
                     <p className="text-sm">No images match this filter</p>
                 </div>
@@ -289,16 +296,16 @@ function GalleryInner() {
 
             {/* Fullscreen viewer */}
             {viewImg && (
-                <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setViewImg(null)}>
-                    <div className="relative max-w-3xl max-h-full" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4" onClick={() => setViewImg(null)}>
+                    <div className="relative max-w-3xl max-h-full flex flex-col items-center gap-4" onClick={e => e.stopPropagation()}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={viewImg.imageUrl} alt="Full view" className="max-w-full max-h-[80vh] rounded-xl object-contain" />
-                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
+                        <img src={viewImg.imageUrl} alt="Full view" className="max-w-full max-h-[85vh] rounded-xl object-contain" />
+                        <div className="flex items-center gap-2">
                             <StatusBadge status={viewImg.status} />
-                            <button onClick={() => { approveMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg">
+                            <button onClick={() => { approveMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-xs font-medium rounded-[8px] border border-[rgba(34,197,94,0.20)] transition-colors">
                                 <CheckCircle className="w-3.5 h-3.5" /> Approve
                             </button>
-                            <button onClick={() => { rejectMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg">
+                            <button onClick={() => { rejectMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-xs font-medium rounded-[8px] border border-[rgba(239,68,68,0.20)] transition-colors">
                                 <XCircle className="w-3.5 h-3.5" /> Reject
                             </button>
                         </div>
@@ -323,32 +330,54 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onVie
     const isRejected = img.status === 'REJECTED';
 
     return (
-        <div className={cn('masonry-item relative group rounded-xl overflow-hidden border transition-all duration-200 cursor-pointer', selected ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-slate-700 hover:border-slate-600', isRejected && 'opacity-50')}>
+        <div className={cn(
+            'masonry-item relative group rounded-[10px] overflow-hidden border transition-all duration-200 cursor-pointer',
+            selected ? 'border-accent ring-2 ring-accent/30' : 'border-border-subtle hover:border-border-strong',
+            isRejected && 'opacity-40'
+        )}>
+            {/* Checkbox */}
             <div className="absolute top-2 left-2 z-10" onClick={e => { e.stopPropagation(); onToggleSelect(e); }}>
-                <div className={cn('w-5 h-5 rounded border-2 flex items-center justify-center transition-all', selected ? 'bg-blue-600 border-blue-600' : 'bg-black/40 border-slate-500 opacity-0 group-hover:opacity-100')}>
+                <div className={cn(
+                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                    selected ? 'bg-accent border-accent' : 'bg-black/40 border-border-strong opacity-0 group-hover:opacity-100'
+                )}>
                     {selected && <CheckCircle className="w-3 h-3 text-white" />}
                 </div>
             </div>
+
+            {/* Status Badge */}
             <div className="absolute top-2 right-2 z-10"><StatusBadge status={img.status} /></div>
 
+            {/* Image or Pending Skeleton */}
             {isPending ? (
-                <div className="h-36 bg-slate-800 flex items-center justify-center"><Loader2 className="w-6 h-6 text-slate-500 animate-spin" /></div>
+                <div className="h-40 skeleton-shimmer flex items-center justify-center min-h-[160px]">
+                    <Loader2 className="w-6 h-6 text-text-tertiary animate-spin" />
+                </div>
             ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={img.imageUrl} alt="Generated design" className="w-full object-cover block" onClick={onView} />
             )}
 
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
+            {/* Hover Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
                 <div className="flex items-center gap-1.5">
-                    <button onClick={e => { e.stopPropagation(); onApprove(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-green-600/90 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors backdrop-blur-sm">
+                    <button onClick={e => { e.stopPropagation(); onApprove(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-success-subtle text-success text-xs font-medium rounded-[6px] border border-[rgba(34,197,94,0.20)] transition-colors backdrop-blur-sm hover:bg-[rgba(34,197,94,0.18)]">
                         <CheckCircle className="w-3.5 h-3.5" /> Approve
                     </button>
-                    <button onClick={e => { e.stopPropagation(); onReject(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-red-600/90 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors backdrop-blur-sm"><XCircle className="w-3.5 h-3.5" /></button>
-                    <button onClick={e => { e.stopPropagation(); onView(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors backdrop-blur-sm"><Maximize2 className="w-3.5 h-3.5" /></button>
-                    <button onClick={e => { e.stopPropagation(); onCopyPrompt(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors backdrop-blur-sm"><Copy className="w-3.5 h-3.5" /></button>
-                    <button onClick={e => { e.stopPropagation(); onRegenerate(); }} className="ml-auto flex items-center gap-1 px-2.5 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors backdrop-blur-sm"><RefreshCw className="w-3.5 h-3.5" /></button>
+                    <button onClick={e => { e.stopPropagation(); onReject(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-danger-subtle text-danger text-xs font-medium rounded-[6px] border border-[rgba(239,68,68,0.20)] transition-colors backdrop-blur-sm hover:bg-[rgba(239,68,68,0.18)]">
+                        <XCircle className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onView(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay/90 text-text-primary text-xs font-medium rounded-[6px] transition-colors backdrop-blur-sm hover:bg-bg-elevated">
+                        <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onCopyPrompt(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay/90 text-text-primary text-xs font-medium rounded-[6px] transition-colors backdrop-blur-sm hover:bg-bg-elevated">
+                        <Copy className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onRegenerate(); }} className="ml-auto flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay/90 text-text-primary text-xs font-medium rounded-[6px] transition-colors backdrop-blur-sm hover:bg-bg-elevated">
+                        <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1.5 font-mono">{truncateId(img.id)}</p>
+                <p className="text-[10px] text-text-tertiary mt-1.5 font-mono">{truncateId(img.id)}</p>
             </div>
         </div>
     );

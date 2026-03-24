@@ -12,7 +12,7 @@ import Link from 'next/link';
 
 const WIZARD_STEPS = [
     { num: 1, label: 'Reference' },
-    { num: 2, label: 'Grammar & Variants' },
+    { num: 2, label: 'Grammar' },
     { num: 3, label: 'Generate' }
 ];
 
@@ -223,53 +223,54 @@ export function FactoryClient() {
         <div className="space-y-8 animate-fade-in max-w-5xl mx-auto">
             {/* Wizard Header */}
             <div>
-                <h1 className="text-2xl font-bold text-white mb-2">New Project</h1>
-                <p className="text-sm text-slate-400">Launch a new POD design asset pipeline from a reference image.</p>
+                <h1 className="text-2xl font-bold text-text-primary mb-2">New Project</h1>
+                <p className="text-sm text-text-secondary">Launch a new POD design asset pipeline from a reference image.</p>
             </div>
 
-            {/* Stepper Dots */}
-            <div className="flex items-center justify-between relative pb-4">
-                <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-800 -z-10 -translate-y-1/2 rounded" />
+            {/* Step Indicator */}
+            <div className="flex items-center justify-between relative pb-6">
+                <div className="absolute top-4 left-0 w-full h-0.5 bg-border-default -z-10 rounded" />
                 <div
-                    className="absolute top-1/2 left-0 h-0.5 bg-blue-500 -z-10 -translate-y-1/2 rounded transition-all duration-500"
+                    className="absolute top-4 left-0 h-0.5 bg-accent -z-10 rounded transition-all duration-500"
                     style={{ width: `${((wizardStep - 1) / (WIZARD_STEPS.length - 1)) * 100}%` }}
                 />
-                {WIZARD_STEPS.map((s, idx) => (
+                {WIZARD_STEPS.map((s) => (
                     <div key={s.num} className="flex flex-col items-center gap-2">
                         <div className={cn(
-                            "w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-colors bg-slate-900",
-                            wizardStep > s.num ? "border-blue-500 text-blue-500" :
-                                wizardStep === s.num ? "border-blue-500 bg-blue-500/10 text-blue-400" : "border-slate-700 text-slate-500"
+                            "w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-colors bg-bg-base",
+                            wizardStep > s.num ? "border-accent text-accent" :
+                                wizardStep === s.num ? "border-accent bg-accent-subtle text-accent" : "border-border-strong text-text-tertiary"
                         )}>
                             {wizardStep > s.num ? <CheckCircle className="w-5 h-5" /> : s.num}
                         </div>
                         <span className={cn(
-                            "text-xs font-medium absolute -bottom-6 whitespace-nowrap",
-                            wizardStep >= s.num ? "text-slate-200" : "text-slate-500"
+                            "text-xs font-medium whitespace-nowrap",
+                            wizardStep >= s.num ? "text-text-primary" : "text-text-tertiary"
                         )}>{s.label}</span>
                     </div>
                 ))}
             </div>
 
-            <div className="mt-8 rounded-2xl border border-slate-700 bg-[#1e293b] overflow-hidden shadow-xl">
+            <div className="rounded-[10px] border border-border-default bg-bg-surface overflow-hidden">
 
                 {/* STEP 1: REFERENCE */}
                 {wizardStep === 1 && (
-                    <div className="p-8 space-y-8 animate-in slide-in-from-right-8 duration-300">
+                    <div className="p-8 space-y-8">
                         <div className="text-center max-w-lg mx-auto space-y-2">
-                            <h2 className="text-xl font-semibold text-white">Upload Reference Image</h2>
-                            <p className="text-sm text-slate-400">Provide a source design to extract aesthetics and layout instructions from.</p>
+                            <h2 className="text-xl font-semibold text-text-primary">Upload Reference Image</h2>
+                            <p className="text-sm text-text-secondary">Provide a source design to extract aesthetics and layout instructions from.</p>
                         </div>
 
                         <div className="max-w-xl mx-auto space-y-6">
+                            {/* Dropzone */}
                             <div
                                 onClick={() => fileInputRef.current?.click()}
                                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                                 onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
                                 onDrop={handleDrop}
                                 className={cn(
-                                    "border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center transition-all cursor-pointer group relative overflow-hidden",
-                                    isDragging ? "bg-blue-500/10 border-blue-500" : "bg-slate-800/50 border-slate-700 hover:border-blue-500/50"
+                                    "border-2 border-dashed rounded-[10px] h-[280px] flex flex-col items-center justify-center transition-all cursor-pointer group relative overflow-hidden",
+                                    isDragging ? "bg-accent-subtle border-accent" : "bg-bg-elevated/50 border-border-default hover:border-accent/50"
                                 )}
                             >
                                 <input
@@ -279,23 +280,31 @@ export function FactoryClient() {
                                     accept="image/*"
                                     onChange={handleFileChange}
                                 />
-                                <Upload className={cn("w-10 h-10 mb-3 transition-colors", isDragging ? "text-blue-500" : "text-slate-500 group-hover:text-blue-400")} />
-                                <p className="text-sm font-medium text-slate-300">Drag & drop image here or <span className="text-blue-400">browse</span></p>
-                                <p className="text-xs text-slate-500 mt-1">Accepts JPG, PNG max 10MB</p>
+                                <Upload className={cn("w-10 h-10 mb-3 transition-colors", isDragging ? "text-accent" : "text-text-tertiary group-hover:text-accent")} />
+                                <p className="text-sm font-medium text-text-primary">Drop your reference image</p>
+                                <p className="text-xs text-text-tertiary mt-1">JPG, PNG up to 10MB</p>
                             </div>
 
+                            {/* Image URL input + preview */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-300">Image URL or Local Path</label>
+                                <label className="text-sm font-medium text-text-secondary">Image URL or Local Path</label>
                                 <input
                                     value={refImage}
                                     onChange={e => setRefImage(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                    className="w-full bg-bg-elevated border border-border-default rounded-[10px] px-4 py-3 text-sm text-text-primary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent placeholder-text-tertiary"
                                     placeholder="https://example.com/shirt.jpg"
                                 />
                                 {(isImageUrl || refImage.includes('/')) && (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <div className="mt-4 aspect-video relative rounded-lg overflow-hidden border border-slate-700 bg-slate-800 w-full sm:w-2/3 mx-auto flex items-center justify-center">
-                                        <img src={refImage} alt="Preview" className="w-full h-full object-contain" onError={e => e.currentTarget.style.display = 'none'} />
+                                    <div className="mt-4 flex items-start gap-6">
+                                        <div className="w-[200px] h-[200px] rounded-xl overflow-hidden border border-border-default bg-bg-elevated flex-shrink-0">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img src={refImage} alt="Preview" className="w-full h-full object-cover" onError={e => e.currentTarget.style.display = 'none'} />
+                                        </div>
+                                        <div className="flex flex-col gap-3 pt-4">
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] text-xs font-medium bg-success-subtle text-success border border-[rgba(34,197,94,0.20)]">
+                                                <CheckCircle className="w-3.5 h-3.5" /> Image Ready
+                                            </span>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -304,9 +313,10 @@ export function FactoryClient() {
                                 <button
                                     onClick={extractPrompt}
                                     disabled={!refImage || isExtracting}
-                                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
+                                    className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-[10px] font-medium transition-colors disabled:opacity-50"
+                                    style={{ fontWeight: 500 }}
                                 >
-                                    {isExtracting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Extract Prompt <ArrowRight className="w-5 h-5" /></>}
+                                    {isExtracting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Extract Style <ArrowRight className="w-5 h-5" /></>}
                                 </button>
                             </div>
                         </div>
@@ -315,37 +325,44 @@ export function FactoryClient() {
 
                 {/* STEP 2: GRAMMAR & VARIANTS */}
                 {wizardStep === 2 && editableGrammar && (
-                    <div className="p-8 space-y-8 animate-in slide-in-from-right-8 duration-300">
-                        <div className="flex items-center justify-between border-b border-slate-700 pb-4">
+                    <div className="p-8 space-y-8">
+                        <div className="flex items-center justify-between border-b border-border-subtle pb-4">
                             <div>
-                                <h2 className="text-xl font-semibold text-white">Design Grammar & Style Cloning</h2>
-                                <p className="text-sm text-slate-400">Edit the extracted grammar and specify new subjects (icons) for cloning.</p>
+                                <h2 className="text-xl font-semibold text-text-primary">Design Grammar & Style Cloning</h2>
+                                <p className="text-sm text-text-secondary">Edit the extracted grammar and specify new subjects (icons) for cloning.</p>
                             </div>
-                            <button onClick={() => setWizardStep(1)} className="text-sm text-slate-400 hover:text-white">← Edit Image</button>
+                            <button onClick={() => setWizardStep(1)} className="text-sm text-text-secondary hover:text-text-primary transition-colors">← Edit Image</button>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             {/* Editor Form */}
                             <div className="space-y-6">
-                                <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 space-y-4">
-                                    <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2"><TextSelect className="w-4 h-4 text-blue-400" /> Editable Grammar</h3>
+                                <div className="bg-bg-elevated rounded-[10px] p-6 border border-border-default space-y-4">
+                                    <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2"><TextSelect className="w-4 h-4 text-accent" /> Editable Grammar</h3>
 
                                     <div className="space-y-4">
                                         <div>
-                                            <label className="text-xs text-slate-400 uppercase tracking-wider mb-1 block">Style</label>
-                                            <input value={editableGrammar.style} onChange={e => handleGrammarChange('style', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:border-blue-500 outline-none" />
+                                            <label className="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 block">Style</label>
+                                            <input value={editableGrammar.style} onChange={e => handleGrammarChange('style', e.target.value)} className="w-full bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:border-accent outline-none" />
                                         </div>
                                         <div>
-                                            <label className="text-xs text-slate-400 uppercase tracking-wider mb-1 block">Layout</label>
-                                            <input value={editableGrammar.layout} onChange={e => handleGrammarChange('layout', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:border-blue-500 outline-none" />
+                                            <label className="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 block">Layout</label>
+                                            <input value={editableGrammar.layout} onChange={e => handleGrammarChange('layout', e.target.value)} className="w-full bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:border-accent outline-none" />
                                         </div>
                                         <div>
-                                            <label className="text-xs text-slate-400 uppercase tracking-wider mb-1 block">Typography</label>
-                                            <input value={editableGrammar.typography} onChange={e => handleGrammarChange('typography', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:border-blue-500 outline-none" />
+                                            <label className="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 block">Typography</label>
+                                            <input value={editableGrammar.typography} onChange={e => handleGrammarChange('typography', e.target.value)} className="w-full bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:border-accent outline-none" />
                                         </div>
                                         <div>
-                                            <label className="text-xs text-slate-400 uppercase tracking-wider mb-1 block">Color Palette (comma separated)</label>
-                                            <input value={editableGrammar.palette.join(', ')} onChange={e => handleGrammarChange('palette', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:border-blue-500 outline-none" />
+                                            <label className="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 block">Color Palette (comma separated)</label>
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-1">
+                                                    {editableGrammar.palette.map((color, i) => (
+                                                        <div key={i} className="w-5 h-5 rounded-full border border-border-default" style={{ backgroundColor: color }} />
+                                                    ))}
+                                                </div>
+                                                <input value={editableGrammar.palette.join(', ')} onChange={e => handleGrammarChange('palette', e.target.value)} className="flex-1 bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:border-accent outline-none" />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -353,21 +370,21 @@ export function FactoryClient() {
 
                             {/* Variations & Submit */}
                             <div className="space-y-6">
-                                <div className="bg-slate-900/50 rounded-xl p-6 border border-slate-800 space-y-4">
-                                    <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Layers className="w-4 h-4 text-emerald-400" /> Variation Icons</h3>
-                                    <p className="text-xs text-slate-400">Enter comma-separated icon subjects to swap into the design grammar.</p>
+                                <div className="bg-bg-elevated rounded-[10px] p-6 border border-border-default space-y-4">
+                                    <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Layers className="w-4 h-4 text-accent" /> Variation Icons</h3>
+                                    <p className="text-xs text-text-secondary">Enter comma-separated icon subjects to swap into the design grammar.</p>
                                     <textarea
                                         value={iconsInput}
                                         onChange={e => setIconsInput(e.target.value)}
-                                        className="w-full h-32 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:border-blue-500 outline-none resize-none"
+                                        className="w-full h-32 bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:border-accent outline-none resize-none"
                                         placeholder="wolf, eagle, bear, skull"
                                     />
                                 </div>
 
-                                <div className="bg-slate-900/50 rounded-xl p-6 border border-slate-800 space-y-4">
+                                <div className="bg-bg-elevated rounded-[10px] p-6 border border-border-default space-y-4">
                                     <div>
-                                        <label className="text-sm text-slate-300 block mb-2">Image Size</label>
-                                        <select value={imageSize} onChange={e => setImageSize(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                        <label className="text-sm text-text-secondary block mb-2">Image Size</label>
+                                        <select value={imageSize} onChange={e => setImageSize(e.target.value)} className="w-full bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent">
                                             <option value="square_hd">Square HD (1024x1024)</option>
                                             <option value="portrait_4_3">Portrait 4:3 (768x1024)</option>
                                             <option value="landscape_4_3">Landscape 4:3 (1024x768)</option>
@@ -375,9 +392,9 @@ export function FactoryClient() {
                                     </div>
                                     <button
                                         onClick={startFactoryPipeline}
-                                        className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20"
+                                        className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-[10px] font-bold transition-all"
                                     >
-                                        <Zap className="w-5 h-5" /> Generate Variations
+                                        <Zap className="w-5 h-5" /> Generate →
                                     </button>
                                 </div>
                             </div>
@@ -387,15 +404,23 @@ export function FactoryClient() {
 
                 {/* STEP 3: PROGRESS & LOGS */}
                 {wizardStep === 3 && (
-                    <div className="animate-in slide-in-from-right-8 duration-300 flex flex-col">
-                        <div className="p-8 border-b border-slate-700 bg-slate-800/50">
-                            <h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-3">
-                                {running ? <Loader2 className="w-6 h-6 animate-spin text-blue-400" /> : <CheckCircle className="w-6 h-6 text-emerald-400" />}
-                                {running ? 'Pipeline is running...' : 'Pipeline complete!'}
-                            </h2>
+                    <div className="flex flex-col">
+                        <div className="p-8 border-b border-border-subtle">
+                            {/* Job status pill */}
+                            <div className="flex items-center gap-3 mb-6">
+                                {running ? (
+                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-warn-subtle text-warn border border-[rgba(245,158,11,0.20)] animate-pulse">
+                                        <Loader2 className="w-4 h-4 animate-spin" /> Pipeline Running
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-success-subtle text-success border border-[rgba(34,197,94,0.20)]">
+                                        <CheckCircle className="w-4 h-4" /> Pipeline Complete
+                                    </span>
+                                )}
+                            </div>
 
                             <div className="flex items-center justify-between relative max-w-2xl mx-auto">
-                                <div className="absolute top-1/2 left-0 w-full h-1 bg-slate-700 -z-10 -translate-y-1/2 rounded" />
+                                <div className="absolute top-1/2 left-0 w-full h-1 bg-border-default -z-10 -translate-y-1/2 rounded" />
                                 {PIPELINE_STEPS.map((step, idx) => {
                                     const st = stepStatuses[step.key] || 'idle';
                                     const isDone = st === 'success';
@@ -404,17 +429,17 @@ export function FactoryClient() {
                                     return (
                                         <div key={idx} className="flex flex-col items-center gap-2">
                                             <div className={cn(
-                                                "w-12 h-12 rounded-full flex items-center justify-center border-4 transition-all duration-500 shadow-xl",
-                                                isDone ? "bg-emerald-500 border-emerald-900 text-white shadow-emerald-900/50" :
-                                                    isRunning ? "bg-blue-500 border-blue-900 text-white shadow-blue-900/50 animate-pulse" :
-                                                        isFailed ? "bg-red-500 border-red-900 text-white" :
-                                                            "bg-slate-800 border-slate-700 text-slate-500"
+                                                "w-12 h-12 rounded-full flex items-center justify-center border-4 transition-all duration-500",
+                                                isDone ? "bg-success border-[rgba(34,197,94,0.30)] text-white" :
+                                                    isRunning ? "bg-accent border-accent-border text-white animate-pulse" :
+                                                        isFailed ? "bg-danger border-[rgba(239,68,68,0.30)] text-white" :
+                                                            "bg-bg-elevated border-border-strong text-text-tertiary"
                                             )}>
                                                 <step.icon className="w-5 h-5" />
                                             </div>
                                             <span className={cn(
                                                 "text-xs font-semibold uppercase tracking-wider",
-                                                (isDone || isRunning) ? "text-slate-200" : isFailed ? "text-red-400" : "text-slate-600"
+                                                (isDone || isRunning) ? "text-text-primary" : isFailed ? "text-danger" : "text-text-tertiary"
                                             )}>{step.label}</span>
                                         </div>
                                     )
@@ -423,39 +448,38 @@ export function FactoryClient() {
                         </div>
 
                         {/* Logs Console */}
-                        <div className="bg-[#0f172a] p-4 flex flex-col h-[400px]">
+                        <div className="bg-bg-base p-4 flex flex-col h-[400px]">
                             <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm font-mono text-slate-400">Terminal Log</h3>
+                                <h3 className="text-sm text-text-tertiary" style={{ fontFamily: "'Geist Mono', monospace" }}>Terminal Log</h3>
                                 <div className="flex items-center gap-2">
                                     <div className="relative">
-                                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
                                         <input
                                             value={logSearch} onChange={e => setLogSearch(e.target.value)}
                                             placeholder="Filter logs..."
-                                            className="bg-slate-900 border border-slate-800 rounded px-8 py-1 text-xs text-slate-300 w-48 focus:outline-none focus:border-slate-600"
+                                            className="bg-bg-surface border border-border-default rounded-[8px] px-8 py-1 text-xs text-text-secondary w-48 focus:outline-none focus:border-accent"
                                         />
                                     </div>
                                     <button onClick={() => {
                                         navigator.clipboard.writeText(filteredLogs.map(l => `[${l.createdAt}] ${l.eventType} [${l.status}] ${l.message || ''}`).join('\n'));
                                         toast.success('Logs copied');
-                                    }} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 transition-colors" title="Copy Logs">
+                                    }} className="p-1.5 hover:bg-bg-elevated rounded text-text-tertiary transition-colors" title="Copy Logs">
                                         <Copy className="w-3.5 h-3.5" />
                                     </button>
                                 </div>
                             </div>
-                            <div ref={logRef} className="flex-1 overflow-y-auto space-y-1.5 font-mono text-xs p-2 bg-black/40 rounded border border-slate-800/50">
+                            <div ref={logRef} className="flex-1 overflow-y-auto space-y-1.5 text-xs p-2 bg-bg-base rounded-[8px] border border-border-subtle" style={{ fontFamily: "'Geist Mono', monospace", fontSize: '12px' }}>
                                 {filteredLogs.length === 0 ? (
-                                    <p className="text-slate-600 italic">Awaiting logs...</p>
+                                    <p className="text-text-tertiary italic">Awaiting logs...</p>
                                 ) : (
                                     filteredLogs.map((l, i) => (
-                                        <div key={i} className={cn(
-                                            "flex gap-3",
-                                            l.status === 'ERROR' || l.status === 'FAILED' ? "text-red-400" :
-                                                l.status === 'SUCCESS' ? "text-emerald-400" : "text-slate-300"
-                                        )}>
-                                            <span className="text-slate-600 shrink-0">[{new Date(l.createdAt).toLocaleTimeString()}]</span>
-                                            <span className="font-semibold w-32 shrink-0">{l.eventType}</span>
-                                            <span className="text-slate-500">{l.message}</span>
+                                        <div key={i} className="flex gap-3">
+                                            <span className="text-text-tertiary shrink-0">[{new Date(l.createdAt).toLocaleTimeString()}]</span>
+                                            <span className="font-semibold w-32 shrink-0 text-accent">{l.eventType}</span>
+                                            <span className={cn(
+                                                l.status === 'ERROR' || l.status === 'FAILED' ? "text-danger" :
+                                                    l.status === 'SUCCESS' ? "text-success" : "text-text-primary"
+                                            )}>{l.message}</span>
                                         </div>
                                     ))
                                 )}
@@ -464,12 +488,12 @@ export function FactoryClient() {
 
                         {/* CTA when done */}
                         {!running && jobId && (
-                            <div className="p-6 bg-slate-800 border-t border-slate-700 flex justify-end gap-3">
+                            <div className="p-6 bg-bg-surface border-t border-border-subtle flex justify-end gap-3">
                                 <Link
                                     href={`/dashboard/gallery?jobId=${jobId}`}
-                                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg font-medium transition-colors"
+                                    className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white px-6 py-2.5 rounded-[10px] font-medium transition-colors"
                                 >
-                                    Proceed to Gallery <ArrowRight className="w-4 h-4" />
+                                    View in Gallery <ArrowRight className="w-4 h-4" />
                                 </Link>
                             </div>
                         )}

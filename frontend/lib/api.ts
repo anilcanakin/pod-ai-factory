@@ -65,7 +65,7 @@ export const apiDashboard = {
     get: () => request<DashboardData>('/dashboard'),
 };
 
-// ─── Vision ───────────────────────────────────────────────────
+// ─── Vision (Legacy — kept for backward compat) ──────────────
 export interface VisionData {
     style: string;
     layout: string;
@@ -75,7 +75,6 @@ export interface VisionData {
 }
 
 export const apiVision = {
-    // Legacy mapping (if any old UI calls it directly)
     analyze: (imageUrl: string) =>
         request<VisionData>('/vision/analyze', {
             method: 'POST',
@@ -83,40 +82,53 @@ export const apiVision = {
         }),
 };
 
+// ─── Factory (New Pipeline) ───────────────────────────────────
+export interface AIModel {
+    id: string;
+    name: string;
+    description: string;
+    speed: 'fast' | 'medium' | 'slow';
+    strength: 'general' | 'speed' | 'typography' | 'vector';
+}
+
 export const apiFactory = {
-    extractStyle: (payload: { referenceImageId: string }) =>
-        request<{ grammar: VisionData; isSynthetic: boolean }>('/factory/extract-style', {
-            method: 'POST',
-            body: JSON.stringify(payload)
-        }),
-    generateVariations: (payload: {
-        referenceImageId: string;
-        grammar: VisionData;
-        iconsList: string[];
-        imageSize?: string;
+    getModels: () => request<AIModel[]>('/factory/models'),
+    analyze: (payload: { referenceImageIds: string[] }) =>
+        request<{ prompt: string; isSynthetic: boolean; provider?: 'anthropic' | 'gemini' | 'openai' | 'synthetic' }>(
+            '/factory/analyze',
+            { method: 'POST', body: JSON.stringify(payload) }
+        ),
+    getVariations: (payload: {
+        basePrompt: string;
+        count: number;
+        variationMode: 'subject' | 'style' | 'color';
     }) =>
-        request<{ jobId: string; message: string }>('/factory/generate-variations', {
-            method: 'POST',
-            body: JSON.stringify(payload)
-        }),
-    // Legacy monolithic run
-    run: (payload: {
-        referenceImageId: string;
-        generateCount: number;
-        variationCount: number;
-        autoApprove: boolean;
-        visionData?: VisionData | null;
-        variationTypes?: Array<{ name: string; mod: string }>;
-        engines?: string[];
+        request<{ variations: string[] }>(
+            '/factory/get-variations',
+            { method: 'POST', body: JSON.stringify(payload) }
+        ),
+    generate: (payload: {
+        prompts: string[];
+        model: string;
+        imageSize: string;
     }) =>
-        request<{ jobId: string; message: string; logs: Array<{ step: string; status: string; message: string }> }>(
-            '/factory/run',
+        request<{ jobId: string; imageCount: number; message: string }>(
+            '/factory/generate',
             { method: 'POST', body: JSON.stringify(payload) }
         ),
 };
 
 // ─── Jobs ─────────────────────────────────────────────────────
+export interface JobSummary {
+    id: string;
+    status: string;
+    createdAt: string;
+    imageCount: number;
+    previewUrl: string | null;
+}
+
 export const apiJobs = {
+    list: () => request<JobSummary[]>('/jobs'),
     getLogs: (jobId: string) =>
         request<Array<{ id: string; eventType: string; status: string; message: string; createdAt: string }>>(
             `/jobs/${jobId}/logs`

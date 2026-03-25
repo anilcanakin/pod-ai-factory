@@ -7,7 +7,7 @@ const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const analyticsService = require('../services/analytics.service');
 
-const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+const prisma = new PrismaClient();
 
 // POST /api/analytics/import
 // Accepts Etsy CSV analytics

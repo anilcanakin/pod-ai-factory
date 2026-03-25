@@ -1,72 +1,44 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { apiFactory, apiJobs, apiVision, VisionData } from '@/lib/api';
+import { useState, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiFactory } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
-    Play, Loader2, Copy, Search, ArrowRight,
-    Eye, Cpu, Layers, Wand2, CheckCircle, Image as ImageIcon, Zap, Upload, Palette, TextSelect, Type, Check
+    Loader2, ArrowRight, Upload, X, Sparkles, Wand2,
+    Zap, CheckCircle, Image as ImageIcon, Cpu, Eye, Palette,
+    Brush, Layers, ChevronDown, ChevronUp, Pencil, Trash2
 } from 'lucide-react';
 import Link from 'next/link';
 
-const WIZARD_STEPS = [
-    { num: 1, label: 'Reference' },
-    { num: 2, label: 'Grammar' },
-    { num: 3, label: 'Generate' }
-];
-
-const PIPELINE_STEPS = [
-    { key: 'GENERATE', label: 'Generate', icon: Cpu },
-];
-
-const STEP_EVENTS: Record<string, string> = {
-    VARIATIONS_CREATED: 'GENERATE',
-    FACTORY_RUN_START: 'GENERATE', FACTORY_GENERATION_START: 'GENERATE'
-};
-
-type StepStatus = 'idle' | 'running' | 'success' | 'failed';
-
 export function FactoryClient() {
-    // --- Wizard State ---
-    const [wizardStep, setWizardStep] = useState(1);
+    // ── State ──────────────────────────────────────────────────
+    const [refImages, setRefImages] = useState<string[]>([]);
+    const [mainPrompt, setMainPrompt] = useState('');
+    const [variations, setVariations] = useState<{ id: string; prompt: string; selected: boolean }[]>([]);
+    const [variationMode, setVariationMode] = useState<'subject' | 'style' | 'color'>('subject');
+    const [variationCount, setVariationCount] = useState(4);
+    const [model, setModel] = useState('fal-ai/flux/dev');
+    
+    const { data: models = [], isLoading: isLoadingModels } = useQuery({
+        queryKey: ['models'],
+        queryFn: apiFactory.getModels,
+        staleTime: Infinity
+    });
 
-    // Step 1 State
-    const [refImage, setRefImage] = useState('assets/references/USA250.jpg');
-    const [isExtracting, setIsExtracting] = useState(false);
-    const [isDragging, setIsDragging] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Step 2 State
-    const [visionData, setVisionData] = useState<VisionData | null>(null);
-    const [editableGrammar, setEditableGrammar] = useState<VisionData | null>(null);
-    const [iconsInput, setIconsInput] = useState('wolf, eagle, skull');
-
-    // Generation Settings
     const [imageSize, setImageSize] = useState('square_hd');
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isGettingVariations, setIsGettingVariations] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [lastJobId, setLastJobId] = useState<string | null>(null);
+    const [expandedVariation, setExpandedVariation] = useState<string | null>(null);
+    const [editingVariation, setEditingVariation] = useState<string | null>(null);
 
-    // Step 4 (Pipeline) State
-    const [running, setRunning] = useState(false);
-    const [jobId, setJobId] = useState<string | null>(null);
-    const [logs, setLogs] = useState<Array<{ eventType: string; status: string; message: string; createdAt: string }>>([]);
-    const [logSearch, setLogSearch] = useState('');
-    const [stepStatuses, setStepStatuses] = useState<Record<string, StepStatus>>({});
-    const [currentPipelineIdx, setCurrentPipelineIdx] = useState(-1);
-    const logRef = useRef<HTMLDivElement>(null);
-    const pollRef = useRef<NodeJS.Timeout | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
 
-    // --- Helpers ---
-    useEffect(() => {
-        if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-    }, [logs]);
-
-    useEffect(() => {
-        return () => { if (pollRef.current) clearInterval(pollRef.current); };
-    }, []);
-
-    const isImageUrl = refImage.startsWith('http://') || refImage.startsWith('https://') || refImage.startsWith('data:image');
-
-    // --- Handlers ---
+    // ── Image compression (reuse existing Canvas logic) ───────
     const processFile = (file: File) => {
         if (!file.type.startsWith('image/')) {
             toast.error('Please upload an image file (JPG/PNG).');
@@ -79,7 +51,6 @@ export function FactoryClient() {
                 const MAX_DIM = 1024;
                 let width = img.width;
                 let height = img.height;
-
                 if (width > MAX_DIM || height > MAX_DIM) {
                     if (width > height) {
                         height = Math.round((height * MAX_DIM) / width);
@@ -89,7 +60,6 @@ export function FactoryClient() {
                         height = MAX_DIM;
                     }
                 }
-
                 const canvas = document.createElement('canvas');
                 canvas.width = width;
                 canvas.height = height;
@@ -97,9 +67,9 @@ export function FactoryClient() {
                 if (ctx) {
                     ctx.drawImage(img, 0, 0, width, height);
                     const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
-                    setRefImage(compressedBase64);
+                    setRefImages(prev => [...prev, compressedBase64].slice(0, 3));
                 } else {
-                    setRefImage(reader.result as string);
+                    setRefImages(prev => [...prev, reader.result as string].slice(0, 3));
                 }
             };
             img.src = reader.result as string;
@@ -110,166 +80,157 @@ export function FactoryClient() {
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            processFile(e.dataTransfer.files[0]);
+        if (e.dataTransfer.files) {
+            Array.from(e.dataTransfer.files).forEach(f => processFile(f));
         }
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            processFile(e.target.files[0]);
+        if (e.target.files) {
+            Array.from(e.target.files).forEach(f => processFile(f));
         }
     };
-    const extractPrompt = async () => {
-        if (!refImage) return toast.error('Please provide an image URL or path.');
-        setIsExtracting(true);
+
+    const removeImage = (idx: number) => {
+        setRefImages(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    // ── API Calls ─────────────────────────────────────────────
+    const analyzeImages = async () => {
+        if (refImages.length === 0) return toast.error('Please upload at least one reference image.');
+        setIsAnalyzing(true);
         try {
-            const data = await apiFactory.extractStyle({ referenceImageId: refImage });
-            setVisionData(data.grammar);
-            setEditableGrammar(data.grammar);
-            setWizardStep(2);
-            toast.success(data.isSynthetic ? 'Using synthetic grammar (No API Key)' : 'Vision extraction complete');
+            const data = await apiFactory.analyze({ referenceImageIds: refImages });
+            setMainPrompt(data.prompt);
+            
+            if (data.isSynthetic || data.provider === 'synthetic') {
+                toast.warning('Vision APIs failed or unavailable — using synthetic prompt');
+            } else if (data.provider === 'anthropic') {
+                toast.success('Analyzed with Claude');
+            } else if (data.provider === 'openai') {
+                toast.success('Analyzed with GPT-4o');
+            } else if (data.provider === 'gemini') {
+                toast.success('Analyzed with Gemini');
+            } else {
+                toast.success('AI prompt extracted!');
+            }
+            
         } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : 'Extraction failed');
+            toast.error(err instanceof Error ? err.message : 'Analysis failed');
         } finally {
-            setIsExtracting(false);
+            setIsAnalyzing(false);
         }
     };
 
-    const handleGrammarChange = (field: keyof VisionData, value: string) => {
-        if (!editableGrammar) return;
-        if (field === 'palette') {
-            setEditableGrammar({ ...editableGrammar, palette: value.split(',').map(s => s.trim()) });
-        } else {
-            setEditableGrammar({ ...editableGrammar, [field]: value });
-        }
-    };
-
-    const startFactoryPipeline = async () => {
-        if (!refImage || !editableGrammar) return toast.error("Missing reference image or grammar");
-        const iconsList = iconsInput.split(',').map(s => s.trim()).filter(Boolean);
-        if (iconsList.length === 0) return toast.error("Please provide at least one variation icon");
-
-        setWizardStep(3);
-        setRunning(true);
-        setLogs([]);
-        setStepStatuses({ GENERATE: 'idle' });
-        setCurrentPipelineIdx(0);
-
+    const fetchVariations = async () => {
+        if (!mainPrompt.trim()) return toast.error('Please enter a prompt first.');
+        setIsGettingVariations(true);
         try {
-            const result = await apiFactory.generateVariations({
-                referenceImageId: refImage,
-                grammar: editableGrammar,
-                iconsList,
+            const data = await apiFactory.getVariations({
+                basePrompt: mainPrompt,
+                count: variationCount,
+                variationMode
+            });
+            setVariations(data.variations.map((p, i) => ({
+                id: `var-${Date.now()}-${i}`,
+                prompt: p,
+                selected: true
+            })));
+            toast.success(`${data.variations.length} variations generated!`);
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Variation generation failed');
+        } finally {
+            setIsGettingVariations(false);
+        }
+    };
+
+    const startGeneration = async () => {
+        const selectedPrompts = getSelectedPrompts();
+        if (selectedPrompts.length === 0) return toast.error('No prompts selected for generation.');
+        setIsGenerating(true);
+        try {
+            const data = await apiFactory.generate({
+                prompts: selectedPrompts,
+                model,
                 imageSize
             });
-
-            setJobId(result.jobId);
-            toast.success('Variations generation started!');
-
-            // Initial logs mapping
-            pollLogs(result.jobId);
+            setLastJobId(data.jobId);
+            toast.success(`${data.imageCount} images queued for generation!`);
         } catch (err: unknown) {
-            setRunning(false);
-            toast.error(err instanceof Error ? err.message : 'Pipeline failed to start');
+            toast.error(err instanceof Error ? err.message : 'Generation failed');
+        } finally {
+            setIsGenerating(false);
         }
     };
 
-    const deriveStepsFromLogs = (currentLogs: typeof logs) => {
-        const statuses: Record<string, StepStatus> = {};
-        let maxIdx = 0;
-        currentLogs.forEach(l => {
-            if (l.status === 'FAILED') statuses[PIPELINE_STEPS[currentPipelineIdx]?.key || 'GENERATE'] = 'failed';
-            const mappedStep = STEP_EVENTS[l.eventType];
-            if (mappedStep) {
-                statuses[mappedStep] = 'success';
-                const sIdx = PIPELINE_STEPS.findIndex(s => s.key === mappedStep);
-                if (sIdx > maxIdx) maxIdx = sIdx;
-            }
-        });
-        setCurrentPipelineIdx(Math.min(maxIdx + 1, PIPELINE_STEPS.length - 1));
-        const current = PIPELINE_STEPS[Math.min(maxIdx + 1, PIPELINE_STEPS.length - 1)]?.key;
-        if (current && !statuses[current] && running) statuses[current] = 'running';
-        return statuses;
+    // ── Helpers ────────────────────────────────────────────────
+    const getSelectedPrompts = () => {
+        const varPrompts = variations.filter(v => v.selected).map(v => v.prompt);
+        if (varPrompts.length > 0) return varPrompts;
+        if (mainPrompt.trim()) return [mainPrompt.trim()];
+        return [];
     };
 
-    const pollLogs = (id: string) => {
-        if (pollRef.current) clearInterval(pollRef.current);
-        pollRef.current = setInterval(async () => {
-            try {
-                const refreshed = await apiJobs.getLogs(id);
-                setLogs(refreshed);
-                const derived = deriveStepsFromLogs(refreshed);
-                setStepStatuses(derived);
-
-                const hasDone = refreshed.some(l => l.eventType === 'FACTORY_RUN_DONE');
-                const hasFail = refreshed.some(l => l.eventType.includes('FAILED') || l.eventType === 'FACTORY_RUN_ERROR');
-                if (hasDone || hasFail) {
-                    clearInterval(pollRef.current!);
-                    setRunning(false);
-                    if (hasDone) toast.success('Pipeline run complete!');
-                    if (hasFail) toast.error('Pipeline encountered an error.');
-                }
-            } catch (err) {
-                console.error('Polling error', err);
-            }
-        }, 2000);
+    const toggleVariation = (id: string) => {
+        setVariations(prev => prev.map(v => v.id === id ? { ...v, selected: !v.selected } : v));
     };
 
-    const filteredLogs = logs.filter(l => logSearch === '' || l.eventType.toLowerCase().includes(logSearch.toLowerCase()) || l.message?.toLowerCase().includes(logSearch.toLowerCase()));
+    const selectAllVariations = () => setVariations(prev => prev.map(v => ({ ...v, selected: true })));
+    const deselectAllVariations = () => setVariations(prev => prev.map(v => ({ ...v, selected: false })));
 
-    // --- Renderers ---
+    const deleteVariation = (id: string) => {
+        setVariations(prev => prev.filter(v => v.id !== id));
+    };
+
+    const updateVariation = (id: string, newPrompt: string) => {
+        setVariations(prev => prev.map(v => v.id === id ? { ...v, prompt: newPrompt } : v));
+        setEditingVariation(null);
+    };
+
+    const selectedCount = variations.filter(v => v.selected).length || (mainPrompt.trim() ? 1 : 0);
+
+    // ── Render ─────────────────────────────────────────────────
     return (
-        <div className="space-y-8 animate-fade-in max-w-5xl mx-auto">
-            {/* Wizard Header */}
-            <div>
-                <h1 className="text-2xl font-bold text-text-primary mb-2">New Project</h1>
-                <p className="text-sm text-text-secondary">Launch a new POD design asset pipeline from a reference image.</p>
+        <div className="animate-fade-in">
+            <div className="mb-6">
+                <h1 className="text-2xl font-bold text-text-primary">AI Design Generator</h1>
+                <p className="text-sm text-text-secondary mt-1">Create POD-ready designs with AI-powered generation</p>
             </div>
 
-            {/* Step Indicator */}
-            <div className="flex items-center justify-between relative pb-6">
-                <div className="absolute top-4 left-0 w-full h-0.5 bg-border-default -z-10 rounded" />
-                <div
-                    className="absolute top-4 left-0 h-0.5 bg-accent -z-10 rounded transition-all duration-500"
-                    style={{ width: `${((wizardStep - 1) / (WIZARD_STEPS.length - 1)) * 100}%` }}
-                />
-                {WIZARD_STEPS.map((s) => (
-                    <div key={s.num} className="flex flex-col items-center gap-2">
-                        <div className={cn(
-                            "w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-colors bg-bg-base",
-                            wizardStep > s.num ? "border-accent text-accent" :
-                                wizardStep === s.num ? "border-accent bg-accent-subtle text-accent" : "border-border-strong text-text-tertiary"
-                        )}>
-                            {wizardStep > s.num ? <CheckCircle className="w-5 h-5" /> : s.num}
-                        </div>
-                        <span className={cn(
-                            "text-xs font-medium whitespace-nowrap",
-                            wizardStep >= s.num ? "text-text-primary" : "text-text-tertiary"
-                        )}>{s.label}</span>
-                    </div>
-                ))}
-            </div>
+            <div className="flex gap-0 min-h-[calc(100vh-180px)]">
+                {/* ── LEFT PANEL ─────────────────────────────── */}
+                <div className="w-[400px] flex-shrink-0 border-r border-border-subtle pr-6 space-y-6">
 
-            <div className="rounded-[10px] border border-border-default bg-bg-surface overflow-hidden">
+                    {/* Upload Area */}
+                    <section>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-3">Reference Images</h3>
 
-                {/* STEP 1: REFERENCE */}
-                {wizardStep === 1 && (
-                    <div className="p-8 space-y-8">
-                        <div className="text-center max-w-lg mx-auto space-y-2">
-                            <h2 className="text-xl font-semibold text-text-primary">Upload Reference Image</h2>
-                            <p className="text-sm text-text-secondary">Provide a source design to extract aesthetics and layout instructions from.</p>
-                        </div>
+                        {/* Thumbnails */}
+                        {refImages.length > 0 && (
+                            <div className="flex gap-2 mb-3">
+                                {refImages.map((img, i) => (
+                                    <div key={i} className="relative w-20 h-20 rounded-[8px] overflow-hidden border border-border-default group">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={img} alt={`Ref ${i + 1}`} className="w-full h-full object-cover" />
+                                        <button
+                                            onClick={() => removeImage(i)}
+                                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <X className="w-3 h-3 text-white" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
-                        <div className="max-w-xl mx-auto space-y-6">
-                            {/* Dropzone */}
+                        {refImages.length < 3 && (
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                                onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+                                onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                                onDragLeave={e => { e.preventDefault(); setIsDragging(false); }}
                                 onDrop={handleDrop}
                                 className={cn(
-                                    "border-2 border-dashed rounded-[10px] h-[280px] flex flex-col items-center justify-center transition-all cursor-pointer group relative overflow-hidden",
+                                    "border-2 border-dashed rounded-[10px] h-28 flex flex-col items-center justify-center transition-all cursor-pointer group",
                                     isDragging ? "bg-accent-subtle border-accent" : "bg-bg-elevated/50 border-border-default hover:border-accent/50"
                                 )}
                             >
@@ -278,227 +239,259 @@ export function FactoryClient() {
                                     ref={fileInputRef}
                                     className="hidden"
                                     accept="image/*"
+                                    multiple
                                     onChange={handleFileChange}
                                 />
-                                <Upload className={cn("w-10 h-10 mb-3 transition-colors", isDragging ? "text-accent" : "text-text-tertiary group-hover:text-accent")} />
-                                <p className="text-sm font-medium text-text-primary">Drop your reference image</p>
-                                <p className="text-xs text-text-tertiary mt-1">JPG, PNG up to 10MB</p>
-                            </div>
-
-                            {/* Image URL input + preview */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-text-secondary">Image URL or Local Path</label>
-                                <input
-                                    value={refImage}
-                                    onChange={e => setRefImage(e.target.value)}
-                                    className="w-full bg-bg-elevated border border-border-default rounded-[10px] px-4 py-3 text-sm text-text-primary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent placeholder-text-tertiary"
-                                    placeholder="https://example.com/shirt.jpg"
-                                />
-                                {(isImageUrl || refImage.includes('/')) && (
-                                    <div className="mt-4 flex items-start gap-6">
-                                        <div className="w-[200px] h-[200px] rounded-xl overflow-hidden border border-border-default bg-bg-elevated flex-shrink-0">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img src={refImage} alt="Preview" className="w-full h-full object-cover" onError={e => e.currentTarget.style.display = 'none'} />
-                                        </div>
-                                        <div className="flex flex-col gap-3 pt-4">
-                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] text-xs font-medium bg-success-subtle text-success border border-[rgba(34,197,94,0.20)]">
-                                                <CheckCircle className="w-3.5 h-3.5" /> Image Ready
-                                            </span>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="pt-4 flex justify-end">
-                                <button
-                                    onClick={extractPrompt}
-                                    disabled={!refImage || isExtracting}
-                                    className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-[10px] font-medium transition-colors disabled:opacity-50"
-                                    style={{ fontWeight: 500 }}
-                                >
-                                    {isExtracting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Extract Style <ArrowRight className="w-5 h-5" /></>}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* STEP 2: GRAMMAR & VARIANTS */}
-                {wizardStep === 2 && editableGrammar && (
-                    <div className="p-8 space-y-8">
-                        <div className="flex items-center justify-between border-b border-border-subtle pb-4">
-                            <div>
-                                <h2 className="text-xl font-semibold text-text-primary">Design Grammar & Style Cloning</h2>
-                                <p className="text-sm text-text-secondary">Edit the extracted grammar and specify new subjects (icons) for cloning.</p>
-                            </div>
-                            <button onClick={() => setWizardStep(1)} className="text-sm text-text-secondary hover:text-text-primary transition-colors">← Edit Image</button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            {/* Editor Form */}
-                            <div className="space-y-6">
-                                <div className="bg-bg-elevated rounded-[10px] p-6 border border-border-default space-y-4">
-                                    <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2"><TextSelect className="w-4 h-4 text-accent" /> Editable Grammar</h3>
-
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 block">Style</label>
-                                            <input value={editableGrammar.style} onChange={e => handleGrammarChange('style', e.target.value)} className="w-full bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:border-accent outline-none" />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 block">Layout</label>
-                                            <input value={editableGrammar.layout} onChange={e => handleGrammarChange('layout', e.target.value)} className="w-full bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:border-accent outline-none" />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 block">Typography</label>
-                                            <input value={editableGrammar.typography} onChange={e => handleGrammarChange('typography', e.target.value)} className="w-full bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:border-accent outline-none" />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 block">Color Palette (comma separated)</label>
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex items-center gap-1">
-                                                    {editableGrammar.palette.map((color, i) => (
-                                                        <div key={i} className="w-5 h-5 rounded-full border border-border-default" style={{ backgroundColor: color }} />
-                                                    ))}
-                                                </div>
-                                                <input value={editableGrammar.palette.join(', ')} onChange={e => handleGrammarChange('palette', e.target.value)} className="flex-1 bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:border-accent outline-none" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Variations & Submit */}
-                            <div className="space-y-6">
-                                <div className="bg-bg-elevated rounded-[10px] p-6 border border-border-default space-y-4">
-                                    <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Layers className="w-4 h-4 text-accent" /> Variation Icons</h3>
-                                    <p className="text-xs text-text-secondary">Enter comma-separated icon subjects to swap into the design grammar.</p>
-                                    <textarea
-                                        value={iconsInput}
-                                        onChange={e => setIconsInput(e.target.value)}
-                                        className="w-full h-32 bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:border-accent outline-none resize-none"
-                                        placeholder="wolf, eagle, bear, skull"
-                                    />
-                                </div>
-
-                                <div className="bg-bg-elevated rounded-[10px] p-6 border border-border-default space-y-4">
-                                    <div>
-                                        <label className="text-sm text-text-secondary block mb-2">Image Size</label>
-                                        <select value={imageSize} onChange={e => setImageSize(e.target.value)} className="w-full bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent">
-                                            <option value="square_hd">Square HD (1024x1024)</option>
-                                            <option value="portrait_4_3">Portrait 4:3 (768x1024)</option>
-                                            <option value="landscape_4_3">Landscape 4:3 (1024x768)</option>
-                                        </select>
-                                    </div>
-                                    <button
-                                        onClick={startFactoryPipeline}
-                                        className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-[10px] font-bold transition-all"
-                                    >
-                                        <Zap className="w-5 h-5" /> Generate →
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* STEP 3: PROGRESS & LOGS */}
-                {wizardStep === 3 && (
-                    <div className="flex flex-col">
-                        <div className="p-8 border-b border-border-subtle">
-                            {/* Job status pill */}
-                            <div className="flex items-center gap-3 mb-6">
-                                {running ? (
-                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-warn-subtle text-warn border border-[rgba(245,158,11,0.20)] animate-pulse">
-                                        <Loader2 className="w-4 h-4 animate-spin" /> Pipeline Running
-                                    </span>
-                                ) : (
-                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-success-subtle text-success border border-[rgba(34,197,94,0.20)]">
-                                        <CheckCircle className="w-4 h-4" /> Pipeline Complete
-                                    </span>
-                                )}
-                            </div>
-
-                            <div className="flex items-center justify-between relative max-w-2xl mx-auto">
-                                <div className="absolute top-1/2 left-0 w-full h-1 bg-border-default -z-10 -translate-y-1/2 rounded" />
-                                {PIPELINE_STEPS.map((step, idx) => {
-                                    const st = stepStatuses[step.key] || 'idle';
-                                    const isDone = st === 'success';
-                                    const isRunning = st === 'running';
-                                    const isFailed = st === 'failed';
-                                    return (
-                                        <div key={idx} className="flex flex-col items-center gap-2">
-                                            <div className={cn(
-                                                "w-12 h-12 rounded-full flex items-center justify-center border-4 transition-all duration-500",
-                                                isDone ? "bg-success border-[rgba(34,197,94,0.30)] text-white" :
-                                                    isRunning ? "bg-accent border-accent-border text-white animate-pulse" :
-                                                        isFailed ? "bg-danger border-[rgba(239,68,68,0.30)] text-white" :
-                                                            "bg-bg-elevated border-border-strong text-text-tertiary"
-                                            )}>
-                                                <step.icon className="w-5 h-5" />
-                                            </div>
-                                            <span className={cn(
-                                                "text-xs font-semibold uppercase tracking-wider",
-                                                (isDone || isRunning) ? "text-text-primary" : isFailed ? "text-danger" : "text-text-tertiary"
-                                            )}>{step.label}</span>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Logs Console */}
-                        <div className="bg-bg-base p-4 flex flex-col h-[400px]">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm text-text-tertiary" style={{ fontFamily: "'Geist Mono', monospace" }}>Terminal Log</h3>
-                                <div className="flex items-center gap-2">
-                                    <div className="relative">
-                                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
-                                        <input
-                                            value={logSearch} onChange={e => setLogSearch(e.target.value)}
-                                            placeholder="Filter logs..."
-                                            className="bg-bg-surface border border-border-default rounded-[8px] px-8 py-1 text-xs text-text-secondary w-48 focus:outline-none focus:border-accent"
-                                        />
-                                    </div>
-                                    <button onClick={() => {
-                                        navigator.clipboard.writeText(filteredLogs.map(l => `[${l.createdAt}] ${l.eventType} [${l.status}] ${l.message || ''}`).join('\n'));
-                                        toast.success('Logs copied');
-                                    }} className="p-1.5 hover:bg-bg-elevated rounded text-text-tertiary transition-colors" title="Copy Logs">
-                                        <Copy className="w-3.5 h-3.5" />
-                                    </button>
-                                </div>
-                            </div>
-                            <div ref={logRef} className="flex-1 overflow-y-auto space-y-1.5 text-xs p-2 bg-bg-base rounded-[8px] border border-border-subtle" style={{ fontFamily: "'Geist Mono', monospace", fontSize: '12px' }}>
-                                {filteredLogs.length === 0 ? (
-                                    <p className="text-text-tertiary italic">Awaiting logs...</p>
-                                ) : (
-                                    filteredLogs.map((l, i) => (
-                                        <div key={i} className="flex gap-3">
-                                            <span className="text-text-tertiary shrink-0">[{new Date(l.createdAt).toLocaleTimeString()}]</span>
-                                            <span className="font-semibold w-32 shrink-0 text-accent">{l.eventType}</span>
-                                            <span className={cn(
-                                                l.status === 'ERROR' || l.status === 'FAILED' ? "text-danger" :
-                                                    l.status === 'SUCCESS' ? "text-success" : "text-text-primary"
-                                            )}>{l.message}</span>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-
-                        {/* CTA when done */}
-                        {!running && jobId && (
-                            <div className="p-6 bg-bg-surface border-t border-border-subtle flex justify-end gap-3">
-                                <Link
-                                    href={`/dashboard/gallery?jobId=${jobId}`}
-                                    className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-white px-6 py-2.5 rounded-[10px] font-medium transition-colors"
-                                >
-                                    View in Gallery <ArrowRight className="w-4 h-4" />
-                                </Link>
+                                <Upload className={cn("w-6 h-6 mb-1 transition-colors", isDragging ? "text-accent" : "text-text-tertiary group-hover:text-accent")} />
+                                <p className="text-xs text-text-secondary">Drop images or <span className="text-accent">browse</span></p>
+                                <p className="text-[10px] text-text-tertiary mt-0.5">JPG, PNG up to 10MB · Max 3</p>
                             </div>
                         )}
-                    </div>
-                )}
+                    </section>
+
+                    {/* Get AI Prompt Button */}
+                    <button
+                        onClick={analyzeImages}
+                        disabled={refImages.length === 0 || isAnalyzing}
+                        className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-white px-4 py-3 rounded-[10px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        {isAnalyzing ? (
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing...</>
+                        ) : (
+                            <><Sparkles className="w-4 h-4" /> Get AI Prompt</>
+                        )}
+                    </button>
+
+                    {/* Prompt Textarea */}
+                    <section>
+                        <label className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-2 block">Generation Prompt</label>
+                        <div className="relative">
+                            <textarea
+                                value={mainPrompt}
+                                onChange={e => setMainPrompt(e.target.value)}
+                                rows={6}
+                                className="w-full bg-bg-elevated border border-border-default rounded-[10px] px-3 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent resize-none"
+                                placeholder="Upload a reference image and click 'Get AI Prompt', or write your own..."
+                            />
+                            <span className="absolute bottom-2 right-3 text-[10px] text-text-tertiary tabular-nums">
+                                {mainPrompt.length}
+                            </span>
+                        </div>
+                    </section>
+
+                    {/* Variation Controls */}
+                    <section className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">Variations</h3>
+
+                        {/* Mode pills */}
+                        <div className="flex gap-1.5">
+                            {(['subject', 'style', 'color'] as const).map(m => (
+                                <button
+                                    key={m}
+                                    onClick={() => setVariationMode(m)}
+                                    className={cn(
+                                        'px-3 py-1.5 text-xs rounded-full font-medium transition-all border',
+                                        variationMode === m
+                                            ? 'bg-accent-subtle text-accent border-accent-border'
+                                            : 'bg-bg-elevated text-text-secondary border-border-default hover:border-border-strong'
+                                    )}
+                                >
+                                    {m.charAt(0).toUpperCase() + m.slice(1)}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Count input */}
+                        <div className="flex items-center gap-2">
+                            <label className="text-xs text-text-secondary">Count:</label>
+                            <input
+                                type="number"
+                                min={1}
+                                max={8}
+                                value={variationCount}
+                                onChange={e => setVariationCount(Math.min(8, Math.max(1, parseInt(e.target.value) || 1)))}
+                                className="w-16 bg-bg-elevated border border-border-default rounded-[8px] px-2 py-1.5 text-sm text-text-primary text-center focus:outline-none focus:border-accent"
+                            />
+                        </div>
+
+                        {/* Get Variations Button */}
+                        <button
+                            onClick={fetchVariations}
+                            disabled={!mainPrompt.trim() || isGettingVariations}
+                            className="w-full flex items-center justify-center gap-2 bg-bg-elevated border border-border-default hover:border-accent text-text-primary px-4 py-2.5 rounded-[10px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            {isGettingVariations ? (
+                                <><Loader2 className="w-4 h-4 animate-spin" /> Generating variations...</>
+                            ) : (
+                                <><Wand2 className="w-4 h-4 text-accent" /> Get Variations</>
+                            )}
+                        </button>
+                    </section>
+
+                    {/* Variations List */}
+                    {variations.length > 0 && (
+                        <section className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs text-text-secondary">{variations.filter(v => v.selected).length}/{variations.length} selected</span>
+                                <div className="flex gap-2">
+                                    <button onClick={selectAllVariations} className="text-[10px] text-accent hover:underline">Select All</button>
+                                    <button onClick={deselectAllVariations} className="text-[10px] text-text-tertiary hover:text-text-secondary">Deselect All</button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5 max-h-[280px] overflow-y-auto scrollbar-thin pr-1">
+                                {variations.map(v => (
+                                    <div key={v.id} className={cn(
+                                        "rounded-[8px] border p-2.5 transition-all cursor-pointer",
+                                        v.selected ? "border-accent-border bg-accent-subtle/50" : "border-border-default bg-bg-elevated hover:border-border-strong"
+                                    )}>
+                                        <div className="flex items-start gap-2">
+                                            {/* Checkbox */}
+                                            <button
+                                                onClick={() => toggleVariation(v.id)}
+                                                className={cn(
+                                                    "mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors",
+                                                    v.selected ? "bg-accent border-accent" : "border-border-strong bg-transparent"
+                                                )}
+                                            >
+                                                {v.selected && <CheckCircle className="w-3 h-3 text-white" />}
+                                            </button>
+
+                                            {/* Prompt text */}
+                                            <div className="flex-1 min-w-0">
+                                                {editingVariation === v.id ? (
+                                                    <textarea
+                                                        defaultValue={v.prompt}
+                                                        autoFocus
+                                                        rows={3}
+                                                        className="w-full bg-bg-base border border-accent rounded-[6px] px-2 py-1 text-xs text-text-primary focus:outline-none resize-none"
+                                                        onBlur={e => updateVariation(v.id, e.target.value)}
+                                                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); updateVariation(v.id, (e.target as HTMLTextAreaElement).value); } }}
+                                                    />
+                                                ) : (
+                                                    <p
+                                                        className={cn("text-xs leading-relaxed", expandedVariation === v.id ? "" : "line-clamp-2")}
+                                                        onClick={() => setExpandedVariation(expandedVariation === v.id ? null : v.id)}
+                                                    >
+                                                        {v.prompt}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Actions */}
+                                            <div className="flex items-center gap-0.5 flex-shrink-0">
+                                                <button onClick={() => setEditingVariation(v.id)} className="p-1 rounded hover:bg-bg-overlay text-text-tertiary hover:text-accent transition-colors">
+                                                    <Pencil className="w-3 h-3" />
+                                                </button>
+                                                <button onClick={() => deleteVariation(v.id)} className="p-1 rounded hover:bg-bg-overlay text-text-tertiary hover:text-danger transition-colors">
+                                                    <Trash2 className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+                </div>
+
+                {/* ── RIGHT PANEL ────────────────────────────── */}
+                <div className="flex-1 pl-6 space-y-6">
+
+                    {/* Model Selection */}
+                    <section>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-3">AI Model</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            {isLoadingModels ? (
+                                Array.from({ length: 4 }).map((_, i) => (
+                                    <div key={i} className="h-[90px] rounded-[10px] bg-bg-elevated skeleton-shimmer border border-border-default" />
+                                ))
+                            ) : (
+                                models.map(m => (
+                                    <button
+                                        key={m.id}
+                                        onClick={() => setModel(m.id)}
+                                        className={cn(
+                                            "flex flex-col gap-1.5 p-3 rounded-[10px] border text-left transition-all",
+                                            model === m.id
+                                                ? "border-accent bg-accent-subtle"
+                                                : "border-border-default bg-bg-elevated hover:border-border-strong"
+                                        )}
+                                    >
+                                        <p className={cn("text-sm font-medium", model === m.id ? "text-accent" : "text-text-primary")}>{m.name}</p>
+                                        <p className="text-xs text-text-tertiary">{m.description}</p>
+                                        <div className="mt-1">
+                                            {m.strength === 'general' && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-bg-overlay text-text-secondary border border-border-default">General</span>}
+                                            {m.strength === 'speed' && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-success-subtle text-success border border-[rgba(34,197,94,0.20)]">⚡ Fast</span>}
+                                            {m.strength === 'typography' && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-warning-subtle text-warning border border-[rgba(234,179,8,0.20)]">T Typography</span>}
+                                            {m.strength === 'vector' && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent-subtle text-accent border border-accent/20">◈ Vector</span>}
+                                        </div>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </section>
+
+                    {/* Settings */}
+                    <section>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-3">Settings</h3>
+                        <div className="bg-bg-elevated rounded-[10px] border border-border-default p-4 space-y-4">
+                            <div>
+                                <label className="text-xs text-text-secondary block mb-1.5">Aspect Ratio</label>
+                                <select
+                                    value={imageSize}
+                                    onChange={e => setImageSize(e.target.value)}
+                                    className="w-full bg-bg-base border border-border-default rounded-[8px] px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                                >
+                                    <option value="square_hd">Square HD (1024×1024)</option>
+                                    <option value="portrait_4_3">Portrait 4:3 (768×1024)</option>
+                                    <option value="landscape_4_3">Landscape 4:3 (1024×768)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Generate Button */}
+                    <button
+                        onClick={startGeneration}
+                        disabled={selectedCount === 0 || isGenerating}
+                        className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-white px-6 py-4 rounded-[10px] font-bold text-base transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        {isGenerating ? (
+                            <><Loader2 className="w-5 h-5 animate-spin" /> Generating...</>
+                        ) : (
+                            <>Generate ({selectedCount}) <ArrowRight className="w-5 h-5" /></>
+                        )}
+                    </button>
+
+                    {/* Success / Gallery link */}
+                    {lastJobId && !isGenerating && (
+                        <div className="rounded-[10px] border border-[rgba(34,197,94,0.20)] bg-success-subtle p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <CheckCircle className="w-5 h-5 text-success" />
+                                <div>
+                                    <p className="text-sm font-medium text-success">Images queued successfully</p>
+                                    <p className="text-[10px] text-text-tertiary font-mono mt-0.5">{lastJobId}</p>
+                                </div>
+                            </div>
+                            <Link
+                                href={`/dashboard/gallery?jobId=${lastJobId}`}
+                                className="flex items-center gap-1.5 bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-[8px] text-sm font-medium transition-colors"
+                            >
+                                View in Gallery <ArrowRight className="w-4 h-4" />
+                            </Link>
+                        </div>
+                    )}
+
+                    {/* Empty state hint */}
+                    {selectedCount === 0 && !lastJobId && (
+                        <div className="flex flex-col items-center justify-center py-16 text-text-tertiary">
+                            <ImageIcon className="w-12 h-12 mb-3 opacity-20" />
+                            <p className="text-sm">Upload references & generate prompts</p>
+                            <p className="text-xs mt-1">Or write a prompt directly in the left panel</p>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

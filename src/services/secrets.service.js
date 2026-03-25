@@ -10,9 +10,7 @@
 const { PrismaClient } = require('@prisma/client');
 const crypto = require('crypto');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 const ALGORITHM = 'aes-256-gcm';
 // Ensure we always have exactly 32 bytes for the key

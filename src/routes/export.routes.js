@@ -6,9 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 // POST /api/export/etsy
 router.post('/etsy', async (req, res) => {

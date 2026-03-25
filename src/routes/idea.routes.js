@@ -11,7 +11,7 @@ const riskService = require('../services/risk.service');
 const { VISION_SCHEMA } = require('../services/vision.service');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+const prisma = new PrismaClient();
 
 // POST /api/ideas/generate
 // Accepts a CSV of top EverBee/eRank keywords and generates exactly 20 ideas

@@ -2,16 +2,12 @@ const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 
-const { visionService } = require('../services/vision.service');
-const promptService = require('../services/prompt.service');
-const variationService = require('../services/variation.service');
+const visionService = require('../services/vision.service');
 const generationService = require('../services/generation.service');
 const logService = require('../services/log.service');
 const usageMiddleware = require('../config/usage.middleware');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 // Helper: mark job FAILED and log the failure
 async function failJob(jobId, step, err) {
@@ -22,262 +18,137 @@ async function failJob(jobId, step, err) {
     ]);
 }
 
-// POST /api/factory/extract-style
-// Standalone endpoint to use Vision API to extract "Design Grammar" from a reference image.
-router.post('/extract-style', usageMiddleware, async (req, res) => {
+// ── Helper: check if OpenAI vision is available ────────────────
+function isVisionEnabled() {
+    return process.env.USE_VISION === 'true'
+        && process.env.OPENAI_API_KEY
+        && process.env.OPENAI_API_KEY.length > 10
+        && process.env.OPENAI_API_KEY !== 'your_openai_api_key';
+}
+
+// ────────────────────────────────────────────────────────────────
+// GET /api/factory/models
+// Get list of supported AI models for image generation
+// ────────────────────────────────────────────────────────────────
+router.get('/models', (req, res) => {
     try {
-        const { referenceImageId } = req.body;
-        if (!referenceImageId) return res.status(400).json({ error: 'referenceImageId is required.' });
-
-        const workspaceId = req.workspaceId;
-        if (!workspaceId) return res.status(401).json({ error: 'Authentication required.' });
-
-        const useVision = process.env.USE_VISION === 'true'
-            && process.env.OPENAI_API_KEY
-            && process.env.OPENAI_API_KEY.length > 10
-            && process.env.OPENAI_API_KEY !== 'your_openai_api_key';
-
-        if (!useVision) {
-            // Synthetic fallback for local testing without API key
-            const syntheticData = {
-                style: 'vintage distressed',
-                layout: 'centered badge',
-                icon_description: 'roaring eagle',
-                typography: 'bold collegiate arch',
-                palette: ['navy', 'offwhite', 'red']
-            };
-            return res.json({ grammar: syntheticData, isSynthetic: true });
-        }
-
-        // Call vision API
-        const dbRecord = await visionService.analyzeImage(referenceImageId, null, null);
-        res.json({ grammar: dbRecord.parsedVisionJson, isSynthetic: false });
+        const models = generationService.SUPPORTED_MODELS || {};
+        res.json(Object.entries(models).map(([id, info]) => ({
+            id,
+            ...info
+        })));
     } catch (err) {
-        console.error('[Factory Extract Style]', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// POST /api/factory/run
-router.post('/run', usageMiddleware, async (req, res) => {
-    let jobId = null;
+// ────────────────────────────────────────────────────────────────
+// POST /api/factory/analyze
+// Analyze reference image(s) via Vision API → return generation prompt
+// ────────────────────────────────────────────────────────────────
+router.post('/analyze', usageMiddleware, async (req, res) => {
     try {
-        const {
-            referenceImageId,
-            engines = ['fal'],        // deprecated param — fal is always used
-            variationCount = 30,
-            generateCount = 30,
-            autoApprove = false,
-            imageSize = 'square_hd',
-            visionData = null,
-            variationTypes = []
-        } = req.body;
-
-        if (!referenceImageId) return res.status(400).json({ error: 'referenceImageId is required.' });
+        const { referenceImageIds } = req.body;
+        if (!referenceImageIds || !Array.isArray(referenceImageIds) || referenceImageIds.length === 0) {
+            return res.status(400).json({ error: 'referenceImageIds is required (array of image URLs or base64).' });
+        }
 
         const workspaceId = req.workspaceId;
-        if (!workspaceId) {
-            return res.status(401).json({ error: 'Authentication required. Missing workspace context.' });
+        if (!workspaceId) return res.status(401).json({ error: 'Authentication required.' });
+
+        // Frontend sends Data URLs: data:image/jpeg;base64,/9j/4AAQSk...
+        const dataUrl = referenceImageIds[0] || '';
+        let base64Data = dataUrl;
+        let mimeType = 'image/jpeg';
+
+        if (dataUrl.startsWith('data:')) {
+            const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+                mimeType = matches[1];
+                base64Data = matches[2];
+            }
         }
 
-        const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
-        if (!workspace) {
-            return res.status(403).json({ error: 'Invalid workspace context.' });
-        }
+        // Call multi-provider vision service
+        const result = await visionService.analyzeImage(base64Data, mimeType);
+        
+        res.json(result);
+    } catch (err) {
+        console.error('[Factory Analyze]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
-        const cap = workspace.concurrentJobCap || parseInt(process.env.CONCURRENT_JOB_CAP || '2', 10);
+// ────────────────────────────────────────────────────────────────
+// POST /api/factory/get-variations
+// Generate N prompt variations from a base prompt
+// ────────────────────────────────────────────────────────────────
+router.post('/get-variations', usageMiddleware, async (req, res) => {
+    try {
+        const { basePrompt, count = 4, variationMode = 'subject' } = req.body;
+        if (!basePrompt) return res.status(400).json({ error: 'basePrompt is required.' });
 
-        const activeJobs = await prisma.designJob.count({
-            where: { workspaceId, status: 'PROCESSING' }
-        });
+        const clampedCount = Math.min(Math.max(parseInt(count) || 4, 1), 8);
+        const validModes = ['subject', 'style', 'color'];
+        const mode = validModes.includes(variationMode) ? variationMode : 'subject';
 
-        if (activeJobs >= cap) {
-            return res.status(429).json({ error: `Concurrent Job Limit Reached: Maximum ${cap} active jobs allowed for this workspace.` });
-        }
+        const workspaceId = req.workspaceId;
+        if (!workspaceId) return res.status(401).json({ error: 'Authentication required.' });
 
-        // 1. Create Job
-        let job = await prisma.designJob.findFirst({
-            where: { originalImage: referenceImageId, status: { not: 'COMPLETED' }, workspaceId }
-        });
+        if (!isVisionEnabled()) {
+            // Synthetic variations — deterministic text manipulation
+            const modeSwaps = {
+                subject: ['wolf', 'eagle', 'skull with roses', 'bear', 'lion', 'shark', 'dragon', 'phoenix'],
+                style: ['vintage distressed', 'minimalist line art', 'neon cyberpunk', 'watercolor soft', 'bold retro', 'grunge punk', 'kawaii cute', 'art deco'],
+                color: ['navy and gold', 'red and black', 'pastel pink and white', 'forest green and cream', 'sunset orange and purple', 'teal and coral', 'monochrome grayscale', 'electric blue and yellow']
+            };
 
-        if (!job) {
-            job = await prisma.designJob.create({
-                data: { originalImage: referenceImageId, status: 'PROCESSING', workspaceId }
-            });
-        } else {
-            await prisma.designJob.update({ where: { id: job.id }, data: { status: 'PROCESSING' } });
-        }
-
-        jobId = job.id;
-        await logService.logEvent(jobId, 'FACTORY_RUN_START', 'SUCCESS', `Starting run for reference: ${referenceImageId}`);
-
-        // 2. Vision — always check USE_VISION flag
-        const existingVision = await prisma.visionAnalysis.findFirst({ where: { jobId } });
-        if (!existingVision) {
-            if (visionData) {
-                // UI explicitly passed the JSON output — skip calling Vision API again
-                await prisma.visionAnalysis.create({
-                    data: {
-                        jobId,
-                        rawProviderResponse: JSON.stringify(visionData),
-                        parsedVisionJson: visionData
-                    }
-                });
-                await logService.logEvent(jobId, 'VISION_SKIPPED', 'SUCCESS', 'UI explicitly provided parsed Vision Data from Extract Prompt step.');
-            } else {
-                const useVision = process.env.USE_VISION === 'true'
-                    && process.env.OPENAI_API_KEY
-                    && process.env.OPENAI_API_KEY.length > 10
-                    && process.env.OPENAI_API_KEY !== 'your_openai_api_key';
-
-                if (useVision) {
-                    try {
-                        await visionService.analyzeImage(referenceImageId, null, jobId);
-                        await logService.logEvent(jobId, 'VISION_DONE', 'SUCCESS', 'OpenAI Vision analyzed reference image.');
-                    } catch (err) {
-                        await failJob(jobId, 'VISION_DONE', err);
-                        return res.status(500).json({ error: `Vision step failed: ${err.message}`, jobId });
-                    }
+            const swaps = modeSwaps[mode];
+            const variations = [];
+            for (let i = 0; i < clampedCount; i++) {
+                const swap = swaps[i % swaps.length];
+                if (mode === 'subject') {
+                    variations.push(basePrompt.replace(/(?:of a |of an )[\w\s]+(?:\.|\,)/i, `of a ${swap}.`));
+                } else if (mode === 'style') {
+                    variations.push(`${basePrompt} Reimagined in ${swap} aesthetic.`);
                 } else {
-                    // Deterministic synthetic vision based on reference filename
-                    const refName = referenceImageId.toLowerCase();
-                    let niche = 'patriotic_americana';
-                    if (refName.includes('gym') || refName.includes('fitness')) niche = 'gym_fitness';
-                    else if (refName.includes('pet') || refName.includes('dog') || refName.includes('cat')) niche = 'pet_lovers';
-                    else if (refName.includes('game') || refName.includes('nerd')) niche = 'gaming_nerd';
-                    else if (refName.includes('outdoor') || refName.includes('camp')) niche = 'outdoor_camping';
-                    else if (refName.includes('usa') || refName.includes('america') || refName.includes('flag')) niche = 'usa_patriotic';
-                    else if (refName.includes('sport') || refName.includes('varsity')) niche = 'sports_varsity';
-
-                    const syntheticData = {
-                        style: 'vintage_distressed',
-                        palette: ['navy', 'offwhite', 'vintage_red'],
-                        palette_hex: ['#1a2744', '#f5f0e8', '#c0392b'],
-                        composition: 'centered_graphic',
-                        icon_family: ['eagle', 'shield', 'star'],
-                        text_layout: 'top_year_mid_banner_bottom_hook',
-                        niche_guess: niche
-                    };
-
-                    await prisma.visionAnalysis.create({
-                        data: {
-                            jobId,
-                            rawProviderResponse: JSON.stringify(syntheticData),
-                            parsedVisionJson: syntheticData
-                        }
-                    });
-                    await logService.logEvent(jobId, 'VISION_SKIPPED', 'SUCCESS',
-                        `USE_VISION=false — synthetic vision injected (niche: ${niche}).`);
+                    variations.push(`${basePrompt} Using a ${swap} color palette.`);
                 }
             }
-        } else {
-            await logService.logEvent(jobId, 'VISION_SKIPPED', 'SUCCESS', 'Vision data already exists (idempotent).');
+
+            return res.json({ variations });
         }
 
-        // 3. Prompt Synth
-        const freshJob = await prisma.designJob.findUnique({ where: { id: jobId } });
-        if (!freshJob.basePrompt) {
-            try {
-                await promptService.synthesize(jobId);
-                await logService.logEvent(jobId, 'PROMPT_SYNTH_DONE', 'SUCCESS', 'Base prompt synthesized.');
-            } catch (err) {
-                await failJob(jobId, 'PROMPT_SYNTH_DONE', err);
-                return res.status(500).json({ error: `Prompt synth failed: ${err.message}`, jobId });
-            }
-        }
-
-        // 4. Variations
-        const existingImages = await prisma.image.count({ where: { jobId } });
-        if (existingImages < variationCount) {
-            const remaining = variationCount - existingImages;
-            try {
-                await variationService.generateVariations(jobId, remaining, variationTypes);
-                await logService.logEvent(jobId, 'VARIATIONS_CREATED', 'SUCCESS', `Created ${remaining} variation rows.`);
-            } catch (err) {
-                await failJob(jobId, 'VARIATIONS_CREATED', err);
-                return res.status(500).json({ error: `Variation creation failed: ${err.message}`, jobId });
-            }
-        }
-
-        // 5. Generation
-        const pendingImages = await prisma.image.count({ where: { jobId, imageUrl: 'PENDING' } });
-        if (pendingImages > 0) {
-            const runCount = Math.min(pendingImages, generateCount);
-            try {
-                await generationService.runGeneration(jobId, 'fal', runCount, imageSize);
-            } catch (err) {
-                // Partial failures are tracked inside runGeneration — only throw on total failure
-                await logService.logEvent(jobId, 'GENERATION_DONE', 'FAILED', err.message);
-                await failJob(jobId, 'GENERATION_FATAL', err);
-                return res.status(500).json({ error: `Generation failed: ${err.message}`, jobId });
-            }
-        }
-
-        // 6. Auto-approve
-        if (autoApprove) {
-            const finished = await prisma.image.findMany({ where: { jobId, status: 'COMPLETED' } });
-            for (const img of finished) {
-                await prisma.image.update({ where: { id: img.id }, data: { isApproved: true, status: 'APPROVED' } });
-            }
-            await logService.logEvent(jobId, 'AUTO_APPROVE', 'SUCCESS', `Auto-approved ${finished.length} images.`);
-        }
-
-        // 7. Mark COMPLETED
-        await prisma.designJob.update({ where: { id: jobId }, data: { status: 'COMPLETED' } });
-        await logService.logEvent(jobId, 'FACTORY_RUN_DONE', 'SUCCESS', 'All steps completed.');
-
-        const logs = await logService.getLogs(jobId);
-        res.json({
-            jobId,
-            message: 'Factory run completed.',
-            logs: logs.map(l => ({ step: l.eventType, status: l.status, message: l.message }))
-        });
-
+        // Real AI variations
+        const result = await visionService.getVariations(basePrompt, clampedCount, mode);
+        res.json(result);
     } catch (err) {
-        console.error('[Factory] Unexpected error:', err.stack || err);
-        if (jobId) await failJob(jobId, 'FACTORY_RUN_ERROR', err).catch(() => { });
-        res.status(500).json({ error: err.message, stack: err.stack, jobId });
-    }
-});
-
-// POST /api/factory/retry/:jobId
-// Retries a FAILED job by resetting its status to PROCESSING. The frontend can just call /run again if it wants, 
-// but this gives a clean dedicated endpoint that doesn't need all the req.body parameters.
-router.post('/retry/:jobId', async (req, res) => {
-    try {
-        const { jobId } = req.params;
-        const job = await prisma.designJob.findUnique({ where: { id: jobId, workspaceId: req.workspaceId } });
-
-        if (!job) return res.status(404).json({ error: 'Job not found' });
-        if (job.status !== 'FAILED') return res.status(400).json({ error: 'Only FAILED jobs can be retried' });
-
-        await prisma.designJob.update({ where: { id: jobId }, data: { status: 'PROCESSING' } });
-        // NOTE: The actual generation process must be re-triggered by the frontend calling POST /run with the same reference image,
-        // or we could extract runFactoryJob(jobId) and call it in background here.
-        // For SaaS MVP, resetting the state to PROCESSING allows the frontend "Retry" sequence to work idempotently if hitting /run.
-        res.json({ message: 'Job reset to PROCESSING mode. Re-run factory with the same reference image to resume.', jobId });
-    } catch (err) {
-        console.error('[Factory Retry]', err);
+        console.error('[Factory Get Variations]', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// POST /api/factory/generate-variations
-// Step 3 of Krafie Clone architecture: Received edited JSON grammar and array of icons
-// Builds prompts and starts generation.
-router.post('/generate-variations', usageMiddleware, async (req, res) => {
-    let { jobId } = req.body;
+// ────────────────────────────────────────────────────────────────
+// POST /api/factory/generate
+// Take prompt list, create Image records, queue Fal.ai generation
+// ────────────────────────────────────────────────────────────────
+router.post('/generate', usageMiddleware, async (req, res) => {
+    let jobId = null;
     try {
-        const { referenceImageId, grammar, iconsList, imageSize = 'square_hd' } = req.body;
+        const { prompts, model = 'fal-ai/flux/dev', imageSize = 'square_hd' } = req.body;
 
-        if (!referenceImageId) return res.status(400).json({ error: 'referenceImageId is required.' });
-        if (!grammar || !grammar.style) return res.status(400).json({ error: 'Invalid Design Grammar.' });
-        if (!iconsList || !Array.isArray(iconsList) || iconsList.length === 0) return res.status(400).json({ error: 'iconsList must be a non-empty array.' });
+        if (!prompts || !Array.isArray(prompts) || prompts.length === 0) {
+            return res.status(400).json({ error: 'prompts must be a non-empty array of strings.' });
+        }
 
         const workspaceId = req.workspaceId;
         if (!workspaceId) return res.status(401).json({ error: 'Authentication required.' });
 
-        const cap = parseInt(process.env.CONCURRENT_JOB_CAP || '2', 10);
+        // Check concurrent job cap
+        const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+        if (!workspace) return res.status(403).json({ error: 'Invalid workspace context.' });
+
+        const cap = workspace.concurrentJobCap || parseInt(process.env.CONCURRENT_JOB_CAP || '2', 10);
         const activeJobs = await prisma.designJob.count({
             where: { workspaceId, status: 'PROCESSING' }
         });
@@ -285,30 +156,36 @@ router.post('/generate-variations', usageMiddleware, async (req, res) => {
             return res.status(429).json({ error: `Concurrent Job Limit Reached: Maximum ${cap} active jobs allowed.` });
         }
 
-        // 1. Create or Resume Job
-        let job = await prisma.designJob.findFirst({
-            where: { originalImage: referenceImageId, status: { not: 'COMPLETED' }, workspaceId }
+        // 1. Create Job
+        const job = await prisma.designJob.create({
+            data: {
+                originalImage: 'prompt-based-generation',
+                status: 'PROCESSING',
+                workspaceId,
+                basePrompt: prompts[0] // Store first prompt as base
+            }
         });
-
-        if (!job) {
-            job = await prisma.designJob.create({
-                data: { originalImage: referenceImageId, status: 'PROCESSING', workspaceId }
-            });
-        } else {
-            await prisma.designJob.update({ where: { id: job.id }, data: { status: 'PROCESSING' } });
-        }
         jobId = job.id;
-        await logService.logEvent(jobId, 'FACTORY_GENERATION_START', 'SUCCESS', 'Starting variation generation (Style Cloning).');
+        await logService.logEvent(jobId, 'FACTORY_GENERATION_START', 'SUCCESS', `Starting generation of ${prompts.length} images.`);
 
-        // 2. Generate Variation Prompts
-        await variationService.generateVariations(jobId, grammar, iconsList);
-        await logService.logEvent(jobId, 'VARIATIONS_CREATED', 'SUCCESS', `Created ${iconsList.length} variation prompts.`);
+        // 2. Create Image records (PENDING)
+        for (const prompt of prompts) {
+            await prisma.image.create({
+                data: {
+                    jobId,
+                    variantType: 'prompt_based',
+                    promptUsed: prompt,
+                    engine: model,
+                    imageUrl: 'PENDING',
+                    status: 'GENERATED'
+                }
+            });
+        }
+        await logService.logEvent(jobId, 'VARIATIONS_CREATED', 'SUCCESS', `Created ${prompts.length} image records.`);
 
-        // 3. Start Generation (Background or awaited if quick)
-        // For production, we don't await thousands, but we have a limit anyway.
-        // We'll trust runGeneration to handle batching inside.
+        // 3. Start generation (uses existing generationService)
         try {
-            await generationService.runGeneration(jobId, 'fal', iconsList.length, imageSize);
+            await generationService.runGeneration(jobId, 'fal', prompts.length, imageSize);
             await logService.logEvent(jobId, 'GENERATION_DONE', 'SUCCESS', 'All images generated.');
         } catch (err) {
             await logService.logEvent(jobId, 'GENERATION_DONE', 'FAILED', err.message);
@@ -318,16 +195,43 @@ router.post('/generate-variations', usageMiddleware, async (req, res) => {
 
         // 4. Mark COMPLETED
         await prisma.designJob.update({ where: { id: jobId }, data: { status: 'COMPLETED' } });
+        await logService.logEvent(jobId, 'FACTORY_RUN_DONE', 'SUCCESS', 'Generation pipeline completed.');
 
-        res.json({ message: 'Generation complete.', jobId });
+        res.json({
+            jobId,
+            imageCount: prompts.length,
+            message: 'Generation started'
+        });
+
     } catch (err) {
-        console.error('[Factory Generate Variations]', err);
+        console.error('[Factory Generate]', err);
         if (jobId) await failJob(jobId, 'FACTORY_GENERATION_ERROR', err).catch(() => { });
         res.status(500).json({ error: err.message, jobId });
     }
 });
 
-// POST /api/factory/etsy-mode — Full Etsy Seller Mode: keyword → 20 designs → mockups → SEO → CSV
+// ────────────────────────────────────────────────────────────────
+// POST /api/factory/retry/:jobId
+// ────────────────────────────────────────────────────────────────
+router.post('/retry/:jobId', async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const job = await prisma.designJob.findUnique({ where: { id: jobId, workspaceId: req.workspaceId } });
+
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+        if (job.status !== 'FAILED') return res.status(400).json({ error: 'Only FAILED jobs can be retried' });
+
+        await prisma.designJob.update({ where: { id: jobId }, data: { status: 'PROCESSING' } });
+        res.json({ message: 'Job reset to PROCESSING mode.', jobId });
+    } catch (err) {
+        console.error('[Factory Retry]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ────────────────────────────────────────────────────────────────
+// POST /api/factory/etsy-mode — Full Etsy Seller Mode
+// ────────────────────────────────────────────────────────────────
 router.post('/etsy-mode', usageMiddleware, async (req, res) => {
     try {
         const { keyword, niche, style, designCount = 20 } = req.body;

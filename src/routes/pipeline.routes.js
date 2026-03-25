@@ -4,9 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const { processAsset } = require('../queues/asset.worker');
 const { assetQueue } = require('../queues/index');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 // POST /api/pipeline/run — single image pipeline trigger
 router.post('/run', async (req, res) => {

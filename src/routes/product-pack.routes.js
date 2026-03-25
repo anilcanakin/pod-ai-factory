@@ -3,9 +3,7 @@ const router = express.Router();
 const productPackService = require('../services/product-pack.service');
 const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 // GET /api/packs/products — list available product types
 router.get('/products', (req, res) => {

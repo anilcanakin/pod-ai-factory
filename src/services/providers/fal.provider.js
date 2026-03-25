@@ -21,30 +21,18 @@ function mapSize(uiSize) {
 
 class FalProvider {
     /**
-     * Generate an image via fal.ai Flux endpoint.
+     * Generate an image via fal.ai endpoints.
      * Auth: `Authorization: Key <FAL_API_KEY>` — per fal.ai official docs.
-     * Payload fields: prompt, image_size, num_images, seed (optional)
-     * @param {string} prompt
-     * @param {string} size  — UI size string, mapped to fal enum
-     * @param {number} numImages
-     * @param {number|null} seed
+     * @param {string} modelId
+     * @param {Object} payload  — the dynamically built payload
      * @param {string|null} workspaceId  — for workspace-scoped key lookup
      * @returns {{ image_url, seed, raw_response, cost }}
      */
-    async generateImage(prompt, size = 'square_hd', numImages = 1, seed, workspaceId = null) {
+    async generateImage(modelId, payload, workspaceId = null) {
         const falKey = await secretsService.getKey('fal', workspaceId, true);
 
-        const model = process.env.FAL_MODEL || 'fal-ai/flux/dev';
+        const model = modelId || 'fal-ai/flux/dev';
         const url = `https://fal.run/${model}`;
-        const imageSize = mapSize(size);
-
-        // Payload: only send fields that fal.ai's flux/dev model accepts
-        const payload = {
-            prompt: prompt.substring(0, 1000),
-            image_size: imageSize,
-            num_images: numImages,
-        };
-        if (seed != null) payload.seed = seed;
 
         // Auth header: official fal.ai format is "Key <token>"
         const headers = {
@@ -52,7 +40,7 @@ class FalProvider {
             'Content-Type': 'application/json',
         };
 
-        console.log(`[Fal] POST ${url} | image_size=${imageSize} | prompt=${prompt.substring(0, 80)}…`);
+        console.log(`[Fal] POST ${url} | Payload keys: ${Object.keys(payload)}...`);
 
         const maxRetries = 3;
         let lastErr;

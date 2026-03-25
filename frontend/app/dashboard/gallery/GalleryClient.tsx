@@ -2,16 +2,29 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGallery, apiPipeline, apiExport, type GalleryImage } from '@/lib/api';
+import { apiGallery, apiPipeline, apiExport, apiJobs, type GalleryImage } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn, truncateId } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ConfirmModal } from '@/components/shared/ConfirmModal';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
-    Search, CheckCircle, XCircle, RefreshCw, Loader2,
-    Download, Play, Maximize2, Copy, Image as ImageIcon, Info
+    CheckCircle, XCircle, RefreshCw, Loader2,
+    Download, Play, Maximize2, Copy, Image as ImageIcon, Info,
+    History
 } from 'lucide-react';
+
+function timeAgo(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${days}d ago`;
+}
 
 export function GalleryClient() {
     return (
@@ -27,24 +40,34 @@ export function GalleryClient() {
 
 function GalleryInner() {
     const queryClient = useQueryClient();
+    const router = useRouter();
+    const pathname = usePathname();
     const searchParams = useSearchParams();
-    const urlJobId = searchParams.get('jobId') || '';
-    const [jobId, setJobId] = useState(urlJobId);
-    const [activeJobId, setActiveJobId] = useState(urlJobId);
+
+    const activeJobId = searchParams.get('jobId') || '';
+
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
     const [viewImg, setViewImg] = useState<GalleryImage | null>(null);
     const [bulkConfirm, setBulkConfirm] = useState<null | 'reject' | 'pipeline'>(null);
     const [filter, setFilter] = useState<'all' | 'PENDING' | 'COMPLETED' | 'APPROVED' | 'REJECTED'>('all');
 
-    // Auto-load when navigating from Overview recent jobs
-    useEffect(() => {
-        if (urlJobId && urlJobId !== activeJobId) {
-            setJobId(urlJobId);
-            setActiveJobId(urlJobId);
-        }
-    }, [urlJobId, activeJobId]);
+    const setActiveJobId = (id: string) => {
+        const params = new URLSearchParams(searchParams.toString());
+        if (id) params.set('jobId', id);
+        else params.delete('jobId');
+        router.push(`${pathname}?${params.toString()}`);
+        setSelected(new Set()); // Clear selection when changing jobs
+    };
 
+    // Fetch Job History
+    const { data: jobs = [], isLoading: isJobsLoading } = useQuery({
+        queryKey: ['jobs-list'],
+        queryFn: apiJobs.list,
+        refetchInterval: 10000,
+    });
+
+    // Fetch images for active job
     const { data: images = [], isLoading } = useQuery({
         queryKey: ['gallery', activeJobId],
         queryFn: () => apiGallery.getImages(activeJobId),
@@ -166,147 +189,228 @@ function GalleryInner() {
     };
 
     const approvedCount = images.filter(i => i.isApproved || i.status === 'APPROVED').length;
-
     const FILTERS = ['all', 'PENDING', 'COMPLETED', 'APPROVED', 'REJECTED'] as const;
 
     return (
-        <div className="space-y-5 animate-fade-in">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-text-primary">Gallery</h1>
-                    <p className="text-sm text-text-secondary mt-0.5">Review + approve generated designs</p>
-                </div>
-                {activeJobId && (
-                    <div className="flex items-center gap-1.5 text-xs text-text-tertiary bg-bg-elevated px-3 py-1.5 rounded-[8px] border border-border-default">
-                        <Info className="w-3 h-3" />
-                        <kbd className="px-1 bg-bg-overlay rounded text-[10px]">A</kbd> approve ·
-                        <kbd className="px-1 bg-bg-overlay rounded text-[10px]">R</kbd> reject ·
-                        <kbd className="px-1 bg-bg-overlay rounded text-[10px]">←→</kbd> navigate ·
-                        <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Shift</kbd> range ·
-                        <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Esc</kbd> clear
+        <div className="flex gap-6 h-[calc(100vh-8rem)] animate-fade-in">
+
+            {/* Left Column: Job History */}
+            <div className="w-80 flex flex-col bg-bg-surface border border-border-default rounded-[12px] overflow-hidden shadow-sm shrink-0">
+                <div className="p-4 border-b border-border-default flex items-center justify-between bg-bg-base">
+                    <div className="flex items-center gap-2">
+                        <History className="w-4 h-4 text-text-secondary" />
+                        <h2 className="text-sm font-semibold text-text-primary">History</h2>
                     </div>
-                )}
-            </div>
-
-            {/* Job ID bar */}
-            <div className="flex items-center gap-3">
-                <div className="relative w-60">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
-                    <input
-                        value={jobId}
-                        onChange={e => setJobId(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && jobId.trim() && setActiveJobId(jobId.trim())}
-                        placeholder="Enter Job ID..."
-                        className="w-full bg-bg-elevated border border-border-default rounded-[8px] pl-9 pr-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors"
-                    />
+                    <div className="px-2 py-0.5 bg-accent/10 text-accent text-[10px] font-medium rounded-full">
+                        {jobs.length} Jobs
+                    </div>
                 </div>
-                <button
-                    onClick={() => jobId.trim() && setActiveJobId(jobId.trim())}
-                    className="px-4 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-[8px] transition-colors"
-                >
-                    Load
-                </button>
 
-                {/* Filter pills */}
-                {activeJobId && images.length > 0 && (
-                    <div className="flex gap-1.5 ml-4">
-                        {FILTERS.map(f => (
+                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                    {isJobsLoading ? (
+                        <div className="space-y-2 p-2">
+                            {[...Array(5)].map((_, i) => (
+                                <div key={i} className="w-full flex items-center gap-3 p-2.5 rounded-[8px] border border-border-subtle">
+                                    <div className="w-10 h-10 rounded-full skeleton-shimmer bg-bg-elevated shrink-0" />
+                                    <div className="flex-1 space-y-2">
+                                        <div className="h-3 w-1/2 rounded bg-bg-elevated skeleton-shimmer" />
+                                        <div className="h-2 w-1/3 rounded bg-bg-elevated skeleton-shimmer" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : jobs.length === 0 ? (
+                        <div className="text-center py-10 px-4 text-sm text-text-tertiary">
+                            No jobs yet
+                        </div>
+                    ) : (
+                        jobs.map(job => (
                             <button
-                                key={f}
-                                onClick={() => setFilter(f)}
+                                key={job.id}
+                                onClick={() => setActiveJobId(job.id)}
                                 className={cn(
-                                    'px-3 py-1.5 text-xs rounded-full font-medium transition-all border',
-                                    filter === f
-                                        ? 'bg-accent-subtle text-accent border-accent-border'
-                                        : 'bg-bg-elevated text-text-secondary border-border-default hover:text-text-primary hover:border-border-strong'
+                                    "w-full flex items-center gap-3 p-2.5 rounded-[8px] transition-all text-left border relative group",
+                                    activeJobId === job.id
+                                        ? "bg-accent-subtle border-accent"
+                                        : "hover:bg-bg-elevated border-transparent"
                                 )}
                             >
-                                {f === 'all' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
+                                {job.previewUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={job.previewUrl} alt="Preview" className="w-10 h-10 rounded-[6px] object-cover bg-bg-elevated shadow-sm shrink-0 border border-border-subtle" />
+                                ) : (
+                                    <div className="w-10 h-10 rounded-[6px] bg-bg-elevated flex items-center justify-center border border-border-subtle shrink-0">
+                                        <ImageIcon className="w-4 h-4 text-text-tertiary opacity-40" />
+                                    </div>
+                                )}
+                                
+                                <div className="flex-1 min-w-0 pr-1">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className={cn(
+                                            "text-[10px] font-mono font-medium truncate",
+                                            activeJobId === job.id ? "text-accent" : "text-text-primary"
+                                        )}>
+                                            {truncateId(job.id)}
+                                        </span>
+                                        <div className="flex items-center transform scale-75 origin-right">
+                                            <StatusBadge status={job.status} />
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex justify-between items-center text-[10px] text-text-tertiary">
+                                        <span>{timeAgo(job.createdAt)}</span>
+                                        <span className="flex items-center gap-1 font-medium bg-bg-elevated px-1.5 py-0.5 rounded border border-border-subtle">
+                                            {job.imageCount} images
+                                        </span>
+                                    </div>
+                                </div>
                             </button>
-                        ))}
-                    </div>
-                )}
+                        ))
+                    )}
+                </div>
             </div>
 
-            {/* Toolbar - bulk actions */}
-            {activeJobId && images.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                    {selected.size > 0 && <span className="text-xs text-accent font-medium">{selected.size} selected</span>}
-                    <button onClick={selectAll} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors">Select All</button>
-                    {selected.size > 0 && (
-                        <>
-                            <button onClick={clearSelect} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors">Clear</button>
-                            <button onClick={bulkApprove} className="flex items-center gap-1.5 px-3 py-1.5 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-xs font-medium rounded-[6px] border border-[rgba(34,197,94,0.20)] transition-colors">
-                                <CheckCircle className="w-3.5 h-3.5" /> Approve {selected.size}
-                            </button>
-                            <button onClick={() => setBulkConfirm('reject')} className="flex items-center gap-1.5 px-3 py-1.5 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-xs font-medium rounded-[6px] border border-[rgba(239,68,68,0.20)] transition-colors">
-                                <XCircle className="w-3.5 h-3.5" /> Reject {selected.size}
-                            </button>
-                        </>
-                    )}
-                    <div className="ml-auto flex items-center gap-2">
-                        <button onClick={() => setBulkConfirm('pipeline')} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-subtle hover:bg-[rgba(124,58,237,0.18)] text-accent text-xs font-medium rounded-[6px] border border-accent-border transition-colors">
-                            <Play className="w-3.5 h-3.5" /> Run Pipeline ({approvedCount})
-                        </button>
-                        <a href={apiExport.bundleUrl(activeJobId)} className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated hover:bg-bg-overlay text-text-primary text-xs font-medium rounded-[6px] border border-border-default transition-colors" target="_blank" rel="noopener noreferrer">
-                            <Download className="w-3.5 h-3.5" /> Bundle
-                        </a>
-                    </div>
-                </div>
-            )}
+            {/* Right Column: Gallery Content */}
+            <div className="flex-1 flex flex-col min-w-0 bg-bg-surface border border-border-default rounded-[12px] p-6 overflow-hidden shadow-sm relative">
 
-            {/* Gallery Grid */}
-            {!activeJobId ? (
-                <div className="flex flex-col items-center justify-center py-24 text-text-tertiary">
-                    <ImageIcon className="w-12 h-12 mb-3 opacity-30" />
-                    <p className="text-sm">Enter a Job ID to load images</p>
-                    <p className="text-xs text-text-tertiary mt-1">You can find Job IDs from the Factory page after a run</p>
-                </div>
-            ) : isLoading ? (
-                <div className="masonry-grid">
-                    {[...Array(8)].map((_, i) => (
-                        <div key={i} className="masonry-item">
-                            <div className={cn('rounded-[10px] skeleton-shimmer', i % 3 === 0 ? 'h-48' : i % 3 === 1 ? 'h-36' : 'h-56')} />
+                {activeJobId && (
+                    <div className="flex flex-col gap-4 mb-6 sticky top-0 bg-bg-surface z-20 pb-2 border-b border-border-subtle">
+                        {/* Header area inside content */}
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
+                                    <span className="font-mono text-accent bg-accent/10 px-2 py-0.5 rounded text-base">{truncateId(activeJobId)}</span>
+                                    Gallery
+                                </h1>
+                                <p className="text-xs text-text-secondary mt-1">Review + approve generated designs</p>
+                            </div>
+                            
+                            <div className="flex items-center gap-1.5 text-xs text-text-tertiary bg-bg-elevated px-3 py-1.5 rounded-[8px] border border-border-default">
+                                <Info className="w-3 h-3" />
+                                <kbd className="px-1 bg-bg-overlay rounded text-[10px]">A</kbd> approve ·
+                                <kbd className="px-1 bg-bg-overlay rounded text-[10px]">R</kbd> reject ·
+                                <kbd className="px-1 bg-bg-overlay rounded text-[10px]">←→</kbd> navigate ·
+                                <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Shift</kbd> range ·
+                                <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Esc</kbd> clear
+                            </div>
                         </div>
-                    ))}
+
+                        {/* Toolbar */}
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                            {/* Filters */}
+                            {images.length > 0 && (
+                                <div className="flex gap-1.5">
+                                    {FILTERS.map(f => (
+                                        <button
+                                            key={f}
+                                            onClick={() => setFilter(f)}
+                                            className={cn(
+                                                'px-3 py-1.5 text-xs rounded-full font-medium transition-all border',
+                                                filter === f
+                                                    ? 'bg-accent-subtle text-accent border-accent-border shadow-sm'
+                                                    : 'bg-bg-elevated text-text-secondary border-border-default hover:text-text-primary hover:border-border-strong'
+                                            )}
+                                        >
+                                            {f === 'all' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Batch Actions */}
+                            {images.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                    {selected.size > 0 && <span className="text-xs text-accent font-medium">{selected.size} selected</span>}
+                                    <button onClick={selectAll} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors bg-bg-base">Select All</button>
+                                    
+                                    {selected.size > 0 && (
+                                        <>
+                                            <button onClick={clearSelect} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors bg-bg-base">Clear</button>
+                                            <button onClick={bulkApprove} className="flex items-center gap-1.5 px-3 py-1.5 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-xs font-medium rounded-[6px] border border-[rgba(34,197,94,0.20)] transition-colors">
+                                                <CheckCircle className="w-3.5 h-3.5" /> Approve
+                                            </button>
+                                            <button onClick={() => setBulkConfirm('reject')} className="flex items-center gap-1.5 px-3 py-1.5 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-xs font-medium rounded-[6px] border border-[rgba(239,68,68,0.20)] transition-colors">
+                                                <XCircle className="w-3.5 h-3.5" /> Reject
+                                            </button>
+                                        </>
+                                    )}
+
+                                    <div className="w-px h-5 bg-border-default mx-1"></div>
+
+                                    <button onClick={() => setBulkConfirm('pipeline')} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-subtle hover:bg-[rgba(124,58,237,0.18)] text-accent text-xs font-medium rounded-[6px] border border-accent-border transition-colors">
+                                        <Play className="w-3.5 h-3.5" /> Run Pipeline ({approvedCount})
+                                    </button>
+                                    <a href={apiExport.bundleUrl(activeJobId)} className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated hover:bg-bg-overlay text-text-primary text-xs font-medium rounded-[6px] border border-border-default transition-colors shadow-sm" target="_blank" rel="noopener noreferrer">
+                                        <Download className="w-3.5 h-3.5" /> Bundle
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Content Area */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                    {!activeJobId ? (
+                        <div className="flex flex-col items-center justify-center h-full text-text-tertiary">
+                            <p className="text-sm font-medium text-text-secondary cursor-default select-none pointer-events-none">← Select a job from history to view images</p>
+                        </div>
+                    ) : isLoading ? (
+                        <div className="masonry-grid">
+                            {[...Array(6)].map((_, i) => (
+                                <div key={i} className="masonry-item">
+                                    <div className={cn('rounded-[10px] skeleton-shimmer', i % 3 === 0 ? 'h-56' : i % 3 === 1 ? 'h-40' : 'h-64')} />
+                                </div>
+                            ))}
+                        </div>
+                    ) : filtered.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-20 text-text-tertiary">
+                            <ImageIcon className="w-10 h-10 mb-2 opacity-30" />
+                            <p className="text-sm">No images match this filter</p>
+                        </div>
+                    ) : (
+                        <div className="masonry-grid pb-20">
+                            {filtered.map((img, idx) => (
+                                <GalleryCard
+                                    key={img.id}
+                                    img={img}
+                                    selected={selected.has(img.id)}
+                                    onToggleSelect={(e) => handleSelect(idx, e)}
+                                    onApprove={() => approveMutation.mutate(img.id)}
+                                    onReject={() => rejectMutation.mutate(img.id)}
+                                    onView={() => setViewImg(img)}
+                                    onCopyPrompt={() => { navigator.clipboard.writeText(img.rawResponse || img.id); toast.success('Prompt copied'); }}
+                                    onRegenerate={() => pipelineMutation.mutate(img.id)}
+                                />
+                            ))}
+                        </div>
+                    )}
                 </div>
-            ) : filtered.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-text-tertiary">
-                    <ImageIcon className="w-10 h-10 mb-2 opacity-30" />
-                    <p className="text-sm">No images match this filter</p>
-                </div>
-            ) : (
-                <div className="masonry-grid">
-                    {filtered.map((img, idx) => (
-                        <GalleryCard
-                            key={img.id}
-                            img={img}
-                            selected={selected.has(img.id)}
-                            onToggleSelect={(e) => handleSelect(idx, e)}
-                            onApprove={() => approveMutation.mutate(img.id)}
-                            onReject={() => rejectMutation.mutate(img.id)}
-                            onView={() => setViewImg(img)}
-                            onCopyPrompt={() => { navigator.clipboard.writeText(img.rawResponse || img.id); toast.success('Prompt copied'); }}
-                            onRegenerate={() => pipelineMutation.mutate(img.id)}
-                        />
-                    ))}
-                </div>
-            )}
+
+                {/* Fade overlay at bottom of grid */}
+                {activeJobId && images.length > 0 && (
+                     <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-bg-surface to-transparent pointer-events-none" />
+                )}
+            </div>
 
             {/* Fullscreen viewer */}
             {viewImg && (
                 <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4" onClick={() => setViewImg(null)}>
-                    <div className="relative max-w-3xl max-h-full flex flex-col items-center gap-4" onClick={e => e.stopPropagation()}>
+                    <div className="relative max-w-5xl w-full h-full flex flex-col items-center justify-center gap-6" onClick={e => e.stopPropagation()}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={viewImg.imageUrl} alt="Full view" className="max-w-full max-h-[85vh] rounded-xl object-contain" />
-                        <div className="flex items-center gap-2">
-                            <StatusBadge status={viewImg.status} />
-                            <button onClick={() => { approveMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-xs font-medium rounded-[8px] border border-[rgba(34,197,94,0.20)] transition-colors">
-                                <CheckCircle className="w-3.5 h-3.5" /> Approve
+                        <img src={viewImg.imageUrl} alt="Full view" className="max-w-full max-h-[85vh] rounded-[16px] object-contain shadow-2xl" />
+                        <div className="flex items-center gap-3 bg-bg-surface p-3 rounded-2xl border border-border-default shadow-lg">
+                            <StatusBadge status={viewImg.status} className="px-3" />
+                            <div className="w-px h-6 bg-border-default"></div>
+                            <button onClick={() => { approveMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-2 px-4 py-2 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-sm font-medium rounded-[10px] border border-[rgba(34,197,94,0.20)] transition-colors">
+                                <CheckCircle className="w-4 h-4" /> Approve Focus (A)
                             </button>
-                            <button onClick={() => { rejectMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-xs font-medium rounded-[8px] border border-[rgba(239,68,68,0.20)] transition-colors">
-                                <XCircle className="w-3.5 h-3.5" /> Reject
+                            <button onClick={() => { rejectMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-2 px-4 py-2 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-sm font-medium rounded-[10px] border border-[rgba(239,68,68,0.20)] transition-colors">
+                                <XCircle className="w-4 h-4" /> Reject (R)
+                            </button>
+                            <div className="w-px h-6 bg-border-default ml-2"></div>
+                            <button onClick={() => setViewImg(null)} className="text-text-tertiary hover:text-text-primary px-3 text-sm transition-colors">
+                                Close (Esc)
                             </button>
                         </div>
                     </div>
@@ -331,27 +435,27 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onVie
 
     return (
         <div className={cn(
-            'masonry-item relative group rounded-[10px] overflow-hidden border transition-all duration-200 cursor-pointer',
+            'masonry-item relative group rounded-[10px] overflow-hidden border transition-all duration-200 cursor-pointer shadow-sm',
             selected ? 'border-accent ring-2 ring-accent/30' : 'border-border-subtle hover:border-border-strong',
-            isRejected && 'opacity-40'
+            isRejected && 'opacity-40 grayscale-[0.8]'
         )}>
             {/* Checkbox */}
             <div className="absolute top-2 left-2 z-10" onClick={e => { e.stopPropagation(); onToggleSelect(e); }}>
                 <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
-                    selected ? 'bg-accent border-accent' : 'bg-black/40 border-border-strong opacity-0 group-hover:opacity-100'
+                    'w-6 h-6 rounded-[6px] border-2 flex items-center justify-center transition-all shadow-sm',
+                    selected ? 'bg-accent border-accent scale-100' : 'bg-black/40 border-border-strong opacity-0 group-hover:opacity-100 backdrop-blur-md'
                 )}>
-                    {selected && <CheckCircle className="w-3 h-3 text-white" />}
+                    {selected && <CheckCircle className="w-4 h-4 text-white" />}
                 </div>
             </div>
 
             {/* Status Badge */}
-            <div className="absolute top-2 right-2 z-10"><StatusBadge status={img.status} /></div>
+            <div className="absolute top-2 right-2 z-10 shadow-sm"><StatusBadge status={img.status} /></div>
 
             {/* Image or Pending Skeleton */}
             {isPending ? (
-                <div className="h-40 skeleton-shimmer flex items-center justify-center min-h-[160px]">
-                    <Loader2 className="w-6 h-6 text-text-tertiary animate-spin" />
+                <div className="h-48 skeleton-shimmer flex items-center justify-center min-h-[160px] bg-bg-elevated">
+                    <Loader2 className="w-6 h-6 text-text-tertiary animate-spin opacity-50" />
                 </div>
             ) : (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -359,25 +463,28 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onVie
             )}
 
             {/* Hover Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
-                <div className="flex items-center gap-1.5">
-                    <button onClick={e => { e.stopPropagation(); onApprove(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-success-subtle text-success text-xs font-medium rounded-[6px] border border-[rgba(34,197,94,0.20)] transition-colors backdrop-blur-sm hover:bg-[rgba(34,197,94,0.18)]">
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3 pt-12">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    <button onClick={e => { e.stopPropagation(); onApprove(); }} className="flex-1 flex justify-center items-center gap-1.5 px-2 py-2 bg-success-subtle text-success text-xs font-medium rounded-[8px] border border-[rgba(34,197,94,0.20)] transition-colors backdrop-blur-md hover:bg-[rgba(34,197,94,0.18)]">
                         <CheckCircle className="w-3.5 h-3.5" /> Approve
                     </button>
-                    <button onClick={e => { e.stopPropagation(); onReject(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-danger-subtle text-danger text-xs font-medium rounded-[6px] border border-[rgba(239,68,68,0.20)] transition-colors backdrop-blur-sm hover:bg-[rgba(239,68,68,0.18)]">
-                        <XCircle className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); onView(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay/90 text-text-primary text-xs font-medium rounded-[6px] transition-colors backdrop-blur-sm hover:bg-bg-elevated">
-                        <Maximize2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); onCopyPrompt(); }} className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay/90 text-text-primary text-xs font-medium rounded-[6px] transition-colors backdrop-blur-sm hover:bg-bg-elevated">
-                        <Copy className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); onRegenerate(); }} className="ml-auto flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay/90 text-text-primary text-xs font-medium rounded-[6px] transition-colors backdrop-blur-sm hover:bg-bg-elevated">
-                        <RefreshCw className="w-3.5 h-3.5" />
+                    <button onClick={e => { e.stopPropagation(); onReject(); }} className="flex-1 flex justify-center items-center gap-1.5 px-2 py-2 bg-danger-subtle text-danger text-xs font-medium rounded-[8px] border border-[rgba(239,68,68,0.20)] transition-colors backdrop-blur-md hover:bg-[rgba(239,68,68,0.18)]">
+                        <XCircle className="w-3.5 h-3.5" /> Reject
                     </button>
                 </div>
-                <p className="text-[10px] text-text-tertiary mt-1.5 font-mono">{truncateId(img.id)}</p>
+                
+                <div className="flex items-center justify-center gap-1.5 mt-2">
+                    <button onClick={e => { e.stopPropagation(); onView(); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10">
+                        <Maximize2 className="w-3 h-3" /> View
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onCopyPrompt(); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10">
+                        <Copy className="w-3 h-3" /> Prompt
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onRegenerate(); }} title="Regenerate Pipeline" className="flex items-center gap-1.5 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10">
+                        <RefreshCw className="w-3 h-3" />
+                    </button>
+                </div>
+                <p className="text-[9px] text-white/50 mt-2 font-mono text-center tracking-widest uppercase">{truncateId(img.id)}</p>
             </div>
         </div>
     );

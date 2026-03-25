@@ -8,7 +8,7 @@ const workspaceMiddleware = require('./config/workspace.middleware');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+const prisma = new PrismaClient();
 
 // Middleware
 app.use(cors({ origin: 'http://localhost:3001', credentials: true }));
@@ -201,7 +201,10 @@ app.get('/api/dashboard', async (req, res) => {
         take: 20,
         include: {
           _count: { select: { images: true } },
-          images: { select: { cost: true } }
+          images: {
+            select: { cost: true, imageUrl: true },
+            orderBy: { createdAt: 'desc' }
+          }
         }
       }),
 
@@ -233,13 +236,19 @@ app.get('/api/dashboard', async (req, res) => {
       successRate,
       recentJobs: recentJobs.map(j => {
         const spend = j.images.reduce((sum, img) => sum + parseFloat(img.cost || 0), 0);
+        const previewUrl = j.images.find(img => 
+            img.imageUrl && 
+            img.imageUrl !== 'PENDING' && 
+            img.imageUrl.startsWith('http')
+        )?.imageUrl || null;
         return {
           id: j.id,
           originalImage: j.originalImage,
           status: j.status,
           imageCount: j._count.images,
           spend,
-          createdAt: j.createdAt
+          createdAt: j.createdAt,
+          previewUrl
         };
       }),
       topApproved,
@@ -262,7 +271,8 @@ app.use('/api/tools', require('./routes/tool.routes'));
 app.use('/api/seo', require('./routes/seo.routes'));
 app.use('/api/export', require('./routes/export.routes'));
 app.use('/api/pipeline', require('./routes/pipeline.routes'));
-app.use('/api/jobs', require('./routes/job.routes'));
+const jobsRoutes = require('./routes/jobs.routes');
+app.use('/api/jobs', jobsRoutes);
 app.use('/api/factory', require('./routes/factory.routes'));
 app.use('/api/ideas', require('./routes/idea.routes'));
 app.use('/api/analytics', require('./routes/analytics.routes'));

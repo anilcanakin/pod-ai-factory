@@ -5,9 +5,7 @@ const generationService = require('./generation.service');
 const logService = require('./log.service');
 const { assetQueue } = require('../queues/index');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 /**
  * Etsy Seller Mode Orchestrator

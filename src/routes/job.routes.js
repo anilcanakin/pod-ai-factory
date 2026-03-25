@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const logService = require('../services/log.service');
 
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+// GET /api/jobs moved to jobs.routes.js.
+
 // GET /api/jobs/:jobId/logs
 router.get('/:jobId/logs', async (req, res) => {
     try {

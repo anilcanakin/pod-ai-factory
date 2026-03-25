@@ -5,9 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 const outputDir = path.join(__dirname, '../../assets/outputs');
 if (!fs.existsSync(outputDir)) {

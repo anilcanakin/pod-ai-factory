@@ -3,9 +3,7 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 const outputDir = path.join(__dirname, '../../assets/outputs');
 const templateDir = path.join(__dirname, '../../assets/pack-templates');

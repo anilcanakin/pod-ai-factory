@@ -5,9 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 // Mock external tool calls for the MVP
 async function simulateBGRemove(imageUrl) {

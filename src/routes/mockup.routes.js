@@ -4,9 +4,7 @@ const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const { renderMockup } = require('../services/mockup-render.service');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 // POST /api/mockups/render — render a single mockup
 router.post('/render', async (req, res) => {

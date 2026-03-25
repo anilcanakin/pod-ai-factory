@@ -6,9 +6,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.DATABASE_URL } }
-});
+const prisma = new PrismaClient();
 
 // Allowed categories — Standard v1
 const VALID_CATEGORIES = ['tshirt', 'sweatshirt', 'hoodie', 'mug', 'sticker', 'phone_case'];

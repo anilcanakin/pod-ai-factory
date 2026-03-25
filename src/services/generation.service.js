@@ -1,12 +1,73 @@
 const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient({
-    datasources: {
-        db: { url: process.env.DATABASE_URL }
+const prisma = new PrismaClient();
+
+const SUPPORTED_MODELS = {
+    'fal-ai/flux/dev': {
+        name: 'Flux 2 Dev',
+        description: 'Versatile detail, best overall',
+        speed: 'medium',
+        strength: 'general'
+    },
+    'fal-ai/flux/schnell': {
+        name: 'Flux Schnell', 
+        description: 'Same quality, 4x faster',
+        speed: 'fast',
+        strength: 'speed'
+    },
+    'fal-ai/ideogram/v3': {
+        name: 'Ideogram 3.0',
+        description: 'Best text & typography in images',
+        speed: 'medium', 
+        strength: 'typography'
+    },
+    'fal-ai/recraft-v3': {
+        name: 'Recraft V4',
+        description: 'Vector-clean, perfect for screen print',
+        speed: 'medium',
+        strength: 'vector'
     }
-});
+};
+
+function imageSizeToAspectRatio(imageSize) {
+    const map = {
+        'square_hd': '1:1',
+        'portrait_4_3': '3:4', 
+        'landscape_4_3': '4:3'
+    };
+    return map[imageSize] || '1:1';
+}
+
+function buildModelInput(modelId, prompt, imageSize) {
+    const base = { prompt };
+    
+    if (modelId.includes('ideogram')) {
+        return {
+            ...base,
+            aspect_ratio: imageSizeToAspectRatio(imageSize),
+            style_type: 'DESIGN'
+        };
+    }
+    
+    if (modelId.includes('recraft')) {
+        return {
+            ...base,
+            image_size: imageSize,
+            style: 'vector_illustration'
+        };
+    }
+    
+    // Flux default
+    return {
+        ...base,
+        image_size: imageSize,
+        num_inference_steps: 28
+    };
+}
 
 class GenerationService {
+    SUPPORTED_MODELS = SUPPORTED_MODELS;
+
     async checkDailyCap(workspaceId, requestedCount) {
         if (!workspaceId) return; // Legacy jobs or dev mode (null workspace) have no cap
 
@@ -52,11 +113,12 @@ class GenerationService {
 
         const processImageWithRetries = async (img, attempts = 0) => {
             try {
+                const modelId = SUPPORTED_MODELS[img.engine] ? img.engine : 'fal-ai/flux/dev';
+                const payload = buildModelInput(modelId, img.promptUsed.substring(0, 1000), imageSize);
+                
                 const falResponse = await falProvider.generateImage(
-                    img.promptUsed.substring(0, 1000),
-                    imageSize,
-                    1,
-                    null, // default seed
+                    modelId,
+                    payload,
                     job.workspaceId
                 );
 
@@ -66,7 +128,7 @@ class GenerationService {
                         imageUrl: falResponse.image_url,
                         seed: falResponse.seed,
                         rawResponse: falResponse.raw_response,
-                        engine: 'fal.ai/flux/dev',
+                        engine: modelId,
                         status: 'COMPLETED',
                         cost: costPerImage
                     }

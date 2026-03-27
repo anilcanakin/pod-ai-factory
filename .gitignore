@@ -33,3 +33,6 @@ headers.txt
 
 # Package lock (frontend)
 frontend/package-lock.json
+
+# Local CLAUDE data
+.claude/

@@ -14,6 +14,7 @@ export function IdeasClient() {
     const [uploading, setUploading] = useState(false);
     const [csvFile, setCsvFile] = useState<File | null>(null);
     const [sortField, setSortField] = useState<keyof Idea>('status');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
     const { data: ideas = [], isLoading } = useQuery({
         queryKey: ['ideas'],
@@ -52,11 +53,20 @@ export function IdeasClient() {
         }
     };
 
+    const toggleSort = (field: keyof Idea) => {
+        if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        else { setSortField(field); setSortDir('asc'); }
+    };
+
     const sorted = [...ideas].sort((a, b) => {
         const av = a[sortField] ?? '';
         const bv = b[sortField] ?? '';
-        return String(av).localeCompare(String(bv));
+        const cmp = String(av).localeCompare(String(bv));
+        return sortDir === 'asc' ? cmp : -cmp;
     });
+
+    const pendingCount = ideas.filter(i => i.status === 'PENDING').length;
+    const approvedCount = ideas.filter(i => i.status === 'APPROVED').length;
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -88,16 +98,33 @@ export function IdeasClient() {
 
             {/* Ideas Table */}
             <div className="bg-[#1e293b] border border-slate-700 rounded-xl overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700 flex-wrap gap-3">
                     <h2 className="text-sm font-semibold text-slate-200">
-                        Generated Ideas {ideas.length > 0 && <span className="text-slate-500 font-normal ml-1">({ideas.length})</span>}
+                        Generated Ideas {ideas.length > 0 && (
+                            <span className="text-slate-500 font-normal ml-1">
+                                ({ideas.length} total · {pendingCount} pending · {approvedCount} approved)
+                            </span>
+                        )}
                     </h2>
-                    <button
-                        onClick={() => queryClient.invalidateQueries({ queryKey: ['ideas'] })}
-                        className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 px-2 py-1.5 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors"
-                    >
-                        <RefreshCw className="w-3.5 h-3.5" /> Refresh
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {approvedCount > 0 && (
+                            <button
+                                onClick={() => {
+                                    const approved = ideas.filter(i => i.status === 'APPROVED');
+                                    approved.forEach(i => factoryMutation.mutate(i.id));
+                                }}
+                                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded-lg transition-colors"
+                            >
+                                <Factory className="w-3.5 h-3.5" /> Send All Approved ({approvedCount})
+                            </button>
+                        )}
+                        <button
+                            onClick={() => queryClient.invalidateQueries({ queryKey: ['ideas'] })}
+                            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 px-2 py-1.5 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors"
+                        >
+                            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                        </button>
+                    </div>
                 </div>
 
                 {isLoading ? (
@@ -124,11 +151,11 @@ export function IdeasClient() {
                                     {(['niche', 'mainKeyword', 'hook', 'styleEnum', 'status'] as const).map(field => (
                                         <th
                                             key={field}
-                                            onClick={() => setSortField(field)}
+                                            onClick={() => toggleSort(field)}
                                             className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide cursor-pointer hover:text-slate-200 transition-colors select-none"
                                         >
                                             {field === 'mainKeyword' ? 'Keyword' : field === 'styleEnum' ? 'Style' : field.charAt(0).toUpperCase() + field.slice(1)}
-                                            {sortField === field && <span className="ml-1 text-blue-400">↕</span>}
+                                            {sortField === field && <span className="ml-1 text-blue-400">{sortDir === 'asc' ? '↑' : '↓'}</span>}
                                         </th>
                                     ))}
                                     <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Actions</th>

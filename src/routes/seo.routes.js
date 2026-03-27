@@ -1,141 +1,137 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
+const { expandKeywords, getGoogleTrends } = require('../services/keyword-research.service');
+const { getKnowledge } = require('../services/seo-knowledge.service');
 
-const prisma = new PrismaClient();
+function extractSeedKeywords(description, focusKeyword) {
+    const seeds = [];
+    if (focusKeyword) seeds.push(focusKeyword);
 
-// Helper function to truncate title
-function cleanTitle(title) {
-    if (title.length > 140) return title.substring(0, 137).trim() + "...";
-    return title;
-}
+    if (description) {
+        const styleTerms = description.match(
+            /\b(vintage|retro|minimalist|grunge|floral|botanical|patriotic|american|eagle|wolf|skull|bear|lion|tiger|mountain|nature|funny|cute|cool|aesthetic|street|urban)\b/gi
+        ) || [];
 
-// Generate EXACTLY 13 tags, no duplicates, max 20 chars
-function generateTags(json) {
-    let pool = new Set();
+        seeds.push(...styleTerms.map(s => `${s.toLowerCase()} shirt`));
+        seeds.push(...styleTerms.map(s => `${s.toLowerCase()} t-shirt`));
 
-    // Attempt to pull from JSON
-    const tryAdd = (str) => {
-        if (!str) return;
-        const s = String(str).toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().substring(0, 20);
-        if (s && s !== 'other_pod_style' && s !== 'unknown_color' && s !== 'unknown_icon') {
-            pool.add(s);
+        if (seeds.length < 3) {
+            seeds.push('graphic tee gift', 'custom shirt design', 'unique t-shirt');
         }
-    };
-
-    tryAdd(json.style);
-    tryAdd(json.composition);
-    tryAdd(json.text_layout);
-    tryAdd(json.niche_guess);
-
-    if (json.palette) json.palette.forEach(tryAdd);
-    if (json.icon_family) json.icon_family.forEach(tryAdd);
-
-    // Padding with generic terms if we don't have 13
-    const generics = [
-        "tshirt design", "graphic tee", "custom apparel", "gift for him", "gift for her",
-        "trendy shirt", "aesthetic tee", "vintage look", "streetwear", "casual wear",
-        "unisex shirt", "funny shirt", "cool graphic", "unique design", "print on demand"
-    ];
-
-    let gIdx = 0;
-    while (pool.size < 13 && gIdx < generics.length) {
-        tryAdd(generics[gIdx]);
-        gIdx++;
     }
 
-    const tagsArray = Array.from(pool).slice(0, 13);
-
-    // Ensure absolutely exactly 13
-    while (tagsArray.length < 13) {
-        tagsArray.push(`tag${Math.floor(Math.random() * 99999)}`);
-    }
-
-    return tagsArray;
+    return [...new Set(seeds)].slice(0, 5);
 }
 
 // POST /api/seo/generate
 router.post('/generate', async (req, res) => {
     try {
-        const { imageId, jobId } = req.body;
+        const { imageUrl, keyword = '' } = req.body;
+        if (!imageUrl) return res.status(400).json({ error: 'imageUrl is required' });
 
-        let localJobId = jobId;
-        // If imageId provided, we can find the jobId
-        if (imageId && !jobId) {
-            const img = await prisma.image.findUnique({ where: { id: imageId } });
-            if (img) localJobId = img.jobId;
+        const workspaceId = req.workspaceId;
+        if (!workspaceId) return res.status(401).json({ error: 'Authentication required.' });
+
+        const visionService = require('../services/vision.service');
+        const Anthropic = require('@anthropic-ai/sdk');
+
+        // Step 1: Analyze image with vision
+        let imageDescription = '';
+        try {
+            let base64Data = imageUrl;
+            let mimeType = 'image/jpeg';
+            if (imageUrl.startsWith('data:')) {
+                const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+                if (matches) { mimeType = matches[1]; base64Data = matches[2]; }
+            }
+            const visionResult = await visionService.analyzeImage(base64Data, mimeType);
+            imageDescription = visionResult.prompt || '';
+        } catch (e) {
+            console.warn('[SEO] Vision failed, using keyword only:', e.message);
         }
 
-        if (!localJobId) {
-            return res.status(400).json({ error: "Job ID or Image ID required." });
-        }
+        // Step 2: Keyword research + knowledge base (parallel, graceful fallback)
+        const seedKeywords = extractSeedKeywords(imageDescription, keyword);
 
-        // Fetch vision properties directly from job history
-        const visionAna = await prisma.visionAnalysis.findFirst({
-            where: { jobId: localJobId },
-            orderBy: { createdAt: 'desc' }
+        const [expandedResult, trendsResult, knowledgeBase] = await Promise.allSettled([
+            expandKeywords(seedKeywords),
+            getGoogleTrends(seedKeywords),
+            getKnowledge(workspaceId)
+        ]);
+
+        const etsyKeywords = expandedResult.status === 'fulfilled'
+            ? expandedResult.value
+            : seedKeywords;
+        const trendData = trendsResult.status === 'fulfilled'
+            ? trendsResult.value
+            : { trending: [] };
+        const knowledge = knowledgeBase.status === 'fulfilled'
+            ? knowledgeBase.value
+            : '';
+
+        const keywordContext = `
+Real Etsy search suggestions (what buyers actually type):
+${etsyKeywords.slice(0, 20).map((k, i) => `${i + 1}. "${k}"`).join('\n')}
+
+${trendData.trending.length > 0 ? `Trending related topics: ${trendData.trending.join(', ')}` : ''}
+
+${keyword ? `Seller's focus keyword: "${keyword}"` : ''}
+`.trim();
+
+        // Step 3: Generate SEO with Claude + knowledge base
+        const client = new Anthropic();
+
+        const systemPrompt = `${knowledge}
+
+## YOUR TASK
+Generate optimized Etsy listing content using the algorithm knowledge above.
+Return ONLY valid JSON, no markdown, no explanation:
+{
+  "title": "...",
+  "description": "...",
+  "tags": ["tag1", ..., "tag13"],
+  "topKeywords": ["keyword1", "keyword2", "keyword3"]
+}`;
+
+        const userPrompt = `Create an optimized Etsy listing for this POD t-shirt design.
+
+Design: ${imageDescription}
+
+${keywordContext}
+
+Generate SEO content using the real Etsy search data above.
+The tags MUST include keywords from the "Real Etsy search suggestions" list.`;
+
+        const response = await client.messages.create({
+            model: 'claude-haiku-4-5',
+            max_tokens: 1500,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }]
         });
 
-        if (!visionAna) return res.status(400).json({ error: "Vision JSON not found for this Job" });
-        const json = visionAna.parsedVisionJson;
+        const raw = response.content[0].text.trim();
+        const clean = raw.replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(clean);
 
-        // Generate Title (Main keyword first)
-        const mainKeyword = `${(json.style || 'Graphic').replace(/_/g, ' ')} ${json.niche_guess ? json.niche_guess.replace(/_/g, ' ') : 'T-Shirt'}`.substring(0, 60);
-        const titleRaw = `${mainKeyword} | Trendy Custom Apparel | Perfect Aesthetic Gift | Premium Cotton Graphics`;
-        const title = cleanTitle(titleRaw);
-
-        // Generate Description
-        const desc = `🌟 Discover our latest ${json.style ? json.style.replace(/_/g, ' ') : 'amazing'} design! 🌟
-
-✨ Features:
-• Unique graphic composition: ${json.composition ? json.composition.replace(/_/g, ' ') : 'high quality'}
-• Striking elements featuring: ${json.icon_family ? json.icon_family.join(', ').replace(/_/g, ' ') : 'artistic details'}
-• Ideal for: ${json.niche_guess ? json.niche_guess.replace(/_/g, ' ') : 'anyone'}
-
-👕 Printed on premium material. Grab yours today to stand out in style!`;
-
-        // Generate EXACTLY 13 Tags
-        const tags = generateTags(json);
-
-        // SEO Strict Validation
-        const BANNED_WORDS = ['nike', 'disney', 'marvel', 'star wars', 'gucci', 'louis vuitton', 'chanel', 'prada'];
-        if (title.length > 140) throw new Error("SEO Validation Failed: Title exceeds 140 characters.");
-        if (tags.length !== 13) throw new Error(`SEO Validation Failed: Exactly 13 tags required, got ${tags.length}.`);
-
-        const uniqueTags = new Set(tags);
-        if (uniqueTags.size !== 13) throw new Error("SEO Validation Failed: Duplicate tags detected.");
-
-        for (const tag of tags) {
-            if (tag.length > 20) throw new Error(`SEO Validation Failed: Tag '${tag}' exceeds 20 characters.`);
+        if (!parsed.title || !parsed.description || !Array.isArray(parsed.tags)) {
+            return res.status(500).json({ error: 'Invalid SEO response format' });
         }
 
-        const fullText = `${title.toLowerCase()} ${tags.join(' ')} ${desc.toLowerCase()}`;
-        for (const word of BANNED_WORDS) {
-            if (fullText.includes(word)) {
-                throw new Error(`SEO Validation Failed: Banned word '${word}' detected. Risk of trademark infringement.`);
-            }
-        }
+        parsed.title = parsed.title.slice(0, 140);
+        parsed.tags = parsed.tags.slice(0, 13);
 
-        // Update DB
-        const seoData = await prisma.sEOData.upsert({
-            where: { imageId: imageId },
-            update: {
-                title,
-                description: desc,
-                tags
-            },
-            create: {
-                imageId: imageId,
-                title,
-                description: desc,
-                tags
-            }
+        res.json({
+            title: parsed.title,
+            description: parsed.description,
+            tags: parsed.tags,
+            charCount: parsed.title.length,
+            topKeywords: parsed.topKeywords || [],
+            etsySuggestions: etsyKeywords.slice(0, 10),
+            dataSource: 'etsy-autocomplete + google-trends'
         });
-
-        res.json(seoData);
 
     } catch (err) {
-        console.error('SEO Generation error:', err);
+        console.error('[SEO Generate]', err);
         res.status(500).json({ error: err.message });
     }
 });

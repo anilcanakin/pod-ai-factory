@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGallery, apiPipeline, apiExport, apiJobs, type GalleryImage } from '@/lib/api';
+import { apiGallery, apiPipeline, apiExport, apiJobs, apiTools, type GalleryImage } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn, truncateId } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -10,8 +10,8 @@ import { ConfirmModal } from '@/components/shared/ConfirmModal';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
     CheckCircle, XCircle, RefreshCw, Loader2,
-    Download, Play, Maximize2, Copy, Image as ImageIcon, Info,
-    History
+    Download, Play, Maximize2, Copy, Image as ImageIcon, Images, Info,
+    History, Scissors, ZoomIn
 } from 'lucide-react';
 
 function timeAgo(dateStr: string): string {
@@ -45,12 +45,16 @@ function GalleryInner() {
     const searchParams = useSearchParams();
 
     const activeJobId = searchParams.get('jobId') || '';
+    const allImagesMode = activeJobId === '__all__';
 
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
     const [viewImg, setViewImg] = useState<GalleryImage | null>(null);
     const [bulkConfirm, setBulkConfirm] = useState<null | 'reject' | 'pipeline'>(null);
     const [filter, setFilter] = useState<'all' | 'PENDING' | 'COMPLETED' | 'APPROVED' | 'REJECTED'>('all');
+    
+    const [processingImage, setProcessingImage] = useState<string | null>(null);
+    const [bgModel, setBgModel] = useState<'birefnet' | 'bria'>('birefnet');
 
     const setActiveJobId = (id: string) => {
         const params = new URLSearchParams(searchParams.toString());
@@ -67,12 +71,12 @@ function GalleryInner() {
         refetchInterval: 10000,
     });
 
-    // Fetch images for active job
+    // Fetch images for active job (or all recent images)
     const { data: images = [], isLoading } = useQuery({
         queryKey: ['gallery', activeJobId],
-        queryFn: () => apiGallery.getImages(activeJobId),
+        queryFn: () => allImagesMode ? apiGallery.getRecent() : apiGallery.getImages(activeJobId),
         enabled: !!activeJobId,
-        refetchInterval: activeJobId ? 5000 : false,
+        refetchInterval: activeJobId && !allImagesMode ? 5000 : false,
     });
 
     const approveMutation = useMutation({
@@ -98,6 +102,33 @@ function GalleryInner() {
         onSuccess: () => toast.success('Pipeline started for image'),
         onError: () => toast.error('Pipeline failed'),
     });
+
+    const handleRemoveBg = async (imgId: string, imgUrl: string, model: 'birefnet' | 'bria') => {
+        setProcessingImage(imgId);
+        try {
+            const result = await apiTools.removeBg(imgUrl, model);
+            // Yeni tab'da aç — kullanıcı indirsin
+            window.open(result.url, '_blank');
+            toast.success(`Background removed with ${result.model}`);
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'BG removal failed');
+        } finally {
+            setProcessingImage(null);
+        }
+    };
+
+    const handleUpscale = async (imgId: string, imgUrl: string, scale: 2 | 4) => {
+        setProcessingImage(imgId);
+        try {
+            const result = await apiTools.upscale(imgUrl, scale);
+            window.open(result.url, '_blank');
+            toast.success(`Upscaled ${result.scale} with ${result.model}`);
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Upscale failed');
+        } finally {
+            setProcessingImage(null);
+        }
+    };
 
     const filtered = images.filter(img => filter === 'all' || img.status === filter);
 
@@ -207,6 +238,26 @@ function GalleryInner() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                    {/* All Images shortcut */}
+                    <button
+                        onClick={() => setActiveJobId('__all__')}
+                        className={cn(
+                            "w-full flex items-center gap-3 p-2.5 rounded-[8px] transition-all text-left border mb-2",
+                            activeJobId === '__all__'
+                                ? "bg-accent-subtle border-accent"
+                                : "hover:bg-bg-elevated border-transparent"
+                        )}
+                    >
+                        <div className="w-10 h-10 rounded-[6px] bg-bg-elevated flex items-center justify-center border border-border-subtle shrink-0">
+                            <Images className="w-4 h-4 text-text-tertiary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <div className={cn("text-[11px] font-semibold", activeJobId === '__all__' ? "text-accent" : "text-text-primary")}>All Images</div>
+                            <div className="text-[10px] text-text-tertiary">Recent across all jobs</div>
+                        </div>
+                    </button>
+                    <div className="border-t border-border-subtle mb-2" />
+
                     {isJobsLoading ? (
                         <div className="space-y-2 p-2">
                             {[...Array(5)].map((_, i) => (
@@ -279,10 +330,16 @@ function GalleryInner() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
-                                    <span className="font-mono text-accent bg-accent/10 px-2 py-0.5 rounded text-base">{truncateId(activeJobId)}</span>
+                                    {allImagesMode ? (
+                                        <span className="text-accent bg-accent/10 px-2 py-0.5 rounded text-base">All Images</span>
+                                    ) : (
+                                        <span className="font-mono text-accent bg-accent/10 px-2 py-0.5 rounded text-base">{truncateId(activeJobId)}</span>
+                                    )}
                                     Gallery
                                 </h1>
-                                <p className="text-xs text-text-secondary mt-1">Review + approve generated designs</p>
+                                <p className="text-xs text-text-secondary mt-1">
+                                    {allImagesMode ? 'Latest 100 images across all jobs' : 'Review + approve generated designs'}
+                                </p>
                             </div>
                             
                             <div className="flex items-center gap-1.5 text-xs text-text-tertiary bg-bg-elevated px-3 py-1.5 rounded-[8px] border border-border-default">
@@ -381,6 +438,9 @@ function GalleryInner() {
                                     onView={() => setViewImg(img)}
                                     onCopyPrompt={() => { navigator.clipboard.writeText(img.rawResponse || img.id); toast.success('Prompt copied'); }}
                                     onRegenerate={() => pipelineMutation.mutate(img.id)}
+                                    onRemoveBg={(model) => handleRemoveBg(img.id, img.imageUrl, model)}
+                                    onUpscale={(scale) => handleUpscale(img.id, img.imageUrl, scale)}
+                                    isProcessing={processingImage === img.id}
                                 />
                             ))}
                         </div>
@@ -427,9 +487,12 @@ interface GalleryCardProps {
     img: GalleryImage; selected: boolean;
     onToggleSelect: (e: React.MouseEvent) => void; onApprove: () => void; onReject: () => void;
     onView: () => void; onCopyPrompt: () => void; onRegenerate: () => void;
+    onRemoveBg: (model: 'birefnet' | 'bria') => void;
+    onUpscale: (scale: 2 | 4) => void;
+    isProcessing: boolean;
 }
 
-function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onView, onCopyPrompt, onRegenerate }: GalleryCardProps) {
+function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onView, onCopyPrompt, onRegenerate, onRemoveBg, onUpscale, isProcessing }: GalleryCardProps) {
     const isPending = img.imageUrl === 'PENDING' || !img.imageUrl;
     const isRejected = img.status === 'REJECTED';
 
@@ -482,6 +545,37 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onVie
                     </button>
                     <button onClick={e => { e.stopPropagation(); onRegenerate(); }} title="Regenerate Pipeline" className="flex items-center gap-1.5 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10">
                         <RefreshCw className="w-3 h-3" />
+                    </button>
+                    
+                    {/* Remove BG butonu — dropdown ile model seçimi */}
+                    <div className="relative group/bg">
+                        <button 
+                            onClick={e => { e.stopPropagation(); onRemoveBg('birefnet'); }}
+                            disabled={isProcessing}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10 disabled:opacity-50"
+                            title="Remove Background"
+                        >
+                            {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Scissors className="w-3 h-3" />}
+                        </button>
+                        {/* Bria seçeneği — hover'da görünür */}
+                        <div className="absolute bottom-full left-0 mb-1 hidden group-hover/bg:block z-20">
+                            <button
+                                onClick={e => { e.stopPropagation(); onRemoveBg('bria'); }}
+                                className="whitespace-nowrap text-[10px] px-2 py-1 bg-bg-elevated border border-accent/30 text-accent rounded-[4px] hover:bg-accent-subtle"
+                            >
+                                Bria (Premium)
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Upscale butonu */}
+                    <button 
+                        onClick={e => { e.stopPropagation(); onUpscale(4); }}
+                        disabled={isProcessing}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10 disabled:opacity-50"
+                        title="Upscale 4x"
+                    >
+                        {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ZoomIn className="w-3 h-3" />}
                     </button>
                 </div>
                 <p className="text-[9px] text-white/50 mt-2 font-mono text-center tracking-widest uppercase">{truncateId(img.id)}</p>

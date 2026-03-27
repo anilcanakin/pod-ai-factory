@@ -150,7 +150,11 @@ router.post('/:id/factory', async (req, res) => {
         const job = await prisma.designJob.create({
             data: {
                 originalImage: jobIdRef,
-                status: 'PROCESSING'
+                status: 'PROCESSING',
+                workspaceId: req.workspaceId || null,
+                niche: idea.niche,
+                style: idea.styleEnum,
+                keyword: idea.mainKeyword,
             }
         });
 

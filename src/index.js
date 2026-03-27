@@ -20,6 +20,9 @@ app.use(workspaceMiddleware);
 // Initialize background queue workers
 require('./queues/asset.worker');
 
+// SEO Knowledge Base weekly auto-updater
+require('./jobs/seo-knowledge-updater').startCron();
+
 // Storage asset explicit workspace scoped protection
 app.use('/assets/mockups/:filename', async (req, res, next) => {
   if (!req.workspaceId) return res.status(401).send('Unauthorized');
@@ -167,6 +170,9 @@ app.get('/api/dashboard', async (req, res) => {
 
     const startOf24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
+    // Weekly range: last 7 days
+    const startOfWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
     const [
       runsToday,
       imagesGeneratedToday,
@@ -174,7 +180,8 @@ app.get('/api/dashboard', async (req, res) => {
       spendToday,
       recentJobs,
       topApproved,
-      avgTimeLogs
+      avgTimeLogs,
+      weeklyImages
     ] = await Promise.all([
       // Runs (jobs) created today
       prisma.designJob.count({ where: { createdAt: { gte: startOfDay } } }),
@@ -220,6 +227,12 @@ app.get('/api/dashboard', async (req, res) => {
       prisma.jobLog.findMany({
         where: { eventType: 'GENERATION_DONE', createdAt: { gte: startOf24h } },
         select: { data: true }
+      }),
+
+      // Weekly images per day (last 7 days)
+      prisma.image.findMany({
+        where: { createdAt: { gte: startOfWeek } },
+        select: { createdAt: true, isApproved: true, cost: true },
       })
     ]);
 
@@ -227,6 +240,24 @@ app.get('/api/dashboard', async (req, res) => {
     const totalJobs = await prisma.designJob.count();
     const completedJobs = await prisma.designJob.count({ where: { status: 'COMPLETED' } });
     const successRate = totalJobs > 0 ? Math.round((completedJobs / totalJobs) * 100) : 0;
+
+    // Aggregate weekly images by day
+    const dayMap = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      dayMap[key] = { date: key, images: 0, approved: 0, spend: 0 };
+    }
+    for (const img of weeklyImages) {
+      const key = img.createdAt.toISOString().slice(0, 10);
+      if (dayMap[key]) {
+        dayMap[key].images++;
+        if (img.isApproved) dayMap[key].approved++;
+        dayMap[key].spend = parseFloat((dayMap[key].spend + parseFloat(img.cost || 0)).toFixed(4));
+      }
+    }
+    const weeklyStats = Object.values(dayMap);
 
     res.json({
       runsToday,
@@ -236,10 +267,9 @@ app.get('/api/dashboard', async (req, res) => {
       successRate,
       recentJobs: recentJobs.map(j => {
         const spend = j.images.reduce((sum, img) => sum + parseFloat(img.cost || 0), 0);
-        const previewUrl = j.images.find(img => 
-            img.imageUrl && 
-            img.imageUrl !== 'PENDING' && 
-            img.imageUrl.startsWith('http')
+        const previewUrl = j.images.find(img =>
+            img.imageUrl &&
+            img.imageUrl !== 'PENDING'
         )?.imageUrl || null;
         return {
           id: j.id,
@@ -252,6 +282,7 @@ app.get('/api/dashboard', async (req, res) => {
         };
       }),
       topApproved,
+      weeklyStats,
       avgGenerationTime: null // placeholder — needs timestamp tracking to compute
     });
   } catch (err) {
@@ -269,6 +300,7 @@ app.use('/api/generate', require('./routes/generation.routes'));
 app.use('/api/gallery', require('./routes/gallery.routes'));
 app.use('/api/tools', require('./routes/tool.routes'));
 app.use('/api/seo', require('./routes/seo.routes'));
+app.use('/api/seo-knowledge', require('./routes/seo-knowledge.routes'));
 app.use('/api/export', require('./routes/export.routes'));
 app.use('/api/pipeline', require('./routes/pipeline.routes'));
 const jobsRoutes = require('./routes/jobs.routes');

@@ -13,6 +13,13 @@ import {
     DollarSign, TrendingUp, Upload, Loader2, ChevronUp, ChevronDown
 } from 'lucide-react';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+function resolveUrl(url: string | null | undefined): string {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
+    return `${API_BASE}/${url}`;
+}
+
 type SortDir = 'asc' | 'desc';
 
 export function AnalyticsClient() {
@@ -171,7 +178,7 @@ export function AnalyticsClient() {
                                             <div className="w-10 h-10 rounded-lg bg-slate-700 overflow-hidden">
                                                 {p.imageUrl ? (
                                                     // eslint-disable-next-line @next/next/no-img-element
-                                                    <img src={p.imageUrl} alt="" className="w-full h-full object-cover" />
+                                                    <img src={resolveUrl(p.imageUrl)} alt="" className="w-full h-full object-cover" />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center text-slate-600 text-[10px]">IMG</div>
                                                 )}
@@ -190,9 +197,12 @@ export function AnalyticsClient() {
                                         </td>
                                         <td className="px-4 py-3 text-right">
                                             {p.flag === 'WINNER' && (
-                                                <button className="flex items-center gap-1 px-2.5 py-1.5 bg-yellow-600/80 hover:bg-yellow-600 text-white text-xs rounded-lg transition-colors ml-auto">
+                                                <a
+                                                    href={`/dashboard/factory`}
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-yellow-600/80 hover:bg-yellow-600 text-white text-xs rounded-lg transition-colors ml-auto w-fit"
+                                                >
                                                     <TrendingUp className="w-3 h-3" /> Scale Winner
-                                                </button>
+                                                </a>
                                             )}
                                         </td>
                                     </tr>

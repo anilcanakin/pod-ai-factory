@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { apiDashboard, apiStatus } from '@/lib/api';
+import { apiDashboard, apiStatus, WeeklyStatDay } from '@/lib/api';
 import { StatCard } from '@/components/shared/StatCard';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { truncateId, formatDate } from '@/lib/utils';
@@ -10,6 +10,55 @@ import {
     Cpu, CheckCircle, DollarSign, TrendingUp, Zap, Eye, Activity,
     Clock, Image as ImageIcon, Images, ThumbsUp, ExternalLink, RefreshCw
 } from 'lucide-react';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+
+function resolveUrl(url: string | null | undefined): string {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
+    return `${API_BASE}/${url}`;
+}
+
+function WeeklyChart({ data }: { data: WeeklyStatDay[] }) {
+    const maxImages = Math.max(...data.map(d => d.images), 1);
+    return (
+        <div className="bg-[#1e293b] border border-slate-700 rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-blue-400" /> Last 7 Days
+            </h2>
+            <div className="flex items-end gap-2 h-24">
+                {data.map(day => {
+                    const pct = Math.round((day.images / maxImages) * 100);
+                    const label = new Date(day.date + 'T12:00:00').toLocaleDateString('en', { weekday: 'short' });
+                    return (
+                        <div key={day.date} className="flex-1 flex flex-col items-center gap-1 group">
+                            <div className="relative w-full flex flex-col justify-end" style={{ height: '72px' }}>
+                                <div
+                                    className="w-full rounded-t bg-blue-600/70 group-hover:bg-blue-500 transition-colors relative"
+                                    style={{ height: `${Math.max(pct, 4)}%` }}
+                                    title={`${day.images} images · ${day.approved} approved · $${day.spend.toFixed(3)}`}
+                                >
+                                    {day.approved > 0 && (
+                                        <div
+                                            className="absolute bottom-0 left-0 right-0 bg-emerald-500/70 rounded-t"
+                                            style={{ height: `${Math.round((day.approved / Math.max(day.images, 1)) * 100)}%` }}
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                            <span className="text-[9px] text-slate-500">{label}</span>
+                            <span className="text-[9px] text-slate-400 font-medium">{day.images}</span>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="flex items-center gap-4 mt-3 text-[10px] text-slate-500">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-600/70 inline-block" /> Generated</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500/70 inline-block" /> Approved</span>
+            </div>
+        </div>
+    );
+}
 
 export function OverviewClient() {
     const { data: dash, isLoading, refetch } = useQuery({
@@ -52,6 +101,11 @@ export function OverviewClient() {
                 <StatCard label="Avg Time" value={dash?.avgGenerationTime ? `${dash.avgGenerationTime}s` : '—'} icon={Clock} color="purple" loading={isLoading} />
             </div>
 
+            {/* Weekly Chart */}
+            {dash?.weeklyStats && dash.weeklyStats.length > 0 && (
+                <WeeklyChart data={dash.weeklyStats} />
+            )}
+
             {/* Projects Grid */}
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -91,11 +145,7 @@ export function OverviewClient() {
                                 {/* Thumbnail */}
                                 <div className="aspect-square w-full relative bg-slate-800 border-b border-slate-700 overflow-hidden">
                                     <img
-                                        src={
-                                            job.originalImage?.startsWith('http') || job.originalImage?.startsWith('data:')
-                                                ? job.originalImage
-                                                : `/assets/references/${job.originalImage}`
-                                        }
+                                        src={resolveUrl(job.previewUrl) || resolveUrl(job.originalImage)}
                                         alt="Reference Thumbnail"
                                         className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-transform group-hover:scale-105"
                                         onError={(e) => { e.currentTarget.style.display = 'none'; }}

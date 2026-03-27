@@ -20,6 +20,42 @@ const FAILED_PLACEHOLDER = 'data:image/svg+xml;base64,' + Buffer.from(
     '</svg>'
 ).toString('base64');
 
+// GET /api/gallery/recent — latest 100 images across all jobs (workspace-scoped)
+router.get('/recent', async (req, res) => {
+    try {
+        const images = await prisma.image.findMany({
+            where: {
+                imageUrl: { not: 'PENDING' },
+                job: { workspaceId: req.workspaceId },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+            select: {
+                id: true,
+                imageUrl: true,
+                status: true,
+                isApproved: true,
+                engine: true,
+                seed: true,
+                cost: true,
+                createdAt: true,
+                rawResponse: true,
+                jobId: true,
+            },
+        });
+
+        const enriched = images.map(img => ({
+            ...img,
+            rawResponse: img.rawResponse ? img.rawResponse.substring(0, 300) : null,
+            placeholderUrl: null,
+        }));
+
+        res.json(enriched);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET /api/gallery/:jobId
 router.get('/:jobId', async (req, res) => {
     try {

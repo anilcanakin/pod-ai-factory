@@ -38,7 +38,7 @@ function imageSizeToAspectRatio(imageSize) {
     return map[imageSize] || '1:1';
 }
 
-function buildModelInput(modelId, prompt, imageSize) {
+function buildModelInput(modelId, prompt, imageSize, negativePrompt = '') {
     const base = { prompt };
     
     if (modelId.includes('ideogram')) {
@@ -53,7 +53,8 @@ function buildModelInput(modelId, prompt, imageSize) {
         return {
             ...base,
             image_size: imageSize,
-            style: 'vector_illustration'
+            style: 'vector_illustration',
+            negative_prompt: negativePrompt || ''
         };
     }
     
@@ -61,7 +62,8 @@ function buildModelInput(modelId, prompt, imageSize) {
     return {
         ...base,
         image_size: imageSize,
-        num_inference_steps: 28
+        num_inference_steps: 28,
+        negative_prompt: negativePrompt || 'blurry, low quality, watermark, text, background, scenery'
     };
 }
 
@@ -91,7 +93,7 @@ class GenerationService {
         }
     }
 
-    async runGeneration(jobId, engine = 'fal', count = 30, imageSize = 'square_hd') {
+    async runGeneration(jobId, engine = 'fal', count = 30, imageSize = 'square_hd', negativePrompt = '') {
         const imagesToGenerate = await prisma.image.findMany({
             where: {
                 jobId: jobId,
@@ -114,7 +116,7 @@ class GenerationService {
         const processImageWithRetries = async (img, attempts = 0) => {
             try {
                 const modelId = SUPPORTED_MODELS[img.engine] ? img.engine : 'fal-ai/flux/dev';
-                const payload = buildModelInput(modelId, img.promptUsed.substring(0, 1000), imageSize);
+                const payload = buildModelInput(modelId, img.promptUsed.substring(0, 1000), imageSize, negativePrompt);
                 
                 const falResponse = await falProvider.generateImage(
                     modelId,

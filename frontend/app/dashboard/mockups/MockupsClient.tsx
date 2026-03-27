@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { apiMockups, MockupTemplate, MockupConfig, apiGallery, GalleryImage } from '@/lib/api';
+import { apiMockups, MockupTemplate, MockupConfig, apiGallery, apiJobs, GalleryImage, JobSummary } from '@/lib/api';
 import {
     Plus, Trash2, X, Image as ImageIcon, RotateCw, Layers,
     Eye, Download, Search, Loader2, Save, Grid3x3, CheckCircle2,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
+import { TemplateUploader } from './TemplateUploader';
 
 const DesignPlacementEditor = dynamic(() => import('@/components/mockups/DesignPlacementEditor'), {
     ssr: false,
@@ -215,14 +216,21 @@ export function MockupsClient() {
             )}
 
             {showUpload && (
-                <UploadModal
-                    onClose={() => setShowUpload(false)}
-                    onCreated={(t) => {
-                        setTemplates(prev => [t, ...prev]);
-                        setShowUpload(false);
-                        addToast('success', `Template "${t.name}" created`);
-                    }}
-                />
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="bg-[#1a2332] border border-slate-700 rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between mb-5">
+                            <h2 className="text-lg font-semibold text-white">Upload Mockup Template</h2>
+                            <button onClick={() => setShowUpload(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+                        </div>
+                        <TemplateUploader
+                            onSuccess={() => {
+                                setShowUpload(false);
+                                addToast('success', 'Template created');
+                                loadTemplates();
+                            }}
+                        />
+                    </div>
+                </div>
             )}
 
             {showEditor && selectedTemplate && (
@@ -762,10 +770,23 @@ function TemplateEditor({ template, onClose, onUpdated, addToast }: {
                                         <CheckCircle2 className="w-3.5 h-3.5" /> Mockup rendered!
                                     </p>
                                     <img src={renderResult} alt="Rendered" className="w-full rounded-lg shadow" />
-                                    <a href={renderResult} target="_blank" rel="noreferrer"
-                                        className="flex items-center gap-1 text-xs text-blue-400 hover:underline font-medium">
-                                        <Download className="w-3 h-3" /> Open full size
-                                    </a>
+                                    <button
+                                        onClick={async () => {
+                                            const slug = template.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+                                            const filename = `mockup-${slug}-${Date.now()}.png`;
+                                            try {
+                                                const r = await fetch(renderResult!);
+                                                const blob = await r.blob();
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement('a');
+                                                a.href = url; a.download = filename; a.click();
+                                                URL.revokeObjectURL(url);
+                                            } catch { window.open(renderResult!, '_blank'); }
+                                        }}
+                                        className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                                    >
+                                        <Download className="w-3 h-3" /> Download
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -801,67 +822,105 @@ function DesignPickerModal({ onClose, onSelect }: {
     onClose: () => void;
     onSelect: (img: GalleryImage) => void;
 }) {
-    const [jobId, setJobId] = useState('');
+    const [jobs, setJobs] = useState<JobSummary[]>([]);
+    const [loadingJobs, setLoadingJobs] = useState(true);
+    const [selectedJobId, setSelectedJobId] = useState('');
     const [images, setImages] = useState<GalleryImage[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [searched, setSearched] = useState(false);
+    const [loadingImages, setLoadingImages] = useState(false);
 
-    const search = async () => {
-        if (!jobId.trim()) return;
-        setLoading(true);
+    useEffect(() => {
+        apiJobs.list()
+            .then(setJobs)
+            .catch(() => {})
+            .finally(() => setLoadingJobs(false));
+    }, []);
+
+    const loadJob = async (jobId: string) => {
+        setSelectedJobId(jobId);
+        setLoadingImages(true);
         try {
-            const imgs = await apiGallery.getImages(jobId.trim());
+            const imgs = await apiGallery.getImages(jobId);
             setImages(imgs.filter(i => i.isApproved || i.status === 'PROCESSED' || i.status === 'COMPLETED'));
-            setSearched(true);
         } catch (err: any) {
-            alert('Failed: ' + err.message);
+            setImages([]);
         } finally {
-            setLoading(false);
+            setLoadingImages(false);
         }
     };
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
-            <div className="bg-[#1a2332] border border-slate-700 rounded-2xl w-full max-w-2xl p-6 space-y-4 shadow-2xl max-h-[80vh] flex flex-col">
-                <div className="flex items-center justify-between">
+            <div className="bg-[#1a2332] border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[80vh] flex flex-col overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 shrink-0">
                     <h3 className="text-lg font-semibold text-white">Select a Design</h3>
                     <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
                 </div>
 
-                <div className="flex gap-2">
-                    <input type="text" value={jobId} onChange={e => setJobId(e.target.value)}
-                        placeholder="Enter Job ID to load approved designs..."
-                        className="flex-1 px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500"
-                        onKeyDown={e => e.key === 'Enter' && search()} />
-                    <button onClick={search} disabled={loading}
-                        className="px-5 py-2.5 bg-blue-600 text-white text-sm rounded-xl hover:bg-blue-500 font-medium disabled:opacity-50">
-                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Load'}
-                    </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto">
-                    {!searched ? (
-                        <p className="text-center text-slate-500 py-12 text-sm">Enter a Job ID to browse approved designs</p>
-                    ) : images.length === 0 ? (
-                        <div className="text-center py-12">
-                            <AlertCircle className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-                            <p className="text-slate-400 font-medium">No approved designs found</p>
-                            <p className="text-slate-500 text-sm mt-1">Approve a design first in Gallery</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-3 gap-3">
-                            {images.map(img => (
-                                <button key={img.id} onClick={() => onSelect(img)}
-                                    className="relative aspect-square bg-slate-900/60 rounded-xl overflow-hidden border-2 border-transparent hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-600/10">
-                                    <img src={img.imageUrl.startsWith('http') ? img.imageUrl : `${API_BASE}/${img.imageUrl}`}
-                                        alt="Design" className="w-full h-full object-contain p-2" />
-                                    <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/80 to-transparent">
-                                        <span className="text-[10px] text-slate-300 font-medium">{img.status} • {img.engine}</span>
+                <div className="flex flex-1 overflow-hidden">
+                    {/* Job list sidebar */}
+                    <div className="w-52 border-r border-slate-700 overflow-y-auto p-2 space-y-1 shrink-0">
+                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest px-2 pb-1">Job History</p>
+                        {loadingJobs ? (
+                            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-slate-500" /></div>
+                        ) : jobs.length === 0 ? (
+                            <p className="text-center text-slate-500 text-xs py-8">No jobs yet</p>
+                        ) : (
+                            jobs.map(job => (
+                                <button
+                                    key={job.id}
+                                    onClick={() => loadJob(job.id)}
+                                    className={cn(
+                                        'w-full flex items-center gap-2 p-2 rounded-lg text-left transition-colors border',
+                                        selectedJobId === job.id
+                                            ? 'bg-blue-600/20 border-blue-500/40'
+                                            : 'border-transparent hover:bg-slate-800'
+                                    )}
+                                >
+                                    {job.previewUrl ? (
+                                        <img src={job.previewUrl} alt="" className="w-9 h-9 rounded object-cover shrink-0 border border-slate-600" />
+                                    ) : (
+                                        <div className="w-9 h-9 rounded bg-slate-700 flex items-center justify-center shrink-0">
+                                            <ImageIcon className="w-4 h-4 text-slate-500" />
+                                        </div>
+                                    )}
+                                    <div className="min-w-0">
+                                        <p className={cn('text-[11px] font-mono truncate', selectedJobId === job.id ? 'text-blue-300' : 'text-slate-300')}>
+                                            {job.id.slice(0, 8)}…
+                                        </p>
+                                        <p className="text-[10px] text-slate-500">{job.imageCount} imgs</p>
                                     </div>
                                 </button>
-                            ))}
-                        </div>
-                    )}
+                            ))
+                        )}
+                    </div>
+
+                    {/* Images panel */}
+                    <div className="flex-1 overflow-y-auto p-4">
+                        {!selectedJobId ? (
+                            <p className="text-center text-slate-500 py-16 text-sm">← Select a job to browse approved designs</p>
+                        ) : loadingImages ? (
+                            <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-slate-500" /></div>
+                        ) : images.length === 0 ? (
+                            <div className="text-center py-16">
+                                <AlertCircle className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+                                <p className="text-slate-400 font-medium">No approved designs found</p>
+                                <p className="text-slate-500 text-sm mt-1">Approve a design first in Gallery</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-3 gap-3">
+                                {images.map(img => (
+                                    <button key={img.id} onClick={() => onSelect(img)}
+                                        className="relative aspect-square bg-slate-900/60 rounded-xl overflow-hidden border-2 border-transparent hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-600/10">
+                                        <img src={img.imageUrl.startsWith('http') ? img.imageUrl : `${API_BASE}/${img.imageUrl}`}
+                                            alt="Design" className="w-full h-full object-contain p-2" />
+                                        <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/80 to-transparent">
+                                            <span className="text-[10px] text-slate-300 font-medium">{img.status} • {img.engine}</span>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

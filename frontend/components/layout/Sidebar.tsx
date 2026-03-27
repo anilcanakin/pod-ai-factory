@@ -12,6 +12,9 @@ import {
     Settings,
     Zap,
     Frame,
+    Scissors,
+    ZoomIn,
+    Tag
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +26,9 @@ const navItems = [
     { href: '/dashboard/ideas', label: 'Ideas', icon: Lightbulb },
     { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
     { href: '/dashboard/exports', label: 'Exports', icon: Download },
+    { href: '/dashboard/remove-bg', label: 'Remove BG', icon: Scissors },
+    { href: '/dashboard/upscale', label: 'Upscale', icon: ZoomIn },
+    { href: '/dashboard/seo', label: 'SEO Generator', icon: Tag },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 

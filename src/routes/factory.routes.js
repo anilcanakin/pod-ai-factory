@@ -135,7 +135,7 @@ router.post('/get-variations', usageMiddleware, async (req, res) => {
 router.post('/generate', usageMiddleware, async (req, res) => {
     let jobId = null;
     try {
-        const { prompts, model = 'fal-ai/flux/dev', imageSize = 'square_hd' } = req.body;
+        const { prompts, model = 'fal-ai/flux/dev', imageSize = 'square_hd', negativePrompt = '' } = req.body;
 
         if (!prompts || !Array.isArray(prompts) || prompts.length === 0) {
             return res.status(400).json({ error: 'prompts must be a non-empty array of strings.' });
@@ -185,7 +185,7 @@ router.post('/generate', usageMiddleware, async (req, res) => {
 
         // 3. Start generation (uses existing generationService)
         try {
-            await generationService.runGeneration(jobId, 'fal', prompts.length, imageSize);
+            await generationService.runGeneration(jobId, 'fal', prompts.length, imageSize, negativePrompt);
             await logService.logEvent(jobId, 'GENERATION_DONE', 'SUCCESS', 'All images generated.');
         } catch (err) {
             await logService.logEvent(jobId, 'GENERATION_DONE', 'FAILED', err.message);

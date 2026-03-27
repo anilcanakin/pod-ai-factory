@@ -8,7 +8,8 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
     Shield, Wifi, WifiOff, ShieldAlert, AlertTriangle,
-    Key, Cpu, Server, Globe, ExternalLink, RefreshCw, LineChart
+    Key, Cpu, Server, Globe, ExternalLink, RefreshCw, LineChart,
+    BookOpen, Loader2
 } from 'lucide-react';
 
 type FalStatus = 'online' | 'offline' | 'auth_error' | 'payload_error';
@@ -41,6 +42,94 @@ export function SettingsClient() {
     const [editingKey, setEditingKey] = React.useState<string | null>(null);
     const [keyValue, setKeyValue] = React.useState('');
     const [saving, setSaving] = React.useState(false);
+
+    // SEO Knowledge Base
+    const [seoKnowledge, setSeoKnowledge] = React.useState('');
+    const [seoHistory, setSeoHistory] = React.useState<Array<{
+        id: string;
+        source: string;
+        isActive: boolean;
+        createdAt: string;
+    }>>([]);
+    const [isLoadingKnowledge, setIsLoadingKnowledge] = React.useState(false);
+    const [isUpdatingKnowledge, setIsUpdatingKnowledge] = React.useState(false);
+    const [isSavingKnowledge, setIsSavingKnowledge] = React.useState(false);
+
+    const loadKnowledge = React.useCallback(async () => {
+        setIsLoadingKnowledge(true);
+        try {
+            const res = await fetch('/api/seo-knowledge', { credentials: 'include' });
+            const data = await res.json();
+            setSeoKnowledge(data.content || '');
+            setSeoHistory(data.history || []);
+        } catch (err) {
+            console.error('Failed to load SEO knowledge:', err);
+        } finally {
+            setIsLoadingKnowledge(false);
+        }
+    }, []);
+
+    React.useEffect(() => { loadKnowledge(); }, [loadKnowledge]);
+
+    const handleAutoUpdate = async () => {
+        setIsUpdatingKnowledge(true);
+        try {
+            const res = await fetch('/api/seo-knowledge/auto-update', {
+                method: 'POST',
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success('SEO knowledge updated with latest algorithm data!');
+                await loadKnowledge();
+            } else {
+                toast.error(data.error || 'Auto-update failed');
+            }
+        } catch {
+            toast.error('Auto-update failed');
+        } finally {
+            setIsUpdatingKnowledge(false);
+        }
+    };
+
+    const handleManualSave = async () => {
+        setIsSavingKnowledge(true);
+        try {
+            const res = await fetch('/api/seo-knowledge/manual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ content: seoKnowledge })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success('SEO knowledge base saved!');
+                await loadKnowledge();
+            } else {
+                toast.error(data.error || 'Save failed');
+            }
+        } catch {
+            toast.error('Save failed');
+        } finally {
+            setIsSavingKnowledge(false);
+        }
+    };
+
+    const handleActivateVersion = async (id: string) => {
+        try {
+            const res = await fetch(`/api/seo-knowledge/activate/${id}`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success('Version activated');
+                await loadKnowledge();
+            }
+        } catch {
+            toast.error('Failed to activate version');
+        }
+    };
 
     const handleSaveKey = async (provider: string) => {
         if (!keyValue.trim()) return;
@@ -263,6 +352,102 @@ export function SettingsClient() {
                         🔒 API keys are never exposed to the browser. Configure them in your <code className="bg-slate-700 px-1 rounded">.env</code> file on the server.
                         Get your Fal key at <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-0.5">fal.ai/dashboard/keys <ExternalLink className="w-3 h-3" /></a>
                     </p>
+                </div>
+            </div>
+
+            {/* SEO Knowledge Base */}
+            <div className="bg-[#1e293b] border border-slate-700 rounded-xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-700 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                        <BookOpen className="w-4 h-4 text-violet-400" /> SEO Knowledge Base
+                    </h2>
+                    <button
+                        onClick={handleAutoUpdate}
+                        disabled={isUpdatingKnowledge}
+                        className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/30 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+                    >
+                        {isUpdatingKnowledge
+                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating...</>
+                            : <><RefreshCw className="w-3.5 h-3.5" /> Auto Update Now</>
+                        }
+                    </button>
+                </div>
+                <div className="p-5 space-y-5">
+                    <p className="text-xs text-slate-400">
+                        Etsy algorithm knowledge injected into every SEO generation request. Auto-refreshes weekly via Claude Haiku.
+                    </p>
+
+                    {/* Version History */}
+                    {seoHistory.length > 0 && (
+                        <div className="space-y-2">
+                            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Version History</p>
+                            <div className="space-y-1">
+                                {seoHistory.map(h => (
+                                    <div key={h.id} className="flex items-center justify-between py-1.5 px-3 bg-slate-800/60 rounded-lg border border-slate-700/50">
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn(
+                                                'text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide',
+                                                h.source === 'auto'
+                                                    ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20'
+                                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                            )}>
+                                                {h.source}
+                                            </span>
+                                            <span className="text-xs text-slate-500">
+                                                {new Date(h.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                            </span>
+                                            {h.isActive && (
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 border border-slate-600">
+                                                    Active
+                                                </span>
+                                            )}
+                                        </div>
+                                        {!h.isActive && (
+                                            <button
+                                                onClick={() => handleActivateVersion(h.id)}
+                                                className="text-[10px] text-slate-400 hover:text-violet-400 transition-colors"
+                                            >
+                                                Restore
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Manual Editor */}
+                    <div className="space-y-2">
+                        <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Manual Override</p>
+                        {isLoadingKnowledge ? (
+                            <div className="flex items-center gap-2 text-xs text-slate-500 py-4">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading...
+                            </div>
+                        ) : (
+                            <textarea
+                                value={seoKnowledge}
+                                onChange={e => setSeoKnowledge(e.target.value)}
+                                rows={12}
+                                className="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-300 font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none placeholder-slate-600"
+                                placeholder="Enter Etsy algorithm knowledge and SEO rules..."
+                            />
+                        )}
+                        <div className="flex items-center justify-between">
+                            <p className="text-[10px] text-slate-500">
+                                Edit directly to customize rules for your niche
+                            </p>
+                            <button
+                                onClick={handleManualSave}
+                                disabled={isSavingKnowledge || isLoadingKnowledge}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs rounded-lg border border-slate-600 transition-colors disabled:opacity-40"
+                            >
+                                {isSavingKnowledge
+                                    ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</>
+                                    : 'Save Manual Override'
+                                }
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 

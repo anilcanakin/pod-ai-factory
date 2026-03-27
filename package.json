@@ -21,6 +21,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
     "@aws-sdk/client-s3": "^3.999.0",
+    "@fal-ai/client": "^1.9.5",
     "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^5.15.0",
     "archiver": "^7.0.1",

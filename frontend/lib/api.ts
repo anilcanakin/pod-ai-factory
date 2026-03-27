@@ -50,14 +50,22 @@ export const apiStatus = {
 };
 
 // ─── Dashboard ────────────────────────────────────────────────
+export interface WeeklyStatDay {
+    date: string;
+    images: number;
+    approved: number;
+    spend: number;
+}
+
 export interface DashboardData {
     runsToday: number;
     imagesGeneratedToday: number;
     approvedToday: number;
     spendToday: number;
     successRate: number;
-    recentJobs: Array<{ id: string; originalImage: string; status: string; imageCount: number; spend: number; createdAt: string }>;
+    recentJobs: Array<{ id: string; originalImage: string; status: string; imageCount: number; spend: number; createdAt: string; previewUrl: string | null }>;
     topApproved: Array<{ id: string; imageUrl: string; performanceScore: number; jobId: string }>;
+    weeklyStats: WeeklyStatDay[];
     avgGenerationTime: number | null;
 }
 
@@ -111,6 +119,7 @@ export const apiFactory = {
         prompts: string[];
         model: string;
         imageSize: string;
+        negativePrompt?: string;
     }) =>
         request<{ jobId: string; imageCount: number; message: string }>(
             '/factory/generate',
@@ -153,6 +162,7 @@ export interface GalleryImage {
 
 export const apiGallery = {
     getImages: (jobId: string) => request<GalleryImage[]>(`/gallery/${jobId}`),
+    getRecent: () => request<GalleryImage[]>('/gallery/recent'),
     approve: (imageId: string) => request<GalleryImage>(`/gallery/${imageId}/approve`, { method: 'POST' }),
     reject: (imageId: string) => request<GalleryImage>(`/gallery/${imageId}/reject`, { method: 'POST' }),
     regenerate: (imageId: string) => request<{ message: string }>(`/gallery/${imageId}/regenerate`, { method: 'POST' }),
@@ -309,5 +319,38 @@ export const apiMockups = {
         request<{ message: string; results: { templateId: string; templateName: string; status: string; url?: string; error?: string }[] }>('/mockups/render-batch', {
             method: 'POST',
             body: JSON.stringify({ imageId, templateIds, placement }),
+        }),
+};
+
+// ─── SEO Generator ────────────────────────────────────────────
+export interface EtsySEO {
+    title: string;
+    description: string;
+    tags: string[];
+    charCount: number;
+    topKeywords?: string[];
+    etsySuggestions?: string[];
+    dataSource?: string;
+}
+
+export const apiSeo = {
+    generate: (imageUrl: string, keyword?: string) =>
+        request<EtsySEO>('/seo/generate', {
+            method: 'POST',
+            body: JSON.stringify({ imageUrl, keyword })
+        }),
+};
+
+// ─── Tools (BG Removal & Upscale) ─────────────────────────────
+export const apiTools = {
+    removeBg: (imageUrl: string, model: 'birefnet' | 'bria' | 'pixelcut' = 'birefnet') =>
+        request<{ url: string; model: string }>('/tools/remove-bg', {
+            method: 'POST',
+            body: JSON.stringify({ imageUrl, model })
+        }),
+    upscale: (imageUrl: string, scale: number = 4) =>
+        request<{ url: string; scale: string; model: string }>('/tools/upscale', {
+            method: 'POST',
+            body: JSON.stringify({ imageUrl, scale })
         }),
 };

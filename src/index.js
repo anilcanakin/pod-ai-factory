@@ -10,6 +10,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const prisma = new PrismaClient();
 
+// Serve mockup assets publicly with CORS - MUST be before auth middleware
+const path = require('path');
+app.use('/assets/mockups', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+}, express.static(path.join(__dirname, '../assets/mockups')));
+
 // Middleware
 app.use(cors({ origin: 'http://localhost:3001', credentials: true }));
 app.use(cookieParser());
@@ -24,20 +33,6 @@ require('./queues/asset.worker');
 require('./jobs/seo-knowledge-updater').startCron();
 
 // Storage asset explicit workspace scoped protection
-app.use('/assets/mockups/:filename', async (req, res, next) => {
-  if (!req.workspaceId) return res.status(401).send('Unauthorized');
-  try {
-    const mockup = await prisma.mockup.findFirst({
-      where: {
-        mockupUrl: `assets/mockups/${req.params.filename}`,
-        image: { job: { workspaceId: req.workspaceId } }
-      }
-    });
-    if (!mockup) return res.status(403).send('Forbidden');
-    next();
-  } catch { next(); }
-});
-
 app.use('/assets/outputs/:filename', async (req, res, next) => {
   if (!req.workspaceId) return res.status(401).send('Unauthorized');
   try {
@@ -49,7 +44,6 @@ app.use('/assets/outputs/:filename', async (req, res, next) => {
 });
 
 // Serve static generated assets
-const path = require('path');
 app.use('/assets', express.static(path.join(__dirname, '../assets')));
 
 // Health Check

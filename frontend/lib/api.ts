@@ -13,6 +13,7 @@ async function request<T>(
     options?: RequestInit
 ): Promise<T> {
     const res = await fetch(`${BASE}${path}`, {
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...options?.headers },
         ...options,
     });
@@ -201,7 +202,7 @@ export interface Idea {
 export const apiIdeas = {
     list: () => request<Idea[]>('/ideas'),
     generate: (formData: FormData) =>
-        fetch(`${BASE}/ideas/generate`, { method: 'POST', body: formData }).then(async (res) => {
+        fetch(`${BASE}/ideas/generate`, { method: 'POST', credentials: 'include', body: formData }).then(async (res) => {
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
                 throw new Error(body.error || `HTTP ${res.status}`);
@@ -235,7 +236,7 @@ export interface PerformanceRecord {
 export const apiAnalytics = {
     getPerformance: () => request<PerformanceRecord[]>('/analytics/performance'),
     import: (formData: FormData) =>
-        fetch(`${BASE}/analytics/import`, { method: 'POST', body: formData }).then(async (res) => {
+        fetch(`${BASE}/analytics/import`, { method: 'POST', credentials: 'include', body: formData }).then(async (res) => {
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
                 throw new Error(body.error || `HTTP ${res.status}`);
@@ -294,7 +295,7 @@ export const apiMockups = {
     getTemplate: (id: string) => request<MockupTemplate>(`/mockups/templates/${id}`),
     getPresets: () => request<{ categories: string[]; presets: Record<string, { printArea: MockupPrintArea }> }>('/mockups/templates/presets'),
     uploadTemplate: (formData: FormData) =>
-        fetch(`${BASE}/mockups/templates`, { method: 'POST', body: formData }).then(async (res) => {
+        fetch(`${BASE}/mockups/templates`, { method: 'POST', credentials: 'include', body: formData }).then(async (res) => {
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
                 throw new Error(body.error || `HTTP ${res.status}`);

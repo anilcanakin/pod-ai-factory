@@ -8,6 +8,13 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
+// Ensure base assets/mockups directory exists at startup
+const MOCKUPS_BASE = path.join(__dirname, '../../assets/mockups');
+if (!fs.existsSync(MOCKUPS_BASE)) {
+    fs.mkdirSync(MOCKUPS_BASE, { recursive: true });
+    console.log('[MockupTemplate] Created base directory:', MOCKUPS_BASE);
+}
+
 // Allowed categories — Standard v1
 const VALID_CATEGORIES = ['tshirt', 'sweatshirt', 'hoodie', 'mug', 'sticker', 'phone_case'];
 
@@ -57,16 +64,34 @@ function prepareTmpDir(req, res, next) {
     next();
 }
 
+// Wrap multer so its errors are caught and returned as JSON (not passed to Express default handler)
+function runUpload(req, res) {
+    return new Promise((resolve, reject) => {
+        upload.fields([
+            { name: 'baseImage', maxCount: 1 },
+            { name: 'maskImage', maxCount: 1 },
+            { name: 'shadowImage', maxCount: 1 },
+        ])(req, res, (err) => {
+            if (err) {
+                console.error('[MockupTemplate] Multer error:', err.message, err.stack);
+                reject(err);
+            } else {
+                resolve();
+            }
+        });
+    });
+}
+
 // ─── POST /api/mockups/templates ─────────────────────────────────────────────
 router.post('/',
     prepareTmpDir,
-    upload.fields([
-        { name: 'baseImage', maxCount: 1 },
-        { name: 'maskImage', maxCount: 1 },
-        { name: 'shadowImage', maxCount: 1 }
-    ]),
     async (req, res) => {
         try {
+            // Run multer inside the async handler so errors surface as JSON
+            await runUpload(req, res);
+
+            console.log('[MockupTemplate POST] Upload received — files:', Object.keys(req.files || {}), '— body keys:', Object.keys(req.body || {}));
+
             if (!req.workspaceId) {
                 if (fs.existsSync(req._templateDir)) fs.rmSync(req._templateDir, { recursive: true, force: true });
                 return res.status(401).json({ error: 'Unauthorized' });
@@ -158,6 +183,13 @@ router.post('/',
                 JSON.stringify(configFile, null, 2)
             );
 
+            // Verify workspace exists before FK insert — prevents opaque 500 on stale cookies
+            const workspace = await prisma.workspace.findUnique({ where: { id: req.workspaceId } });
+            if (!workspace) {
+                if (fs.existsSync(finalDir)) fs.rmSync(finalDir, { recursive: true, force: true });
+                return res.status(401).json({ error: `Workspace not found. Please log out and log in again.` });
+            }
+
             const template = await prisma.mockupTemplate.create({
                 data: {
                     id: templateId,
@@ -173,8 +205,14 @@ router.post('/',
 
             res.json(template);
         } catch (err) {
-            console.error('[MockupTemplate POST]', err);
-            res.status(500).json({ error: err.message });
+            console.error('[MockupTemplate POST] Error:', err.message);
+            console.error('[MockupTemplate POST] Stack:', err.stack);
+            // Clean up tmp dir on any failure
+            if (req._templateDir && fs.existsSync(req._templateDir)) {
+                try { fs.rmSync(req._templateDir, { recursive: true, force: true }); } catch {}
+            }
+            const status = err.message?.toLowerCase().includes('not allowed') ? 400 : 500;
+            res.status(status).json({ error: err.message });
         }
     }
 );

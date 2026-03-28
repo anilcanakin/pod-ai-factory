@@ -36,3 +36,6 @@ frontend/package-lock.json
 
 # Local CLAUDE data
 .claude/
+
+# Assets (generated data)
+assets/

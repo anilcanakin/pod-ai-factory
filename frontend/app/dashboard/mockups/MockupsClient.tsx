@@ -17,6 +17,8 @@ const DesignPlacementEditor = dynamic(() => import('@/components/mockups/DesignP
 });
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+const resolveUrl = (p: string) =>
+    p?.startsWith('http') ? p : `${API_BASE}/${p}`;
 
 // Standard v1 categories
 const CATEGORIES = ['all', 'tshirt', 'sweatshirt', 'hoodie', 'mug', 'sticker', 'phone_case'];
@@ -252,22 +254,14 @@ export function MockupsClient() {
 function TemplateCard({ template, onSelect, onDelete }: {
     template: MockupTemplate; onSelect: () => void; onDelete: () => void;
 }) {
-    const pa = template.configJson?.printArea || { x: 0.1, y: 0.1, width: 0.8, height: 0.8 };
     return (
         <div className="group relative bg-slate-800/60 border border-slate-700 rounded-xl overflow-hidden hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-600/5 transition-all duration-200">
             <div className="aspect-square bg-slate-900/50 relative cursor-pointer" onClick={onSelect}>
                 <img
-                    src={`${API_BASE}/${template.baseImagePath}`}
+                    src={resolveUrl(template.baseImagePath)}
                     alt={template.name}
                     className="w-full h-full object-contain p-2"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                />
-                <div
-                    className="absolute border-2 border-dashed border-blue-400/30 rounded pointer-events-none group-hover:border-blue-400/60 transition-colors"
-                    style={{
-                        left: `${pa.x * 100}%`, top: `${pa.y * 100}%`,
-                        width: `${pa.width * 100}%`, height: `${pa.height * 100}%`,
-                    }}
+                    onError={e => { e.currentTarget.style.display = 'none'; }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-4">
                     <span className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-full font-medium shadow-lg">Open Editor</span>
@@ -276,9 +270,14 @@ function TemplateCard({ template, onSelect, onDelete }: {
             <div className="p-3 flex items-center justify-between">
                 <div className="min-w-0">
                     <p className="text-sm font-medium text-white truncate">{template.name}</p>
-                    <p className="text-[11px] text-slate-500 capitalize">{template.category.replace('_', ' ')}</p>
+                    <span className="inline-flex items-center mt-1 px-1.5 py-0.5 bg-slate-700 text-slate-400 text-[10px] rounded capitalize">
+                        {template.category.replace('_', ' ')}
+                    </span>
                 </div>
-                <button onClick={e => { e.stopPropagation(); onDelete(); }} className="p-1.5 text-slate-600 hover:text-red-400 transition-colors">
+                <button
+                    onClick={e => { e.stopPropagation(); onDelete(); }}
+                    className="p-1.5 text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-300 transition-all"
+                >
                     <Trash2 className="w-3.5 h-3.5" />
                 </button>
             </div>
@@ -460,7 +459,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast }: {
     useEffect(() => {
         const img = new window.Image();
         img.crossOrigin = 'anonymous';
-        img.src = `${API_BASE}/${template.baseImagePath}`;
+        img.src = resolveUrl(template.baseImagePath);
         img.onload = () => {
             baseImgRef.current = img;
             setBaseLoaded(true);

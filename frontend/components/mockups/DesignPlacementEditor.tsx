@@ -22,7 +22,12 @@ interface EditorProps {
     onCancel: () => void;
 }
 
-const resolveUrl = (p: string) => p.startsWith('http') ? p : `${API_BASE}/${p}`;
+const resolveUrl = (p: string) => {
+    if (!p) return '';
+    if (p.startsWith('http://localhost:3000')) return p.replace('http://localhost:3000', '');
+    if (p.startsWith('http')) return p;
+    return p.startsWith('/') ? p : `/${p}`;
+};
 
 export default function DesignPlacementEditor({ template, designUrl, onSave, onCancel }: EditorProps) {
     const config = template.configJson || {};
@@ -37,6 +42,7 @@ export default function DesignPlacementEditor({ template, designUrl, onSave, onC
     const [baseImg, setBaseImg] = useState<HTMLImageElement | null>(null);
     const [designImg, setDesignImg] = useState<HTMLImageElement | null>(null);
     const [maskImg, setMaskImg] = useState<HTMLImageElement | null>(null);
+    const [loadError, setLoadError] = useState(false);
 
     // Konva Refs
     const designNodeRef = useRef<Konva.Image>(null);
@@ -44,31 +50,69 @@ export default function DesignPlacementEditor({ template, designUrl, onSave, onC
 
     // Initial load
     useEffect(() => {
-        const loadImg = (src: string, setter: (img: HTMLImageElement) => void) => {
+        // Load local assets WITHOUT crossOrigin (backend serves them with CORS headers)
+        const loadLocal = (src: string, setter: (img: HTMLImageElement) => void) => {
             const img = new Image();
-            img.crossOrigin = 'Anonymous';
-            img.onload = () => setter(img);
+            img.onload = () => {
+                console.log('[DesignPlacementEditor] LOCAL loaded:', img.src, img.width, img.height);
+                setter(img);
+            };
+            img.onerror = (e) => console.error('Failed to load local:', src, e);
+            img.src = src.startsWith('http') ? src : `http://localhost:3000/${src.startsWith('/') ? src.slice(1) : src}`;
+        };
+
+        // Load external assets WITH crossOrigin (fal.media etc)
+        const loadExternal = (src: string, setter: (img: HTMLImageElement) => void) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                console.log('[DesignPlacementEditor] EXTERNAL loaded:', img.src, img.width, img.height);
+                setter(img);
+            };
+            img.onerror = (e) => console.error('Failed to load external:', src, e);
             img.src = src;
         };
 
-        if (template.baseImagePath) loadImg(resolveUrl(template.baseImagePath), setBaseImg);
-        if (designUrl) loadImg(resolveUrl(designUrl), setDesignImg);
-        if (template.maskImagePath) loadImg(resolveUrl(template.maskImagePath), setMaskImg);
+        const isExternal = (src: string) => src.startsWith('https://') && !src.includes('localhost');
+
+        if (template.baseImagePath) {
+            const url = resolveUrl(template.baseImagePath);
+            isExternal(url) ? loadExternal(url, setBaseImg) : loadLocal(url, setBaseImg);
+        }
+        if (designUrl) {
+            const url = resolveUrl(designUrl);
+            isExternal(url) ? loadExternal(url, setDesignImg) : loadLocal(url, setDesignImg);
+        }
+        if (template.maskImagePath) {
+            const url = resolveUrl(template.maskImagePath);
+            isExternal(url) ? loadExternal(url, setMaskImg) : loadLocal(url, setMaskImg);
+        }
     }, [template, designUrl]);
 
     // Responsive container
     useEffect(() => {
         const updateSize = () => {
             if (containerRef.current) {
-                setContainerSize({
-                    width: containerRef.current.clientWidth,
-                    height: containerRef.current.clientHeight
-                });
+                const rect = containerRef.current.getBoundingClientRect();
+                if (rect.width > 0) {
+                    setContainerSize({ width: rect.width, height: rect.height });
+                }
             }
         };
+
+        // Try immediately
         updateSize();
+
+        // Also try after a short delay (DOM may not be ready)
+        const timer = setTimeout(updateSize, 100);
+        const timer2 = setTimeout(updateSize, 500);
+
         window.addEventListener('resize', updateSize);
-        return () => window.removeEventListener('resize', updateSize);
+        return () => {
+            window.removeEventListener('resize', updateSize);
+            clearTimeout(timer);
+            clearTimeout(timer2);
+        };
     }, []);
 
     // Attach transformer
@@ -79,7 +123,24 @@ export default function DesignPlacementEditor({ template, designUrl, onSave, onC
         }
     }, [designImg]);
 
-    if (!baseImg || !designImg || !containerSize.width) {
+    if (loadError) {
+        return (
+            <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center">
+                <div className="text-white text-center">
+                    <p className="text-red-400 mb-2">Failed to load template image</p>
+                    <button onClick={onCancel} className="px-4 py-2 bg-blue-600 rounded">Close</button>
+                </div>
+            </div>
+        );
+    }
+
+    console.log('[DesignPlacementEditor] Render check:', {
+        hasBase: !!baseImg,
+        hasDesign: !!designImg,
+        containerWidth: containerSize.width
+    });
+
+    if (!baseImg || !designImg) {
         return (
             <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center">
                 <div className="text-white flex items-center gap-3">
@@ -90,9 +151,23 @@ export default function DesignPlacementEditor({ template, designUrl, onSave, onC
         );
     }
 
+    if (!designUrl || !designImg) {
+        return (
+            <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center">
+                <div className="text-center text-slate-400">
+                    <p className="text-lg font-medium text-white mb-2">No design selected</p>
+                    <p className="text-sm">Pick a design from the gallery first, then open the editor.</p>
+                    <button onClick={onCancel} className="mt-6 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors">
+                        Close
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     // Calculations to fit base image into the container correctly
-    const scaleToFitX = containerSize.width / baseImg.width;
-    const scaleToFitY = containerSize.height / baseImg.height;
+    const scaleToFitX = (containerSize.width || 800) / baseImg.width;
+    const scaleToFitY = (containerSize.height || 600) / baseImg.height;
     const stageScale = Math.min(scaleToFitX, scaleToFitY) * 0.95; // 95% to leave some padding
 
     const stageWidth = baseImg.width * stageScale;

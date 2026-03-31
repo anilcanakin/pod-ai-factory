@@ -3,6 +3,7 @@ const router = express.Router();
 const { fal } = require('@fal-ai/client');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const { logNotification } = require('./notification.routes');
 
 fal.config({ 
     credentials: process.env.FAL_API_KEY || process.env.FAL_KEY 
@@ -56,6 +57,7 @@ router.post('/remove-bg', async (req, res) => {
             : model === 'pixelcut' ? 'Pixelcut'
             : 'BiRefNet';
 
+        logNotification(workspaceId, 'success', `Background removed — ${modelLabel}`, { model: modelLabel });
         res.json({
             url: outputUrl,
             model: modelLabel
@@ -107,6 +109,44 @@ router.post('/upscale', async (req, res) => {
 
     } catch (err) {
         console.error('[Upscale]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/tools/vectorize
+router.post('/vectorize', async (req, res) => {
+    try {
+        const { imageUrl } = req.body;
+        if (!imageUrl) return res.status(400).json({ error: 'imageUrl is required' });
+
+        const workspaceId = req.workspaceId;
+        if (!workspaceId) return res.status(401).json({ error: 'Authentication required.' });
+
+        const result = await fal.subscribe('fal-ai/recraft-v3', {
+            input: {
+                prompt: 'vector illustration, clean vector art, solid colors, minimal',
+                style: 'vector_illustration',
+                image_url: imageUrl,
+            }
+        });
+
+        console.log('[Vectorize] Raw result:', JSON.stringify(result, null, 2));
+
+        const outputUrl = result?.data?.images?.[0]?.url
+            || result?.images?.[0]?.url
+            || result?.data?.image?.url
+            || result?.image?.url
+            || null;
+
+        if (!outputUrl) {
+            return res.status(500).json({ error: 'No output image returned from model' });
+        }
+
+        logNotification(workspaceId, 'success', 'Vector conversion completed', { model: 'Recraft v3' });
+        res.json({ url: outputUrl, model: 'Recraft v3' });
+
+    } catch (err) {
+        console.error('[Vectorize]', err);
         res.status(500).json({ error: err.message });
     }
 });

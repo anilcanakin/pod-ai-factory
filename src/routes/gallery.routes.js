@@ -20,6 +20,55 @@ const FAILED_PLACEHOLDER = 'data:image/svg+xml;base64,' + Buffer.from(
     '</svg>'
 ).toString('base64');
 
+// POST /api/gallery/save-mockup — save a rendered mockup URL as a GalleryImage record
+router.post('/save-mockup', async (req, res) => {
+    try {
+        const { imageUrl } = req.body;
+        if (!imageUrl) return res.status(400).json({ error: 'imageUrl is required' });
+        if (!req.workspaceId) return res.status(401).json({ error: 'Authentication required' });
+
+        // Find or create a persistent "Mockup Gallery" job for this workspace
+        let job = await prisma.designJob.findFirst({
+            where: { workspaceId: req.workspaceId, mode: 'mockup_gallery' }
+        });
+        if (!job) {
+            job = await prisma.designJob.create({
+                data: {
+                    workspaceId: req.workspaceId,
+                    originalImage: 'mockup_gallery',
+                    mode: 'mockup_gallery',
+                    status: 'COMPLETED',
+                    basePrompt: 'Mockup Gallery',
+                }
+            });
+        }
+
+        const image = await prisma.image.create({
+            data: {
+                jobId: job.id,
+                variantType: 'mockup',
+                promptUsed: 'Mockup render',
+                engine: 'mockup',
+                imageUrl,
+                status: 'COMPLETED',
+                isApproved: true,
+                cost: 0,
+            }
+        });
+
+        res.json({
+            id: image.id,
+            imageUrl: image.imageUrl,
+            status: image.status,
+            isApproved: image.isApproved,
+            createdAt: image.createdAt,
+        });
+    } catch (err) {
+        console.error('[Gallery save-mockup]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET /api/gallery/recent — latest 100 images across all jobs (workspace-scoped)
 router.get('/recent', async (req, res) => {
     try {

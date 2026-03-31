@@ -5,7 +5,7 @@ import { apiSeo, type EtsySEO } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
-    Upload, X, Sparkles, Loader2, Copy, Check, Tag
+    Upload, X, Sparkles, Loader2, Copy, Check, Tag, AlertTriangle
 } from 'lucide-react';
 
 export function SEOClient() {
@@ -77,7 +77,7 @@ export function SEOClient() {
 
     const copyAll = async () => {
         if (!result) return;
-        const text = `TITLE:\n${result.title}\n\nDESCRIPTION:\n${result.description}\n\nTAGS:\n${result.tags.join(', ')}`;
+        const text = `${result.title}\n\n${result.description}\n\n${result.tags.join(', ')}`;
         await navigator.clipboard.writeText(text);
         setCopied('all');
         setTimeout(() => setCopied(null), 2000);
@@ -299,6 +299,51 @@ export function SEOClient() {
                             </p>
                         </div>
                     </div>
+
+                    {/* Etsy Checklist */}
+                    {(() => {
+                        const titleOk = result.title.length <= 140;
+                        const tagOk = result.tags.length === 13;
+                        const descWords = result.description.trim().split(/\s+/).filter(Boolean).length;
+                        const descOk = descWords >= 150 && descWords <= 300;
+                        const allText = (result.title + ' ' + result.description).toLowerCase();
+                        const wordFreq: Record<string, number> = {};
+                        allText.split(/\s+/).forEach(w => {
+                            const clean = w.replace(/[^a-z]/g, '');
+                            if (clean.length > 3) wordFreq[clean] = (wordFreq[clean] || 0) + 1;
+                        });
+                        const stuffed = Object.entries(wordFreq).filter(([, c]) => c > 5).map(([w]) => w);
+                        const noStuffing = stuffed.length === 0;
+
+                        const CheckRow = ({ ok, warn, label }: { ok: boolean; warn?: boolean; label: string }) => (
+                            <div className="flex items-center gap-2.5 text-xs">
+                                {ok ? (
+                                    <Check className="w-3.5 h-3.5 text-success shrink-0" />
+                                ) : warn ? (
+                                    <AlertTriangle className="w-3.5 h-3.5 text-warn shrink-0" />
+                                ) : (
+                                    <X className="w-3.5 h-3.5 text-danger shrink-0" />
+                                )}
+                                <span className={ok ? 'text-text-secondary' : warn ? 'text-warn' : 'text-danger'}>{label}</span>
+                            </div>
+                        );
+
+                        return (
+                            <div className="bg-bg-elevated rounded-[12px] border border-border-default overflow-hidden">
+                                <div className="px-4 py-3 border-b border-border-default bg-bg-surface">
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-bg-overlay text-text-secondary border border-border-default uppercase tracking-wider">
+                                        Etsy Checklist
+                                    </span>
+                                </div>
+                                <div className="p-4 space-y-2.5">
+                                    <CheckRow ok={titleOk} label={titleOk ? `Title ≤ 140 chars (${result.title.length})` : `Title too long — ${result.title.length}/140 chars`} />
+                                    <CheckRow ok={tagOk} label={tagOk ? '13 tags used ✓' : `Only ${result.tags.length} tags — Etsy allows 13`} />
+                                    <CheckRow ok={descOk} warn={descWords < 150} label={descOk ? `Description ${descWords} words (150–300 ✓)` : descWords < 150 ? `Description too short — ${descWords} words (aim for 150+)` : `Description too long — ${descWords} words (keep ≤ 300)`} />
+                                    <CheckRow ok={noStuffing} warn={!noStuffing} label={noStuffing ? 'No keyword stuffing detected' : `Possible stuffing: ${stuffed.slice(0, 3).join(', ')}`} />
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
         </div>

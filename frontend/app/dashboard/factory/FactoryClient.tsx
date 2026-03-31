@@ -9,9 +9,10 @@ import {
     Loader2, ArrowRight, Upload, X, Sparkles, Wand2,
     Zap, CheckCircle, Image as ImageIcon, Cpu, Eye, Palette,
     Brush, Layers, ChevronDown, ChevronUp, Pencil, Trash2,
-    Scissors, ZoomIn, Download, RotateCcw, Tag, Copy
+    Scissors, ZoomIn, Download, RotateCcw, Tag, Copy, Clock
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 const STYLE_PRESETS = [
   { 
@@ -92,6 +93,8 @@ const PROMPT_TEMPLATES = [
 ];
 
 export function FactoryClient() {
+    const router = useRouter();
+
     // ── State ──────────────────────────────────────────────────
     const [refImages, setRefImages] = useState<string[]>([]);
     const [mainPrompt, setMainPrompt] = useState('');
@@ -134,6 +137,26 @@ export function FactoryClient() {
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
+
+    // Prompt history
+    const [showHistory, setShowHistory] = useState(false);
+    const [promptHistory, setPromptHistory] = useState<string[]>(() => {
+        if (typeof window === 'undefined') return [];
+        try { return JSON.parse(localStorage.getItem('prompt_history') || '[]'); } catch { return []; }
+    });
+
+    const saveToHistory = (prompt: string) => {
+        if (!prompt.trim()) return;
+        const updated = [prompt.trim(), ...promptHistory.filter(p => p !== prompt.trim())].slice(0, 10);
+        setPromptHistory(updated);
+        localStorage.setItem('prompt_history', JSON.stringify(updated));
+    };
+
+    const clearHistory = () => {
+        setPromptHistory([]);
+        localStorage.removeItem('prompt_history');
+        setShowHistory(false);
+    };
 
     // ── Image compression (reuse existing Canvas logic) ───────
     const processFile = (file: File) => {
@@ -282,6 +305,7 @@ export function FactoryClient() {
     const startGeneration = async () => {
         const selectedPrompts = getSelectedPrompts();
         if (selectedPrompts.length === 0) return toast.error('No prompts selected for generation.');
+        if (mainPrompt.trim()) saveToHistory(mainPrompt);
         setIsGenerating(true);
         try {
             const data = await apiFactory.generate({
@@ -463,10 +487,50 @@ export function FactoryClient() {
                     <section>
                         <div className="flex items-center justify-between mb-2">
                             <label className="text-xs font-semibold uppercase tracking-wider text-text-tertiary block">Generation Prompt</label>
-                            
+
+                            <div className="flex items-center gap-1.5">
+                            {/* History Dropdown Button */}
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowHistory(!showHistory)}
+                                    className="flex items-center gap-1.5 text-[10px] font-medium text-text-tertiary hover:text-text-primary transition-colors bg-bg-elevated/50 px-2.5 py-1 rounded-[6px] border border-border-default"
+                                >
+                                    <Clock className="w-3 h-3" /> History {promptHistory.length > 0 && <span className="text-accent">({promptHistory.length})</span>}
+                                </button>
+                                {showHistory && (
+                                    <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setShowHistory(false)} />
+                                        <div className="absolute top-full right-0 mt-2 w-72 bg-bg-elevated border border-border-strong rounded-[10px] shadow-xl z-20 py-1.5 overflow-hidden">
+                                            <div className="px-3 py-1.5 border-b border-border-default mb-1.5">
+                                                <p className="text-xs font-semibold text-text-primary">Prompt History</p>
+                                                <p className="text-[10px] text-text-tertiary">Click to restore a previous prompt</p>
+                                            </div>
+                                            {promptHistory.length === 0 ? (
+                                                <p className="px-3 py-3 text-xs text-text-tertiary">No history yet. Generate something first.</p>
+                                            ) : (
+                                                <div className="max-h-[250px] overflow-y-auto scrollbar-thin">
+                                                    {promptHistory.map((p, i) => (
+                                                        <button
+                                                            key={i}
+                                                            className="w-full text-left px-3 py-2 hover:bg-bg-overlay transition-colors border-b border-border-default/50 last:border-0"
+                                                            onClick={() => { setMainPrompt(p); setActivePreset(null); setShowHistory(false); }}
+                                                        >
+                                                            <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed">{p}</p>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <div className="px-3 pt-1.5 border-t border-border-default mt-1">
+                                                <button onClick={clearHistory} className="text-[10px] text-danger hover:underline">Clear history</button>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
                             {/* Templates Dropdown Button */}
                             <div className="relative">
-                                <button 
+                                <button
                                     onClick={() => setShowTemplates(!showTemplates)}
                                     className="flex items-center gap-1.5 text-[10px] font-medium text-accent hover:text-accent-hover transition-colors bg-accent-subtle/50 px-2.5 py-1 rounded-[6px] border border-accent/20"
                                 >
@@ -501,6 +565,7 @@ export function FactoryClient() {
                                     </>
                                 )}
                             </div>
+                            </div>{/* end buttons row */}
                         </div>
 
                         {/* Style Presets (pill list) */}
@@ -868,6 +933,15 @@ export function FactoryClient() {
                                                     className="ml-auto flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs rounded-[6px] border border-border-default transition-colors"
                                                 >
                                                     <Download className="w-3 h-3" />
+                                                </button>
+
+                                                {/* To Mockup */}
+                                                <button
+                                                    onClick={() => router.push(`/dashboard/mockups?designUrl=${encodeURIComponent(displayUrl)}&designImageId=${img.id}`)}
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-accent-subtle text-text-secondary hover:text-accent text-xs rounded-[6px] border border-border-default hover:border-accent/30 transition-colors"
+                                                >
+                                                    <Layers className="w-3 h-3" />
+                                                    To Mockup
                                                 </button>
                                             </div>
 

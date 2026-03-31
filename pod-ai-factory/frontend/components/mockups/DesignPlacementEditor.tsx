@@ -32,6 +32,7 @@ export default function DesignPlacementEditor({ template, designUrl, onSave, onC
     // UI Layout state
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+    const [zoom, setZoom] = useState(1);
 
     // Image objects
     const [baseImg, setBaseImg] = useState<HTMLImageElement | null>(null);
@@ -93,7 +94,7 @@ export default function DesignPlacementEditor({ template, designUrl, onSave, onC
     // Calculations to fit base image into the container correctly
     const scaleToFitX = containerSize.width / baseImg.width;
     const scaleToFitY = containerSize.height / baseImg.height;
-    const stageScale = Math.min(scaleToFitX, scaleToFitY) * 0.95; // 95% to leave some padding
+    const stageScale = Math.min(scaleToFitX, scaleToFitY) * 0.95 * zoom; // 95% to leave some padding
 
     const stageWidth = baseImg.width * stageScale;
     const stageHeight = baseImg.height * stageScale;
@@ -181,7 +182,11 @@ export default function DesignPlacementEditor({ template, designUrl, onSave, onC
             </div>
 
             {/* Canvas Container */}
-            <div className="flex-1 relative flex items-center justify-center p-8" ref={containerRef}>
+            <div className="flex-1 relative flex items-center justify-center p-8" ref={containerRef} onWheel={(e) => {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                setZoom(z => Math.max(0.25, Math.min(3, z + delta)));
+            }}>
                 <div
                     className="relative shadow-2xl bg-black rounded overflow-hidden ring-1 ring-white/10"
                     style={{ width: stageWidth, height: stageHeight }}
@@ -261,6 +266,22 @@ export default function DesignPlacementEditor({ template, designUrl, onSave, onC
                             />
                         </Layer>
                     </Stage>
+                </div>
+                {/* Zoom Controls */}
+                <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/60 rounded-lg px-3 py-2 backdrop-blur-sm">
+                    <button
+                        onClick={() => setZoom(z => Math.max(0.25, z - 0.25))}
+                        className="text-white hover:text-blue-400 text-lg font-bold w-6 h-6 flex items-center justify-center"
+                    >−</button>
+                    <span className="text-white text-xs font-mono w-12 text-center">{Math.round(zoom * 100)}%</span>
+                    <button
+                        onClick={() => setZoom(z => Math.min(3, z + 0.25))}
+                        className="text-white hover:text-blue-400 text-lg font-bold w-6 h-6 flex items-center justify-center"
+                    >+</button>
+                    <button
+                        onClick={() => setZoom(1)}
+                        className="text-white hover:text-blue-400 text-xs ml-1"
+                    >Reset</button>
                 </div>
             </div>
         </div>

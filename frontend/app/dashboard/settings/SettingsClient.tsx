@@ -43,6 +43,22 @@ export function SettingsClient() {
     const [keyValue, setKeyValue] = React.useState('');
     const [saving, setSaving] = React.useState(false);
 
+    // Daily spend limit (localStorage)
+    const [dailyLimit, setDailyLimit] = React.useState<string>('5.00');
+    const [limitSaved, setLimitSaved] = React.useState(false);
+    React.useEffect(() => {
+        const stored = localStorage.getItem('fal_daily_limit');
+        if (stored) setDailyLimit(stored);
+    }, []);
+    const handleSaveLimit = () => {
+        const val = parseFloat(dailyLimit);
+        if (isNaN(val) || val <= 0) { toast.error('Enter a valid positive number'); return; }
+        localStorage.setItem('fal_daily_limit', val.toFixed(2));
+        setLimitSaved(true);
+        setTimeout(() => setLimitSaved(false), 2000);
+        toast.success(`Daily spend limit set to $${val.toFixed(2)}`);
+    };
+
     // SEO Knowledge Base
     const [seoKnowledge, setSeoKnowledge] = React.useState('');
     const [seoHistory, setSeoHistory] = React.useState<Array<{
@@ -248,6 +264,47 @@ export function SettingsClient() {
                             />
                         </div>
                     </div>
+                </div>
+            </div>
+
+            {/* Daily Spend Limit */}
+            <div className="bg-[#1e293b] border border-slate-700 rounded-xl overflow-hidden mt-7">
+                <div className="px-5 py-4 border-b border-slate-700">
+                    <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                        <LineChart className="w-4 h-4 text-yellow-400" /> Daily Spend Limit
+                    </h2>
+                </div>
+                <div className="p-5 space-y-3">
+                    <p className="text-xs text-slate-400">
+                        Set a daily spend target shown in the Overview header. This is a local display limit — it does not block generation.
+                    </p>
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                            <input
+                                type="number"
+                                min="0.01"
+                                step="0.5"
+                                value={dailyLimit}
+                                onChange={e => setDailyLimit(e.target.value)}
+                                className="w-32 pl-7 pr-3 py-2 bg-[#0f172a] border border-slate-700 rounded-lg text-sm text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-yellow-500/50"
+                            />
+                        </div>
+                        <button
+                            onClick={handleSaveLimit}
+                            className={cn(
+                                'px-4 py-2 text-xs font-medium rounded-lg border transition-colors',
+                                limitSaved
+                                    ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-400'
+                                    : 'bg-slate-700 hover:bg-slate-600 border-slate-600 text-slate-200'
+                            )}
+                        >
+                            {limitSaved ? '✓ Saved' : 'Save Limit'}
+                        </button>
+                    </div>
+                    <p className="text-[10px] text-slate-500">
+                        Stored in browser localStorage as <code className="bg-slate-800 px-1 rounded">fal_daily_limit</code>. Displayed as the cap in Overview and header spend indicators.
+                    </p>
                 </div>
             </div>
 

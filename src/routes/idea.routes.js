@@ -6,11 +6,13 @@ const csv = require('csv-parser');
 const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
+const Anthropic = require('@anthropic-ai/sdk');
 
 const riskService = require('../services/risk.service');
 const { VISION_SCHEMA } = require('../services/vision.service');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const prisma = new PrismaClient();
 
 // POST /api/ideas/generate
@@ -189,6 +191,72 @@ router.post('/:id/factory', async (req, res) => {
 
     } catch (err) {
         console.error('Send to factory error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/ideas/generate-bulk
+// Generates 5 ideas from a niche keyword using Claude Haiku
+router.post('/generate-bulk', async (req, res) => {
+    try {
+        const { niche } = req.body;
+        if (!niche || typeof niche !== 'string' || !niche.trim()) {
+            return res.status(400).json({ error: 'niche is required' });
+        }
+
+        const styleOptions = VISION_SCHEMA.json_schema.schema.properties.style.enum;
+
+        const message = await anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 1024,
+            messages: [{
+                role: 'user',
+                content: `You are a top-tier POD (Print-On-Demand) designer. Generate exactly 5 unique design ideas for the niche: "${niche.trim()}".
+DO NOT include any trademarks or copyrighted characters.
+Output strict JSON array ONLY (no markdown, no explanation):
+[
+  {
+    "niche": "snake_case_niche",
+    "mainKeyword": "buyer search phrase",
+    "persona": "target buyer description",
+    "hook": "catchy text for the design",
+    "iconFamily": ["icon1", "icon2"],
+    "styleEnum": "ONE OF: ${styleOptions.join(', ')}"
+  }
+]`
+            }]
+        });
+
+        const jsonStr = message.content[0].text.trim();
+        let ideas;
+        try {
+            ideas = JSON.parse(jsonStr);
+        } catch {
+            const cleaned = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+            ideas = JSON.parse(cleaned);
+        }
+
+        const savedIdeas = [];
+        for (const idea of ideas) {
+            if (idea && typeof idea === 'object' && riskService.isIdeaSafe(idea)) {
+                const created = await prisma.idea.create({
+                    data: {
+                        niche: idea.niche || niche.trim(),
+                        mainKeyword: idea.mainKeyword || '',
+                        persona: idea.persona || '',
+                        hook: idea.hook || '',
+                        iconFamily: Array.isArray(idea.iconFamily) ? idea.iconFamily : [],
+                        styleEnum: idea.styleEnum && styleOptions.includes(idea.styleEnum) ? idea.styleEnum : 'other_pod_style',
+                        status: 'PENDING',
+                    }
+                });
+                savedIdeas.push(created);
+            }
+        }
+
+        res.json({ message: `Generated ${savedIdeas.length} ideas for "${niche}"`, ideas: savedIdeas });
+    } catch (err) {
+        console.error('Ideas generate-bulk error:', err);
         res.status(500).json({ error: err.message });
     }
 });

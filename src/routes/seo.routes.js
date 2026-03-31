@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { expandKeywords, getGoogleTrends } = require('../services/keyword-research.service');
 const { getKnowledge } = require('../services/seo-knowledge.service');
+const { logNotification } = require('./notification.routes');
 
 function extractSeedKeywords(description, focusKeyword) {
     const seeds = [];
@@ -120,6 +121,7 @@ The tags MUST include keywords from the "Real Etsy search suggestions" list.`;
         parsed.title = parsed.title.slice(0, 140);
         parsed.tags = parsed.tags.slice(0, 13);
 
+        logNotification(req.workspaceId, 'success', `SEO generated: "${parsed.title.slice(0, 60)}…"`, { tagCount: parsed.tags.length });
         res.json({
             title: parsed.title,
             description: parsed.description,

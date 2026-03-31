@@ -196,9 +196,18 @@ function GalleryInner() {
     const clearSelect = () => { setSelected(new Set()); setLastSelectedIdx(null); };
 
     const bulkApprove = async () => {
-        for (const id of selected) { try { await apiGallery.approve(id); } catch { } }
+        const ids = Array.from(selected);
+        let done = 0;
+        for (const id of ids) {
+            try {
+                await apiGallery.approve(id);
+                done++;
+                toast.loading(`Approving ${done} of ${ids.length}…`, { id: 'bulk-approve' });
+            } catch { }
+        }
+        toast.dismiss('bulk-approve');
         queryClient.invalidateQueries({ queryKey: ['gallery', activeJobId] });
-        toast.success(`Approved ${selected.size} images`);
+        toast.success(`Approved ${done} images`);
         clearSelect();
     };
 
@@ -384,7 +393,7 @@ function GalleryInner() {
                                         <>
                                             <button onClick={clearSelect} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors bg-bg-base">Clear</button>
                                             <button onClick={bulkApprove} className="flex items-center gap-1.5 px-3 py-1.5 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-xs font-medium rounded-[6px] border border-[rgba(34,197,94,0.20)] transition-colors">
-                                                <CheckCircle className="w-3.5 h-3.5" /> Approve
+                                                <CheckCircle className="w-3.5 h-3.5" /> Approve ({selected.size})
                                             </button>
                                             <button onClick={() => setBulkConfirm('reject')} className="flex items-center gap-1.5 px-3 py-1.5 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-xs font-medium rounded-[6px] border border-[rgba(239,68,68,0.20)] transition-colors">
                                                 <XCircle className="w-3.5 h-3.5" /> Reject

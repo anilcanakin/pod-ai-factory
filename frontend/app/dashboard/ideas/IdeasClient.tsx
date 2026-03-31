@@ -7,7 +7,11 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { FileDropzone } from '@/components/shared/FileDropzone';
-import { Lightbulb, Upload, RefreshCw, CheckCircle, XCircle, Factory, AlertTriangle, Loader2 } from 'lucide-react';
+import { Lightbulb, Upload, RefreshCw, CheckCircle, XCircle, Factory, AlertTriangle, Loader2, Sparkles, TrendingUp } from 'lucide-react';
+
+const TRENDING_NICHES = [
+    'Patriotic 1776', 'Retro Nature', 'Cottagecore', 'Dark Academia', 'Vintage Sports',
+];
 
 export function IdeasClient() {
     const queryClient = useQueryClient();
@@ -15,6 +19,8 @@ export function IdeasClient() {
     const [csvFile, setCsvFile] = useState<File | null>(null);
     const [sortField, setSortField] = useState<keyof Idea>('status');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+    const [nicheInput, setNicheInput] = useState('');
+    const [bulkGenerating, setBulkGenerating] = useState(false);
 
     const { data: ideas = [], isLoading } = useQuery({
         queryKey: ['ideas'],
@@ -50,6 +56,21 @@ export function IdeasClient() {
             toast.error(err instanceof Error ? err.message : 'Generation failed');
         } finally {
             setUploading(false);
+        }
+    };
+
+    const handleGenerateBulk = async () => {
+        if (!nicheInput.trim()) { toast.error('Enter a niche first'); return; }
+        setBulkGenerating(true);
+        try {
+            const result = await apiIdeas.generateBulk(nicheInput.trim());
+            toast.success(result.message || '5 ideas generated!');
+            queryClient.invalidateQueries({ queryKey: ['ideas'] });
+            setNicheInput('');
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Generation failed');
+        } finally {
+            setBulkGenerating(false);
         }
     };
 
@@ -94,6 +115,50 @@ export function IdeasClient() {
                     {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                     {uploading ? 'Generating…' : 'Import & Generate'}
                 </button>
+            </div>
+
+            {/* Generate from Niche */}
+            <div className="bg-[#1e293b] border border-slate-700 rounded-xl p-5 space-y-4">
+                <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" /> Generate from Niche
+                </h2>
+                <div>
+                    <p className="text-xs text-slate-400 mb-2">Trending niches:</p>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                        {TRENDING_NICHES.map(n => (
+                            <button
+                                key={n}
+                                onClick={() => setNicheInput(n)}
+                                className={cn(
+                                    'text-xs px-2.5 py-1 rounded-full border transition-colors',
+                                    nicheInput === n
+                                        ? 'bg-emerald-600/30 border-emerald-500/50 text-emerald-300'
+                                        : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                                )}
+                            >
+                                {n}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={nicheInput}
+                            onChange={e => setNicheInput(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleGenerateBulk()}
+                            placeholder="or type a custom niche…"
+                            className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                        />
+                        <button
+                            onClick={handleGenerateBulk}
+                            disabled={bulkGenerating || !nicheInput.trim()}
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/40 text-white text-sm font-medium rounded-lg transition-colors"
+                        >
+                            {bulkGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                            {bulkGenerating ? 'Generating…' : 'Generate 5 Ideas'}
+                        </button>
+                    </div>
+                </div>
             </div>
 
             {/* Ideas Table */}

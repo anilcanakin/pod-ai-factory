@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiAnalytics, type PerformanceRecord } from '@/lib/api';
+import { apiAnalytics, apiDashboard, type PerformanceRecord } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn, formatNumber, truncateId } from '@/lib/utils';
 import { StatCard } from '@/components/shared/StatCard';
@@ -10,7 +10,8 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { FileDropzone } from '@/components/shared/FileDropzone';
 import {
     BarChart3, Eye, MousePointerClick, Heart, ShoppingBag,
-    DollarSign, TrendingUp, Upload, Loader2, ChevronUp, ChevronDown
+    DollarSign, TrendingUp, Upload, Loader2, ChevronUp, ChevronDown,
+    Trophy, FileDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
@@ -32,6 +33,12 @@ export function AnalyticsClient() {
     const { data: performances = [], isLoading } = useQuery({
         queryKey: ['analytics', 'performance'],
         queryFn: apiAnalytics.getPerformance,
+        staleTime: 60000,
+    });
+
+    const { data: dash } = useQuery({
+        queryKey: ['dashboard'],
+        queryFn: apiDashboard.get,
         staleTime: 60000,
     });
 
@@ -68,6 +75,41 @@ export function AnalyticsClient() {
     const totalFavorites = performances.reduce((s, p) => s + p.favorites, 0);
     const totalOrders = performances.reduce((s, p) => s + p.orders, 0);
     const conversionRate = totalVisits > 0 ? ((totalOrders / totalVisits) * 100).toFixed(1) : '0';
+
+    // Top listing by score
+    const topListing = performances.length > 0
+        ? performances.reduce((best, p) => p.score > best.score ? p : best, performances[0])
+        : null;
+
+    // Cost per approved image from weekly stats
+    const weeklyStats = dash?.weeklyStats ?? [];
+    const totalWeeklySpend = weeklyStats.reduce((s, d) => s + d.spend, 0);
+    const totalWeeklyApproved = weeklyStats.reduce((s, d) => s + d.approved, 0);
+    const costPerApproved = totalWeeklyApproved > 0 ? `$${(totalWeeklySpend / totalWeeklyApproved).toFixed(3)}` : '—';
+
+    // This week vs last week (from weekly stats last 14 days)
+    const thisWeekImages = weeklyStats.slice(-7).reduce((s, d) => s + d.images, 0);
+    const lastWeekImages = weeklyStats.slice(-14, -7).reduce((s, d) => s + d.images, 0);
+    const weeklyDiffPct = lastWeekImages > 0
+        ? Math.round(((thisWeekImages - lastWeekImages) / lastWeekImages) * 100)
+        : null;
+
+    // CSV export
+    const exportCSV = () => {
+        const headers = ['SKU', 'Impressions', 'Visits', 'Favorites', 'Orders', 'Score', 'Flag'];
+        const rows = sorted.map(p => [
+            p.sku || p.imageId, p.impressions, p.visits,
+            p.favorites, p.orders, p.score, p.flag || ''
+        ].join(','));
+        const csv = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
 
     const SortIcon = ({ field }: { field: keyof PerformanceRecord }) => {
         if (sortField !== field) return <ChevronUp className="w-3 h-3 opacity-30" />;
@@ -112,8 +154,67 @@ export function AnalyticsClient() {
             {/* Extra stats */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <StatCard label="Conversion Rate" value={conversionRate} icon={TrendingUp} color="green" loading={isLoading} suffix="%" />
-                <StatCard label="Daily Spend" value="$0.00" icon={DollarSign} color="yellow" loading={false} />
+                <StatCard label="Cost / Approved" value={costPerApproved} icon={DollarSign} color="yellow" loading={false} />
                 <StatCard label="ROI Estimate" value="—" icon={TrendingUp} color="purple" loading={false} />
+            </div>
+
+            {/* Insights row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Best performing listing */}
+                <div className="bg-[#1e293b] border border-yellow-500/20 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                        <Trophy className="w-4 h-4 text-yellow-400" />
+                        <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Best Listing</h3>
+                    </div>
+                    {topListing ? (
+                        <div>
+                            <p className="text-sm font-mono text-slate-200 truncate">{topListing.sku || truncateId(topListing.imageId)}</p>
+                            <p className="text-xs text-slate-500 mt-1">Score <span className="text-yellow-400 font-bold">{topListing.score}</span> · {topListing.orders} orders · {formatNumber(topListing.impressions)} impr.</p>
+                        </div>
+                    ) : (
+                        <p className="text-xs text-slate-500">No data yet</p>
+                    )}
+                </div>
+
+                {/* This week vs last week */}
+                <div className="bg-[#1e293b] border border-slate-700 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                        <BarChart3 className="w-4 h-4 text-blue-400" />
+                        <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wide">This Week vs Last</h3>
+                    </div>
+                    <div className="flex items-end gap-2">
+                        <span className="text-2xl font-bold text-slate-200">{thisWeekImages}</span>
+                        <span className="text-xs text-slate-500 mb-1">images</span>
+                        {weeklyDiffPct !== null && (
+                            <span className={cn(
+                                'flex items-center gap-0.5 text-xs font-medium mb-1',
+                                weeklyDiffPct >= 0 ? 'text-emerald-400' : 'text-red-400'
+                            )}>
+                                {weeklyDiffPct >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                                {Math.abs(weeklyDiffPct)}%
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">Last week: {lastWeekImages} images</p>
+                </div>
+
+                {/* Export CSV */}
+                <div className="bg-[#1e293b] border border-slate-700 rounded-xl p-4 flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <FileDown className="w-4 h-4 text-green-400" />
+                            <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Export Analytics</h3>
+                        </div>
+                        <p className="text-xs text-slate-500">{performances.length} records as CSV</p>
+                    </div>
+                    <button
+                        onClick={exportCSV}
+                        disabled={performances.length === 0}
+                        className="mt-3 w-full flex items-center justify-center gap-2 py-2 bg-green-700/80 hover:bg-green-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-colors"
+                    >
+                        <FileDown className="w-3.5 h-3.5" /> Download CSV
+                    </button>
+                </div>
             </div>
 
             {/* Performance Table */}

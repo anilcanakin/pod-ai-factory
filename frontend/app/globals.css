@@ -69,6 +69,28 @@
   * {
     border-color: rgba(255,255,255,0.06);
   }
+
+  /* ── Light mode overrides ── */
+  html.light {
+    color-scheme: light;
+    --color-bg-base: #f8fafc;
+    --color-bg-surface: #f1f5f9;
+    --color-bg-elevated: #ffffff;
+    --color-bg-overlay: #e2e8f0;
+    --color-border-subtle: rgba(0,0,0,0.06);
+    --color-border-default: rgba(0,0,0,0.12);
+    --color-border-strong: rgba(0,0,0,0.20);
+    --color-text-primary: #0f172a;
+    --color-text-secondary: #475569;
+    --color-text-tertiary: #94a3b8;
+  }
+  html.light body {
+    background: #f8fafc;
+    color: #0f172a;
+  }
+  html.light * {
+    border-color: rgba(0,0,0,0.08);
+  }
 }
 
 @layer utilities {

@@ -279,6 +279,7 @@ router.patch('/:id', async (req, res) => {
 
         const data = {};
         if (req.body.name) data.name = req.body.name;
+        if (req.body.darkImagePath !== undefined) data.darkImagePath = req.body.darkImagePath;
         if (req.body.category) {
             if (!VALID_CATEGORIES.includes(req.body.category)) {
                 return res.status(400).json({ error: `Invalid category. Allowed: ${VALID_CATEGORIES.join(', ')}` });

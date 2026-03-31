@@ -167,6 +167,10 @@ export const apiGallery = {
     approve: (imageId: string) => request<GalleryImage>(`/gallery/${imageId}/approve`, { method: 'POST' }),
     reject: (imageId: string) => request<GalleryImage>(`/gallery/${imageId}/reject`, { method: 'POST' }),
     regenerate: (imageId: string) => request<{ message: string }>(`/gallery/${imageId}/regenerate`, { method: 'POST' }),
+    saveMockup: (imageUrl: string) => request<GalleryImage>('/gallery/save-mockup', {
+        method: 'POST',
+        body: JSON.stringify({ imageUrl }),
+    }),
 };
 
 // ─── Pipeline ─────────────────────────────────────────────────
@@ -216,6 +220,11 @@ export const apiIdeas = {
         }),
     sendToFactory: (id: string) =>
         request<{ jobId: string }>(`/ideas/${id}/factory`, { method: 'POST' }),
+    generateBulk: (niche: string) =>
+        request<{ message: string; ideas: Idea[] }>('/ideas/generate-bulk', {
+            method: 'POST',
+            body: JSON.stringify({ niche }),
+        }),
 };
 
 // ─── Analytics ────────────────────────────────────────────────
@@ -273,6 +282,7 @@ export interface MockupTemplate {
     name: string;
     category: string;
     baseImagePath: string;
+    darkImagePath?: string | null;
     maskImagePath: string | null;
     shadowImagePath: string | null;
     configJson: MockupConfig;
@@ -354,4 +364,29 @@ export const apiTools = {
             method: 'POST',
             body: JSON.stringify({ imageUrl, scale })
         }),
+    vectorize: (imageUrl: string) =>
+        request<{ url: string; model: string }>('/tools/vectorize', {
+            method: 'POST',
+            body: JSON.stringify({ imageUrl })
+        }),
+};
+
+// ─── Notifications ─────────────────────────────────────────────
+export interface Notification {
+    id: string;
+    type: string;
+    message: string;
+    metadata: Record<string, unknown>;
+    createdAt: string;
+    read: boolean;
+}
+
+export const apiNotifications = {
+    list: () => request<Notification[]>('/notifications'),
+    log: (type: string, message: string, metadata?: Record<string, unknown>) =>
+        request<Notification>('/notifications/log', {
+            method: 'POST',
+            body: JSON.stringify({ type, message, metadata }),
+        }),
+    readAll: () => request<{ ok: boolean }>('/notifications/read-all', { method: 'POST' }),
 };

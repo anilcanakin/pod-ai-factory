@@ -256,6 +256,7 @@ model MockupTemplate {
   name            String
   category        String    @default("general")
   baseImagePath   String
+  darkImagePath   String?
   maskImagePath   String?
   shadowImagePath String?
   configJson      Json      // { printArea, rotation, opacity, blendMode, renderMode, ... }

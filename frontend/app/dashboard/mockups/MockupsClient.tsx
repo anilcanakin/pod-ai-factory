@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiMockups, MockupTemplate, MockupConfig, apiGallery, apiJobs, GalleryImage, JobSummary } from '@/lib/api';
 import {
     Plus, Trash2, X, Image as ImageIcon, RotateCw, Layers,
@@ -78,6 +79,7 @@ function SkeletonCard() {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export function MockupsClient() {
+    const searchParams = useSearchParams();
     const [templates, setTemplates] = useState<MockupTemplate[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState('all');
@@ -86,6 +88,19 @@ export function MockupsClient() {
     const [showEditor, setShowEditor] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const { toasts, addToast } = useToast();
+
+    // Pre-select design from URL param (e.g. coming from Factory "Send to Mockup")
+    const initialDesignUrl = searchParams.get('designUrl');
+    const initialDesignImageId = searchParams.get('designImageId');
+
+    // Bulk Render state
+    const [bulkMode, setBulkMode] = useState(false);
+    const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkDesignUrl, setBulkDesignUrl] = useState<string | null>(null);
+    const [bulkDesignImageId, setBulkDesignImageId] = useState<string | null>(null);
+    const [bulkShowDesignPicker, setBulkShowDesignPicker] = useState(false);
+    const [bulkRendering, setBulkRendering] = useState(false);
+    const [bulkResults, setBulkResults] = useState<{ templateId: string; templateName: string; status: string; url?: string; error?: string }[]>([]);
 
     const loadTemplates = useCallback(async () => {
         setLoading(true);
@@ -126,6 +141,22 @@ export function MockupsClient() {
         }
     };
 
+    const handleBulkRender = async () => {
+        if (!bulkDesignImageId || bulkSelectedIds.size === 0) return;
+        setBulkRendering(true);
+        setBulkResults([]);
+        try {
+            const result = await apiMockups.renderBatch(bulkDesignImageId, Array.from(bulkSelectedIds));
+            setBulkResults(result.results);
+            const successCount = result.results.filter(r => r.status === 'success').length;
+            addToast('success', `Rendered ${successCount} of ${result.results.length} mockups`);
+        } catch (err: any) {
+            addToast('error', err.message);
+        } finally {
+            setBulkRendering(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <ToastContainer toasts={toasts} />
@@ -138,13 +169,26 @@ export function MockupsClient() {
                         Upload templates, define print areas, apply designs and export production-ready mockups
                     </p>
                 </div>
-                <button
-                    id="upload-template-btn"
-                    onClick={() => setShowUpload(true)}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20"
-                >
-                    <Plus className="w-4 h-4" /> Upload Template
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => { setBulkMode(b => !b); setBulkSelectedIds(new Set()); setBulkResults([]); }}
+                        className={cn(
+                            'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all border',
+                            bulkMode
+                                ? 'bg-purple-600/20 border-purple-500/40 text-purple-400'
+                                : 'bg-slate-800/50 border-slate-700 text-slate-300 hover:border-slate-500'
+                        )}
+                    >
+                        <Grid3x3 className="w-4 h-4" /> {bulkMode ? 'Exit Bulk' : 'Bulk Render'}
+                    </button>
+                    <button
+                        id="upload-template-btn"
+                        onClick={() => setShowUpload(true)}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20"
+                    >
+                        <Plus className="w-4 h-4" /> Upload Template
+                    </button>
+                </div>
             </div>
 
             {/* Filters Row */}
@@ -179,6 +223,92 @@ export function MockupsClient() {
                 </div>
             </div>
 
+            {/* Bulk Render Panel */}
+            {bulkMode && (
+                <div className="bg-slate-800/60 border border-purple-500/30 rounded-2xl p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-purple-300">
+                            Bulk Render — {bulkSelectedIds.size} template{bulkSelectedIds.size !== 1 ? 's' : ''} selected
+                        </p>
+                        <button
+                            onClick={() => setBulkSelectedIds(new Set())}
+                            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                        >
+                            Clear selection
+                        </button>
+                    </div>
+
+                    {/* Design picker */}
+                    <div className="flex items-center gap-3">
+                        {bulkDesignUrl ? (
+                            <div className="flex items-center gap-3 flex-1">
+                                <img
+                                    src={bulkDesignUrl.startsWith('http') ? bulkDesignUrl : `${API_BASE}/${bulkDesignUrl}`}
+                                    alt="Design"
+                                    className="w-12 h-12 object-contain rounded-lg border border-slate-600"
+                                />
+                                <span className="text-xs text-slate-300 flex-1 truncate">Design selected</span>
+                                <button onClick={() => setBulkShowDesignPicker(true)} className="text-xs text-blue-400 hover:text-blue-300">Change</button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => setBulkShowDesignPicker(true)}
+                                className="flex items-center gap-2 px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-xl text-sm text-slate-300 hover:border-blue-500/50 hover:text-blue-400 transition-all"
+                            >
+                                <Search className="w-4 h-4" /> Pick a design
+                            </button>
+                        )}
+
+                        <button
+                            onClick={handleBulkRender}
+                            disabled={bulkRendering || !bulkDesignImageId || bulkSelectedIds.size === 0}
+                            className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-all"
+                        >
+                            {bulkRendering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+                            {bulkRendering ? 'Rendering…' : `Render ${bulkSelectedIds.size} Templates`}
+                        </button>
+                    </div>
+
+                    {/* Bulk results */}
+                    {bulkResults.length > 0 && (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-700/60">
+                            {bulkResults.map(r => (
+                                <div key={r.templateId} className="bg-slate-900/50 rounded-xl overflow-hidden border border-slate-700">
+                                    {r.status === 'success' && r.url ? (
+                                        <>
+                                            <img src={`${API_BASE}/${r.url}`} alt={r.templateName} className="w-full aspect-square object-contain" />
+                                            <div className="p-2 flex items-center justify-between">
+                                                <p className="text-[10px] text-slate-400 truncate">{r.templateName}</p>
+                                                <button
+                                                    onClick={async () => {
+                                                        const url = `${API_BASE}/${r.url}`;
+                                                        try {
+                                                            const res = await fetch(url);
+                                                            const blob = await res.blob();
+                                                            const a = document.createElement('a');
+                                                            a.href = URL.createObjectURL(blob);
+                                                            a.download = `mockup-${r.templateName}-${Date.now()}.png`;
+                                                            a.click();
+                                                        } catch { window.open(url, '_blank'); }
+                                                    }}
+                                                    className="p-1 text-blue-400 hover:text-blue-300"
+                                                >
+                                                    <Download className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="aspect-square flex items-center justify-center text-center p-3">
+                                            <p className="text-[10px] text-red-400">{r.templateName}<br /><span className="text-slate-500">{r.error || 'Failed'}</span></p>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Template Grid */}
             {loading ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -210,8 +340,20 @@ export function MockupsClient() {
                         <TemplateCard
                             key={t.id}
                             template={t}
-                            onSelect={() => { setSelectedTemplate(t); setShowEditor(true); }}
+                            onSelect={() => {
+                                if (bulkMode) {
+                                    setBulkSelectedIds(prev => {
+                                        const next = new Set(prev);
+                                        if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
+                                        return next;
+                                    });
+                                } else {
+                                    setSelectedTemplate(t); setShowEditor(true);
+                                }
+                            }}
                             onDelete={() => handleDelete(t.id)}
+                            bulkMode={bulkMode}
+                            isSelected={bulkSelectedIds.has(t.id)}
                         />
                     ))}
                 </div>
@@ -235,6 +377,17 @@ export function MockupsClient() {
                 </div>
             )}
 
+            {bulkShowDesignPicker && (
+                <DesignPickerModal
+                    onClose={() => setBulkShowDesignPicker(false)}
+                    onSelect={(img) => {
+                        setBulkDesignUrl(img.imageUrl);
+                        setBulkDesignImageId(img.id);
+                        setBulkShowDesignPicker(false);
+                    }}
+                />
+            )}
+
             {showEditor && selectedTemplate && (
                 <TemplateEditor
                     template={selectedTemplate}
@@ -244,6 +397,8 @@ export function MockupsClient() {
                         setSelectedTemplate(updated);
                     }}
                     addToast={addToast}
+                    initialDesignUrl={initialDesignUrl}
+                    initialDesignImageId={initialDesignImageId}
                 />
             )}
         </div>
@@ -251,11 +406,19 @@ export function MockupsClient() {
 }
 
 // ─── Template Card ───────────────────────────────────────────────────────────
-function TemplateCard({ template, onSelect, onDelete }: {
+function TemplateCard({ template, onSelect, onDelete, bulkMode, isSelected }: {
     template: MockupTemplate; onSelect: () => void; onDelete: () => void;
+    bulkMode?: boolean; isSelected?: boolean;
 }) {
     return (
-        <div className="group relative bg-slate-800/60 border border-slate-700 rounded-xl overflow-hidden hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-600/5 transition-all duration-200">
+        <div className={cn(
+            'group relative bg-slate-800/60 border rounded-xl overflow-hidden transition-all duration-200',
+            bulkMode
+                ? isSelected
+                    ? 'border-purple-500/70 shadow-lg shadow-purple-600/10'
+                    : 'border-slate-700 hover:border-purple-500/40'
+                : 'border-slate-700 hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-600/5'
+        )}>
             <div className="aspect-square bg-slate-900/50 relative cursor-pointer" onClick={onSelect}>
                 <img
                     src={resolveUrl(template.baseImagePath)}
@@ -263,9 +426,23 @@ function TemplateCard({ template, onSelect, onDelete }: {
                     className="w-full h-full object-contain p-2"
                     onError={e => { e.currentTarget.style.display = 'none'; }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-4">
-                    <span className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-full font-medium shadow-lg">Open Editor</span>
-                </div>
+                {bulkMode ? (
+                    <div className={cn(
+                        'absolute inset-0 flex items-center justify-center transition-colors',
+                        isSelected ? 'bg-purple-600/20' : 'bg-transparent hover:bg-purple-600/10'
+                    )}>
+                        <div className={cn(
+                            'w-6 h-6 rounded-md border-2 flex items-center justify-center',
+                            isSelected ? 'bg-purple-600 border-purple-500' : 'bg-transparent border-slate-400'
+                        )}>
+                            {isSelected && <span className="text-white text-xs font-bold">✓</span>}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-4">
+                        <span className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-full font-medium shadow-lg">Open Editor</span>
+                    </div>
+                )}
             </div>
             <div className="p-3 flex items-center justify-between">
                 <div className="min-w-0">
@@ -412,11 +589,13 @@ function FileDropZone({ label, accept, file, preview, onChange }: {
 }
 
 // ─── Template Editor with Konva Canvas ───────────────────────────────────────
-function TemplateEditor({ template, onClose, onUpdated, addToast }: {
+function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignUrl, initialDesignImageId }: {
     template: MockupTemplate;
     onClose: () => void;
     onUpdated: (t: MockupTemplate) => void;
     addToast: (type: ToastType, msg: string) => void;
+    initialDesignUrl?: string | null;
+    initialDesignImageId?: string | null;
 }) {
     // Standard v1: config.transform holds rotation/opacity/blendMode
     const config = template.configJson || {
@@ -432,8 +611,8 @@ function TemplateEditor({ template, onClose, onUpdated, addToast }: {
     const [rotation, setRotation] = useState(transform.rotation);
 
     // Design
-    const [designUrl, setDesignUrl] = useState<string | null>(null);
-    const [designImageId, setDesignImageId] = useState<string | null>(null);
+    const [designUrl, setDesignUrl] = useState<string | null>(initialDesignUrl ?? null);
+    const [designImageId, setDesignImageId] = useState<string | null>(initialDesignImageId ?? null);
     const [showDesignPicker, setShowDesignPicker] = useState(false);
     const [showPlacementEditor, setShowPlacementEditor] = useState(false);
 
@@ -442,6 +621,10 @@ function TemplateEditor({ template, onClose, onUpdated, addToast }: {
     const [batchRendering, setBatchRendering] = useState(false);
     const [renderResult, setRenderResult] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [savingToGallery, setSavingToGallery] = useState(false);
+
+    // Dark/Light variant toggle
+    const [useDark, setUseDark] = useState(false);
 
     // Canvas state
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -455,17 +638,19 @@ function TemplateEditor({ template, onClose, onUpdated, addToast }: {
     const [dragging, setDragging] = useState<'move' | 'resize' | null>(null);
     const dragStart = useRef({ mx: 0, my: 0, px: 0, py: 0, pw: 0, ph: 0 });
 
-    // Load base image
+    // Load base image (switches when dark/light toggled)
+    const activePath = useDark && template.darkImagePath ? template.darkImagePath : template.baseImagePath;
     useEffect(() => {
+        setBaseLoaded(false);
         const img = new window.Image();
         img.crossOrigin = 'anonymous';
-        img.src = resolveUrl(template.baseImagePath);
+        img.src = resolveUrl(activePath);
         img.onload = () => {
             baseImgRef.current = img;
             setBaseLoaded(true);
             setCanvasSize({ w: img.naturalWidth, h: img.naturalHeight });
         };
-    }, [template.baseImagePath]);
+    }, [activePath]);
 
     // Load design image
     useEffect(() => {
@@ -627,6 +812,19 @@ function TemplateEditor({ template, onClose, onUpdated, addToast }: {
         }
     };
 
+    const handleSaveToGallery = async () => {
+        if (!renderResult) return;
+        setSavingToGallery(true);
+        try {
+            await apiGallery.saveMockup(renderResult);
+            addToast('success', 'Saved to gallery!');
+        } catch (err: any) {
+            addToast('error', err.message);
+        } finally {
+            setSavingToGallery(false);
+        }
+    };
+
     const handlePlacementSave = async (placement: { scale: number; offsetX: number; offsetY: number; rotation: number }) => {
         if (!designImageId || !template) return;
         setShowPlacementEditor(false);
@@ -686,6 +884,37 @@ function TemplateEditor({ template, onClose, onUpdated, addToast }: {
                     {/* Controls Panel */}
                     <div className="w-80 bg-[#1a2332] border-l border-slate-700/60 flex flex-col">
                         <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                            {/* Dark/Light Variant Toggle */}
+                            {template.darkImagePath && (
+                                <section>
+                                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Variant</h3>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setUseDark(false)}
+                                            className={cn(
+                                                'flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                                                !useDark
+                                                    ? 'bg-slate-100/10 border-slate-400/50 text-white'
+                                                    : 'bg-transparent border-slate-700 text-slate-500 hover:border-slate-500'
+                                            )}
+                                        >
+                                            ☀ Light
+                                        </button>
+                                        <button
+                                            onClick={() => setUseDark(true)}
+                                            className={cn(
+                                                'flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                                                useDark
+                                                    ? 'bg-slate-800 border-slate-400/50 text-white'
+                                                    : 'bg-transparent border-slate-700 text-slate-500 hover:border-slate-500'
+                                            )}
+                                        >
+                                            ☾ Dark
+                                        </button>
+                                    </div>
+                                </section>
+                            )}
+
                             {/* Print Area */}
                             <section>
                                 <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Print Area</h3>
@@ -769,23 +998,33 @@ function TemplateEditor({ template, onClose, onUpdated, addToast }: {
                                         <CheckCircle2 className="w-3.5 h-3.5" /> Mockup rendered!
                                     </p>
                                     <img src={renderResult} alt="Rendered" className="w-full rounded-lg shadow" />
-                                    <button
-                                        onClick={async () => {
-                                            const slug = template.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-                                            const filename = `mockup-${slug}-${Date.now()}.png`;
-                                            try {
-                                                const r = await fetch(renderResult!);
-                                                const blob = await r.blob();
-                                                const url = URL.createObjectURL(blob);
-                                                const a = document.createElement('a');
-                                                a.href = url; a.download = filename; a.click();
-                                                URL.revokeObjectURL(url);
-                                            } catch { window.open(renderResult!, '_blank'); }
-                                        }}
-                                        className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
-                                    >
-                                        <Download className="w-3 h-3" /> Download
-                                    </button>
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={async () => {
+                                                const slug = template.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+                                                const filename = `mockup-${slug}-${Date.now()}.png`;
+                                                try {
+                                                    const r = await fetch(renderResult!);
+                                                    const blob = await r.blob();
+                                                    const url = URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = url; a.download = filename; a.click();
+                                                    URL.revokeObjectURL(url);
+                                                } catch { window.open(renderResult!, '_blank'); }
+                                            }}
+                                            className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                                        >
+                                            <Download className="w-3 h-3" /> Download
+                                        </button>
+                                        <button
+                                            onClick={handleSaveToGallery}
+                                            disabled={savingToGallery}
+                                            className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors disabled:opacity-40"
+                                        >
+                                            {savingToGallery ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                            {savingToGallery ? 'Saving…' : 'Save to Gallery'}
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>

@@ -1,14 +1,16 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { apiDashboard, apiStatus, WeeklyStatDay } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { apiDashboard, apiStatus, apiGallery, WeeklyStatDay } from '@/lib/api';
 import { StatCard } from '@/components/shared/StatCard';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { truncateId, formatDate } from '@/lib/utils';
 import Link from 'next/link';
 import {
     Cpu, CheckCircle, DollarSign, TrendingUp, Zap, Eye, Activity,
-    Clock, Image as ImageIcon, Images, ThumbsUp, ExternalLink, RefreshCw
+    Clock, Image as ImageIcon, Images, ThumbsUp, ExternalLink, RefreshCw,
+    Scissors, Tag, Frame
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
@@ -61,6 +63,12 @@ function WeeklyChart({ data }: { data: WeeklyStatDay[] }) {
 }
 
 export function OverviewClient() {
+    const [dailyLimit, setDailyLimit] = useState(5);
+    useEffect(() => {
+        const stored = localStorage.getItem('fal_daily_limit');
+        if (stored) setDailyLimit(parseFloat(stored) || 5);
+    }, []);
+
     const { data: dash, isLoading, refetch } = useQuery({
         queryKey: ['dashboard'],
         queryFn: apiDashboard.get,
@@ -74,6 +82,13 @@ export function OverviewClient() {
         refetchInterval: 15000,
         staleTime: 10000,
     });
+
+    const { data: recentGallery } = useQuery({
+        queryKey: ['gallery-recent'],
+        queryFn: apiGallery.getRecent,
+        staleTime: 60000,
+    });
+    const recentMockups = (recentGallery ?? []).filter(img => img.engine === 'mockup').slice(0, 6);
 
     return (
         <div className="space-y-7 animate-fade-in">
@@ -96,7 +111,7 @@ export function OverviewClient() {
                 <StatCard label="Runs Today" value={String(dash?.runsToday ?? 0)} icon={Cpu} color="blue" loading={isLoading} />
                 <StatCard label="Images (24h)" value={String(dash?.imagesGeneratedToday ?? 0)} icon={ImageIcon} color="blue" loading={isLoading} />
                 <StatCard label="Approved Today" value={String(dash?.approvedToday ?? 0)} icon={ThumbsUp} color="green" loading={isLoading} />
-                <StatCard label="Spend Today" value={`$${(statusData?.dailySpend ?? 0).toFixed(2)}`} icon={DollarSign} color="yellow" loading={isLoading} />
+                <StatCard label="Spend Today" value={`$${(statusData?.dailySpend ?? 0).toFixed(2)} / $${dailyLimit.toFixed(2)}`} icon={DollarSign} color="yellow" loading={isLoading} />
                 <StatCard label="Success Rate" value={String(dash?.successRate ?? 0)} icon={TrendingUp} color="green" loading={isLoading} suffix="%" />
                 <StatCard label="Avg Time" value={dash?.avgGenerationTime ? `${dash.avgGenerationTime}s` : '—'} icon={Clock} color="purple" loading={isLoading} />
             </div>
@@ -105,6 +120,60 @@ export function OverviewClient() {
             {dash?.weeklyStats && dash.weeklyStats.length > 0 && (
                 <WeeklyChart data={dash.weeklyStats} />
             )}
+
+            {/* Recent Mockups */}
+            {recentMockups.length > 0 && (
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                            <Images className="w-4 h-4 text-purple-400" /> Recent Mockups
+                        </h2>
+                        <Link href="/dashboard/mockups" className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1">
+                            View all <ExternalLink className="w-3 h-3" />
+                        </Link>
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                        {recentMockups.map(img => (
+                            <Link
+                                key={img.id}
+                                href="/dashboard/mockups"
+                                className="group aspect-square bg-[#1e293b] border border-slate-700 hover:border-purple-500/50 rounded-xl overflow-hidden transition-all"
+                            >
+                                <img
+                                    src={resolveUrl(img.imageUrl)}
+                                    alt="Mockup"
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                    onError={e => { e.currentTarget.style.display = 'none'; }}
+                                />
+                            </Link>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Quick Actions */}
+            <div className="space-y-3">
+                <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-yellow-400" /> Quick Actions
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                        { href: '/dashboard/factory', label: 'New Generation', icon: Cpu, color: 'bg-blue-600/20 border-blue-500/30 hover:border-blue-500/60 text-blue-400' },
+                        { href: '/dashboard/remove-bg', label: 'Remove BG', icon: Scissors, color: 'bg-emerald-600/20 border-emerald-500/30 hover:border-emerald-500/60 text-emerald-400' },
+                        { href: '/dashboard/seo', label: 'Generate SEO', icon: Tag, color: 'bg-purple-600/20 border-purple-500/30 hover:border-purple-500/60 text-purple-400' },
+                        { href: '/dashboard/mockups', label: 'Upload Mockup', icon: Frame, color: 'bg-orange-600/20 border-orange-500/30 hover:border-orange-500/60 text-orange-400' },
+                    ].map(({ href, label, icon: Icon, color }) => (
+                        <Link
+                            key={href}
+                            href={href}
+                            className={`flex items-center gap-3 p-4 rounded-xl border transition-all ${color}`}
+                        >
+                            <Icon className="w-5 h-5 flex-shrink-0" />
+                            <span className="text-sm font-medium text-white">{label}</span>
+                        </Link>
+                    ))}
+                </div>
+            </div>
 
             {/* Projects Grid */}
             <div className="space-y-4">

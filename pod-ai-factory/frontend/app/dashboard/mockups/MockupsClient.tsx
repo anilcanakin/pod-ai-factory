@@ -244,7 +244,6 @@ export function MockupsClient() {
 function TemplateCard({ template, onSelect, onDelete }: {
     template: MockupTemplate; onSelect: () => void; onDelete: () => void;
 }) {
-    const pa = template.configJson?.printArea || { x: 0.1, y: 0.1, width: 0.8, height: 0.8 };
     return (
         <div className="group relative bg-slate-800/60 border border-slate-700 rounded-xl overflow-hidden hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-600/5 transition-all duration-200">
             <div className="aspect-square bg-slate-900/50 relative cursor-pointer" onClick={onSelect}>
@@ -253,13 +252,6 @@ function TemplateCard({ template, onSelect, onDelete }: {
                     alt={template.name}
                     className="w-full h-full object-contain p-2"
                     onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                />
-                <div
-                    className="absolute border-2 border-dashed border-blue-400/30 rounded pointer-events-none group-hover:border-blue-400/60 transition-colors"
-                    style={{
-                        left: `${pa.x * 100}%`, top: `${pa.y * 100}%`,
-                        width: `${pa.width * 100}%`, height: `${pa.height * 100}%`,
-                    }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-4">
                     <span className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-full font-medium shadow-lg">Open Editor</span>

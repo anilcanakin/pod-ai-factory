@@ -1,0 +1,31 @@
+{
+  "id": "8680f8ef-9f9f-4412-917c-d4d25553235a",
+  "name": "ıvory",
+  "category": "tshirt",
+  "baseImage": "base.jpg",
+  "maskImage": null,
+  "shadowImage": null,
+  "thumbnailImage": null,
+  "printArea": {
+    "x": 0.295125128601534,
+    "y": 0.2744976812772752,
+    "width": 0.44960473404423745,
+    "height": 0.492424232524641
+  },
+  "transform": {
+    "rotation": 0,
+    "opacity": 1,
+    "blendMode": "multiply"
+  },
+  "render": {
+    "renderMode": "flat",
+    "displacementMapPath": null,
+    "perspective": null
+  },
+  "meta": {
+    "view": "front",
+    "background": "studio",
+    "color": "white",
+    "hasHumanModel": false
+  }
+}

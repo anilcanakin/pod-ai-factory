@@ -1,0 +1,31 @@
+{
+  "id": "025409a5-a5b1-4310-8156-9828a7504d66",
+  "name": "asdasd",
+  "category": "tshirt",
+  "baseImage": "base.jpg",
+  "maskImage": null,
+  "shadowImage": null,
+  "thumbnailImage": null,
+  "printArea": {
+    "x": 0.38570483692546464,
+    "y": 0.2975543343051848,
+    "width": 0.3211462386030267,
+    "height": 0.444664022681114
+  },
+  "transform": {
+    "rotation": 0,
+    "opacity": 1,
+    "blendMode": "multiply"
+  },
+  "render": {
+    "renderMode": "flat",
+    "displacementMapPath": null,
+    "perspective": null
+  },
+  "meta": {
+    "view": "front",
+    "background": "studio",
+    "color": "white",
+    "hasHumanModel": false
+  }
+}

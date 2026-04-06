@@ -112,6 +112,26 @@ Completed: Created src/routes/notification.routes.js — in-memory per-workspace
 
 ---
 
+### ~~T. Playwright — Etsy Browser Automation~~ ✅ DONE
+Completed: Installed Playwright + Chromium. Created src/services/etsy-browser.service.js with launchBrowser() (persistent Chrome profile), createEtsyDraft() (fills title/description/tags/price/images, saves as draft), scrapeListings() (paginates seller dashboard), pinToPinterest() (pin builder flow). Created src/routes/etsy-browser.routes.js with POST /api/etsy-browser/create-draft, /scrape, /pin-pinterest. Registered in index.js. Added BROWSER_USER_DATA and BROWSER_EXE to .env.example.
+
+---
+
+### ~~U. SEO Client — "Publish to Etsy" button~~ ✅ DONE
+Completed: Added publishing/publishResult state to SEOClient.tsx. Added handlePublishToEtsy() — POSTs to /api/etsy-browser/create-draft with title/description/tags/imageUrls. Added "Publish to Etsy (Draft)" button (orange, with Loader2 spinner) below "Copy All" button, only visible when result is ready.
+
+---
+
+### ~~V. Pinterest Auto-Pin after Mockup Render~~ ✅ DONE
+Completed: Added "Pin to Pinterest" button in the renderResult panel of TemplateEditor (MockupsClient.tsx). POSTs to /api/etsy-browser/pin-pinterest with imageUrl, template name, description, and shop link. Shows success/error via addToast.
+
+---
+
+### ~~W. Etsy Listing Scraper page~~ ✅ DONE
+Completed: Created frontend/app/dashboard/etsy-listings/page.tsx and EtsyListingsClient.tsx. "Scan My Etsy Shop" button calls POST /api/etsy-browser/scrape. Lists scraped listings (id, title, price) in expandable cards. "Optimize SEO" button per listing calls /api/seo/generate with listing title as keyword. Shows before/after comparison panel with AI title, description, and tags preview. Added "My Listings" (Store icon) to Sidebar nav.
+
+---
+
 ### 15. Etsy Draft Assembly (waiting for API approval)
 When Etsy API is approved:
 Combine mockup image + SEO content + pricing template

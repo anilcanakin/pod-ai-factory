@@ -307,6 +307,7 @@ app.use('/api/billing', require('./routes/billing.routes'));
 app.use('/api/mockups/templates', require('./routes/mockup-template.routes'));
 app.use('/api/mockups', require('./routes/mockup.routes'));
 app.use('/api/notifications', require('./routes/notification.routes'));
+app.use('/api/etsy-browser', require('./routes/etsy-browser.routes'));
 
 
 app.use((err, req, res, next) => {

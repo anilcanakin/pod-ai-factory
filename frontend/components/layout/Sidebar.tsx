@@ -20,7 +20,8 @@ import {
     Keyboard,
     X,
     Sun,
-    Moon
+    Moon,
+    Store
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SHORTCUT_LABELS } from '@/hooks/useKeyboardShortcuts';
@@ -37,6 +38,7 @@ const navItems = [
     { href: '/dashboard/upscale', label: 'Upscale', icon: ZoomIn },
     { href: '/dashboard/vector', label: 'Vector', icon: Wand2 },
     { href: '/dashboard/seo', label: 'SEO Generator', icon: Tag },
+    { href: '/dashboard/etsy-listings', label: 'My Listings', icon: Store },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 

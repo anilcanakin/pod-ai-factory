@@ -1024,6 +1024,27 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
                                             {savingToGallery ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                                             {savingToGallery ? 'Saving…' : 'Save to Gallery'}
                                         </button>
+                                        <button
+                                            onClick={async () => {
+                                                const response = await fetch('/api/etsy-browser/pin-pinterest', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    credentials: 'include',
+                                                    body: JSON.stringify({
+                                                        imageUrl: renderResult,
+                                                        title: template.name,
+                                                        description: `Check out this amazing design on Etsy! ${template.name}`,
+                                                        link: 'https://www.etsy.com/your-shop'
+                                                    })
+                                                });
+                                                const data = await response.json();
+                                                if (data.success) addToast('success', 'Pinned to Pinterest!');
+                                                else addToast('error', data.error || 'Pinterest pin failed');
+                                            }}
+                                            className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 font-medium"
+                                        >
+                                            📌 Pin to Pinterest
+                                        </button>
                                     </div>
                                 </div>
                             )}

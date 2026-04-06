@@ -1,0 +1,31 @@
+{
+  "id": "93d2ed66-e488-45fb-a2a7-ccef6cc178f1",
+  "name": "Ivory woman tshirt",
+  "category": "tshirt",
+  "baseImage": "base.jpg",
+  "maskImage": null,
+  "shadowImage": null,
+  "thumbnailImage": null,
+  "printArea": {
+    "x": 0.3066534551154888,
+    "y": 0.2563817396124891,
+    "width": 0.43807640753028265,
+    "height": 0.5055994628263036
+  },
+  "transform": {
+    "rotation": 0,
+    "opacity": 1,
+    "blendMode": "multiply"
+  },
+  "render": {
+    "renderMode": "flat",
+    "displacementMapPath": null,
+    "perspective": null
+  },
+  "meta": {
+    "view": "front",
+    "background": "studio",
+    "color": "white",
+    "hasHumanModel": false
+  }
+}

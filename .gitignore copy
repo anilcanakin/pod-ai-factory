@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+frontend/.next/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Generated
+/src/generated/prisma
+
+# Logs
+*.log
+smoke-test-out.log
+smoke_output.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Debug/temp files
+output.txt
+output2.txt
+process_list.txt
+cookies.txt
+headers.txt
+
+# IDE
+.vscode/
+.idea/
+
+# Package lock (frontend)
+frontend/package-lock.json
+
+# Local CLAUDE data
+.claude/
+
+# Assets (generated data)
+assets/

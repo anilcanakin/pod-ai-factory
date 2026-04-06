@@ -15,6 +15,8 @@ export function SEOClient() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [copied, setCopied] = useState<string | null>(null);
+    const [publishing, setPublishing] = useState(false);
+    const [publishResult, setPublishResult] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const processFile = (file: File) => {
@@ -73,6 +75,35 @@ export function SEOClient() {
         setCopied(field);
         setTimeout(() => setCopied(null), 2000);
         toast.success('Copied!');
+    };
+
+    const handlePublishToEtsy = async () => {
+        if (!result) return;
+        setPublishing(true);
+        try {
+            const response = await fetch('/api/etsy-browser/create-draft', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    title: result.title,
+                    description: result.description,
+                    tags: result.tags,
+                    imageUrls: sourceImage ? [sourceImage] : []
+                })
+            });
+            const data = await response.json();
+            if (data.success) {
+                setPublishResult('Draft created on Etsy!');
+                toast.success('Draft listing created on Etsy!');
+            } else {
+                toast.error(data.error || 'Failed to create draft');
+            }
+        } catch (err: unknown) {
+            toast.error('Failed to connect to browser automation');
+        } finally {
+            setPublishing(false);
+        }
     };
 
     const copyAll = async () => {
@@ -166,15 +197,30 @@ export function SEOClient() {
                     </button>
 
                     {result && (
-                        <button
-                            onClick={copyAll}
-                            className="w-full flex items-center justify-center gap-2 bg-bg-elevated hover:bg-bg-overlay text-text-primary px-4 py-2.5 rounded-[10px] text-sm border border-border-default transition-colors"
-                        >
-                            {copied === 'all'
-                                ? <><Check className="w-4 h-4 text-success" /> Copied!</>
-                                : <><Copy className="w-4 h-4" /> Copy All (Etsy format)</>
-                            }
-                        </button>
+                        <>
+                            <button
+                                onClick={copyAll}
+                                className="w-full flex items-center justify-center gap-2 bg-bg-elevated hover:bg-bg-overlay text-text-primary px-4 py-2.5 rounded-[10px] text-sm border border-border-default transition-colors"
+                            >
+                                {copied === 'all'
+                                    ? <><Check className="w-4 h-4 text-success" /> Copied!</>
+                                    : <><Copy className="w-4 h-4" /> Copy All (Etsy format)</>
+                                }
+                            </button>
+                            <button
+                                onClick={handlePublishToEtsy}
+                                disabled={publishing || !result}
+                                className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all disabled:opacity-40"
+                            >
+                                {publishing
+                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Opening Etsy...</>
+                                    : <>🛒 Publish to Etsy (Draft)</>
+                                }
+                            </button>
+                            {publishResult && (
+                                <p className="text-xs text-success text-center">{publishResult}</p>
+                            )}
+                        </>
                     )}
                 </div>
             </div>

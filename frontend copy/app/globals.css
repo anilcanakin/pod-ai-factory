@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme inline {
+  /* Backgrounds */
+  --color-bg-base: #08090a;
+  --color-bg-surface: #111214;
+  --color-bg-elevated: #1a1b1e;
+  --color-bg-overlay: #222428;
+
+  /* Borders */
+  --color-border-subtle: rgba(255,255,255,0.06);
+  --color-border-default: rgba(255,255,255,0.10);
+  --color-border-strong: rgba(255,255,255,0.18);
+
+  /* Text */
+  --color-text-primary: #f4f4f5;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #52525b;
+
+  /* Accent — Electric Violet */
+  --color-accent: #7c3aed;
+  --color-accent-hover: #6d28d9;
+  --color-accent-subtle: rgba(124,58,237,0.12);
+  --color-accent-border: rgba(124,58,237,0.30);
+
+  /* Semantic */
+  --color-success: #22c55e;
+  --color-success-subtle: rgba(34,197,94,0.10);
+  --color-danger: #ef4444;
+  --color-danger-subtle: rgba(239,68,68,0.10);
+  --color-warn: #f59e0b;
+  --color-warn-subtle: rgba(245,158,11,0.10);
+
+  --radius: 10px;
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', monospace;
+
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-pulse-slow: pulse-slow 2s ease-in-out infinite;
+  --animate-spin: spin 1s linear infinite;
+  --animate-shimmer: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@layer base {
+  html { color-scheme: dark; }
+  body {
+    background: #08090a;
+    color: #f4f4f5;
+    font-family: 'Geist', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  * {
+    border-color: rgba(255,255,255,0.06);
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.10) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.10);
+    border-radius: 2px;
+  }
+}
+
+/* Masonry gallery */
+.masonry-grid {
+  columns: 2;
+  column-gap: 10px;
+}
+@media (min-width: 768px) {
+  .masonry-grid { columns: 3; }
+}
+@media (min-width: 1280px) {
+  .masonry-grid { columns: 4; }
+}
+.masonry-item {
+  break-inside: avoid;
+  margin-bottom: 10px;
+}
+
+/* Log entries */
+.log-entry {
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+/* Shimmer skeleton */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #1a1b1e 25%, #222428 50%, #1a1b1e 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}

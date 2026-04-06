@@ -1,0 +1,39 @@
+# ─── POD AI Factory — Environment Template ────────────────────────────────────
+# Copy this file to .env and fill in your values.
+# NEVER commit .env to git.
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+DATABASE_URL="postgresql://pod:pod_secret@localhost:5432/pod_factory"
+
+# ─── Redis ────────────────────────────────────────────────────────────────────
+REDIS_URL="redis://localhost:6379"
+
+# ─── Fal.ai (REQUIRED for image generation) ───────────────────────────────────
+# Get your key at: https://fal.ai/dashboard/keys
+FAL_API_KEY=your_fal_api_key_here
+
+# Fal model ID (default: fal-ai/flux/dev)
+FAL_MODEL=fal-ai/flux/dev
+
+# ─── Vision (OPTIONAL — false by default) ─────────────────────────────────────
+# Vision provider priority: Anthropic → OpenAI → Synthetic
+# Set USE_VISION=false to always use synthetic
+USE_VISION=false
+
+ANTHROPIC_API_KEY=your_anthropic_key_here
+GOOGLE_API_KEY=your_google_ai_studio_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+
+# ─── Budget guard ─────────────────────────────────────────────────────────────
+DAILY_IMAGE_CAP=200
+CONCURRENT_JOB_CAP=2
+DAILY_BUDGET_CAP=10.00
+FAL_COST_PER_IMAGE=0.02
+
+# ─── App ──────────────────────────────────────────────────────────────────────
+PORT=3000
+NODE_ENV=production
+APP_MODE=saas
+
+# ─── Chunk size for parallel Fal generation ───────────────────────────────────
+CHUNK_SIZE=5

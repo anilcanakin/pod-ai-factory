@@ -1,0 +1,264 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Multi-tenant ─────────────────────────────────────────────────────────────
+
+model User {
+  id          String      @id @default(uuid())
+  email       String      @unique
+  passwordHash String?
+  workspaces  WorkspaceMember[]
+  createdAt   DateTime    @default(now())
+}
+
+model Workspace {
+  id          String      @id @default(uuid())
+  name             String
+  slug             String      @unique
+  dailyImageCap    Int         @default(200)
+  concurrentJobCap Int         @default(2)
+  members          WorkspaceMember[]
+  apiKeys          WorkspaceApiKey[]
+  jobs        DesignJob[]
+  ideas       Idea[]
+  packs       ProductPack[]
+  mockupTemplates MockupTemplate[]
+  seoKnowledge    SeoKnowledgeBase[]
+
+  // ─── Billing (Sprint 4) ──────────────────────
+  planName              String    @default("starter")
+  planLimit             Int       @default(50)
+  monthlyUsage          Int       @default(0)
+  usageResetDate        DateTime  @default(now())
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid())
+  userId      String
+  workspaceId String
+  role        String    @default("owner") // owner, member
+  user        User      @relation(fields: [userId], references: [id])
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([userId, workspaceId])
+}
+
+// Stores per-workspace provider API keys (not encrypted in MVP — isolated for future encrypt)
+model WorkspaceApiKey {
+  id          String    @id @default(uuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  provider    String    // "fal" | "openai" | "bg_remove" | "upscaler"
+  keyValue    String    // plain text MVP — replace with KMS in production
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, provider])
+}
+
+// ─── Core Job Models ─────────────────────────────────────────────────────────
+
+model DesignJob {
+  id             String      @id @default(uuid())
+  workspaceId    String?     // nullable for migration safety on existing rows
+  workspace      Workspace?  @relation(fields: [workspaceId], references: [id])
+  originalImage  String
+  status         JobStatus   @default(PENDING)
+  parentImageId  String?
+  structuredJson Json?
+  basePrompt     String?
+  negativePrompt String?
+
+  // ─── Etsy Mode (Sprint 2) ──────────────────────
+  mode           String      @default("standard")  // "standard" | "etsy"
+  keyword        String?
+  niche          String?
+  style          String?
+
+  // ─── Product Pack (Sprint 3) ────────────────────
+  packId         String?
+  pack           ProductPack? @relation(fields: [packId], references: [id])
+
+  images         Image[]
+  logs           JobLog[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model Image {
+  id               String       @id @default(uuid())
+  jobId            String
+  job              DesignJob    @relation(fields: [jobId], references: [id])
+  variantType      String
+  promptUsed       String
+  engine           String
+  imageUrl         String
+  status           ImageStatus  @default(GENERATED)
+  isApproved       Boolean      @default(false)
+  masterFileUrl    String?
+  seed             String?
+  rawResponse      String?      @db.Text
+  cost             Decimal      @default(0.00)
+  performanceScore Float        @default(0.0)
+  winnerFlag       Boolean      @default(false)
+  
+  mockups          Mockup[]
+  seoData          SEOData?
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  
+  performance      ProductPerformance?
+}
+
+model Mockup {
+  id          String   @id @default(uuid())
+  imageId     String
+  image       Image    @relation(fields: [imageId], references: [id])
+  templateId  String
+  mockupUrl   String
+  createdAt   DateTime @default(now())
+}
+
+model SEOData {
+  id          String   @id @default(uuid())
+  imageId     String   @unique
+  image       Image    @relation(fields: [imageId], references: [id])
+  title       String
+  description String
+  tags        String[]
+  createdAt   DateTime @default(now())
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  BUDGET_EXCEEDED
+}
+
+enum ImageStatus {
+  GENERATED
+  APPROVED
+  REJECTED
+  PROCESSED
+  FAILED
+  COMPLETED
+}
+
+model VisionAnalysis {
+  id                  String   @id @default(uuid())
+  imageId             String?
+  jobId               String?
+  rawProviderResponse String   // renamed from rawOpenAIResponse
+  parsedVisionJson    Json
+  createdAt           DateTime @default(now())
+}
+
+model JobLog {
+  id        String    @id @default(uuid())
+  jobId     String
+  job       DesignJob @relation(fields: [jobId], references: [id])
+  eventType String
+  status    String
+  message   String?
+  data      Json?
+  createdAt DateTime  @default(now())
+}
+
+model Idea {
+  id          String    @id @default(uuid())
+  workspaceId String?   // nullable for migration safety
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id])
+  niche       String
+  mainKeyword String
+  persona     String
+  hook        String
+  iconFamily  Json
+  styleEnum   String
+  status      String    @default("PENDING")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model ProductPerformance {
+  id          String   @id @default(uuid())
+  imageId     String   @unique
+  sku         String?
+  impressions Int      @default(0)
+  visits      Int      @default(0)
+  favorites   Int      @default(0)
+  orders      Int      @default(0)
+  score       Float    @default(0)
+  flag        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  image       Image    @relation(fields: [imageId], references: [id])
+}
+
+// ─── Product Packs (Sprint 3) ────────────────────────────────────────────────
+
+model ProductPack {
+  id          String           @id @default(uuid())
+  workspaceId String
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id])
+  name        String
+  items       ProductPackItem[]
+  jobs        DesignJob[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model ProductPackItem {
+  id              String      @id @default(uuid())
+  packId          String
+  pack            ProductPack @relation(fields: [packId], references: [id])
+  productType     String      // "tshirt" | "sweatshirt" | "mug" | "sticker" | "phone_case"
+  placementConfig Json        // { x, y, width, height, canvasWidth, canvasHeight }
+  templateUrl     String?
+  createdAt       DateTime    @default(now())
+}
+
+// ─── SEO Knowledge Base ───────────────────────────────────────────────────────
+
+model SeoKnowledgeBase {
+  id          String    @id @default(cuid())
+  workspaceId String
+  content     String    @db.Text
+  source      String    // 'auto' | 'manual'
+  version     Int       @default(1)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+}
+
+// ─── Mockup Templates (Sprint 5) ─────────────────────────────────────────────
+
+model MockupTemplate {
+  id              String    @id @default(uuid())
+  workspaceId     String
+  workspace       Workspace @relation(fields: [workspaceId], references: [id])
+  name            String
+  category        String    @default("general")
+  baseImagePath   String
+  maskImagePath   String?
+  shadowImagePath String?
+  configJson      Json      // { printArea, rotation, opacity, blendMode, renderMode, ... }
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}

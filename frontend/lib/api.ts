@@ -167,9 +167,9 @@ export const apiGallery = {
     approve: (imageId: string) => request<GalleryImage>(`/gallery/${imageId}/approve`, { method: 'POST' }),
     reject: (imageId: string) => request<GalleryImage>(`/gallery/${imageId}/reject`, { method: 'POST' }),
     regenerate: (imageId: string) => request<{ message: string }>(`/gallery/${imageId}/regenerate`, { method: 'POST' }),
-    saveMockup: (imageUrl: string) => request<GalleryImage>('/gallery/save-mockup', {
+    saveMockup: (imageUrl: string, designImageId?: string) => request<GalleryImage>('/gallery/save-mockup', {
         method: 'POST',
-        body: JSON.stringify({ imageUrl }),
+        body: JSON.stringify({ imageUrl, designImageId }),
     }),
 };
 

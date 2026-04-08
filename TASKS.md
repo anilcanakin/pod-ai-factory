@@ -132,6 +132,23 @@ Completed: Created frontend/app/dashboard/etsy-listings/page.tsx and EtsyListing
 
 ---
 
+### ~~X. Mockup System Fixes~~ ✅ DONE
+Completed:
+- Design Picker rebuilt: 4-col grid, filters by ID via search input, loads apiGallery.getRecent() filtered by engine !== 'mockup', max-w-4xl. Used for both single editor and bulk render.
+- Rendered Mockups section: date-grouped accordion with Download + Delete (X) buttons per card. DELETE /api/gallery/:imageId backend endpoint added with workspace auth guard.
+- saveMockup() accepts optional designImageId stored in image.seed for future grouping.
+- Auto Detect Print Area: POST /api/mockups/templates/detect-print-area (sharp greyscale grid analysis). Button appears in TemplateUploader after template is uploaded. Updates printArea state on success.
+
+---
+
+### ~~Y. Remove BG + Gallery + Factory improvements~~ ✅ DONE
+Completed:
+- Remove BG — "Load from Gallery" button opens a 4-col gallery picker (apiGallery.getRecent filtered by engine !== 'mockup'), selected image added as a card. URL param `?imageUrl=` pre-loads image on mount (read via useSearchParams, Suspense wrapper added).
+- Gallery — grid changed from masonry to grid-cols-2 md:grid-cols-3 aspect-square cards. Delete button (dark red) added to hover overlay per card. "Delete (N)" bulk button in toolbar. Backend DELETE /api/gallery/:imageId already existed.
+- Factory — "To Remove BG" button added next to "To Mockup", navigates to /dashboard/remove-bg?imageUrl=... so the image pre-loads.
+
+---
+
 ### 15. Etsy Draft Assembly (waiting for API approval)
 When Etsy API is approved:
 Combine mockup image + SEO content + pricing template

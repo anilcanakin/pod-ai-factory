@@ -879,7 +879,7 @@ export function FactoryClient() {
                                             <div className="p-2 flex items-center gap-1.5 flex-wrap">
                                                 {/* Remove BG */}
                                                 <button
-                                                    onClick={() => handleRemoveBg(img.id, img.imageUrl)}
+                                                    onClick={() => handleRemoveBg(img.id, upscaledUrls[img.id] || img.imageUrl)}
                                                     disabled={!!processingImageId}
                                                     className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs rounded-[6px] border border-border-default transition-colors disabled:opacity-40"
                                                 >
@@ -889,7 +889,7 @@ export function FactoryClient() {
 
                                                 {/* Bria Premium */}
                                                 <button
-                                                    onClick={() => handleRemoveBg(img.id, img.imageUrl, 'bria')}
+                                                    onClick={() => handleRemoveBg(img.id, upscaledUrls[img.id] || img.imageUrl, 'bria')}
                                                     disabled={!!processingImageId}
                                                     className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-accent-subtle text-text-tertiary hover:text-accent text-xs rounded-[6px] border border-border-default hover:border-accent/30 transition-colors disabled:opacity-40"
                                                 >
@@ -899,7 +899,7 @@ export function FactoryClient() {
 
                                                 {/* Upscale */}
                                                 <button
-                                                    onClick={() => handleUpscale(img.id, img.imageUrl)}
+                                                    onClick={() => handleUpscale(img.id, bgRemovedUrls[img.id] || img.imageUrl)}
                                                     disabled={!!processingImageId}
                                                     className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs rounded-[6px] border border-border-default transition-colors disabled:opacity-40"
                                                 >
@@ -909,7 +909,7 @@ export function FactoryClient() {
 
                                                 {/* SEO */}
                                                 <button
-                                                    onClick={() => handleGenerateSeo(img.id, img.imageUrl)}
+                                                    onClick={() => handleGenerateSeo(img.id, displayUrl)}
                                                     disabled={!!processingImageId || isGeneratingSeo === img.id}
                                                     className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-accent-subtle text-text-secondary hover:text-accent text-xs rounded-[6px] border border-border-default hover:border-accent/30 transition-colors disabled:opacity-40"
                                                 >
@@ -942,6 +942,15 @@ export function FactoryClient() {
                                                 >
                                                     <Layers className="w-3 h-3" />
                                                     To Mockup
+                                                </button>
+
+                                                {/* To Remove BG */}
+                                                <button
+                                                    onClick={() => router.push(`/dashboard/remove-bg?imageUrl=${encodeURIComponent(displayUrl)}`)}
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs rounded-[6px] border border-border-default transition-colors"
+                                                >
+                                                    <Scissors className="w-3 h-3" />
+                                                    To Remove BG
                                                 </button>
                                             </div>
 

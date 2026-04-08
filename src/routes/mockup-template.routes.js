@@ -333,4 +333,70 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// POST /api/mockups/templates/detect-print-area — AI brightness-based print area detection
+router.post('/detect-print-area', async (req, res) => {
+    try {
+        const { templateId } = req.body;
+        if (!templateId) return res.status(400).json({ error: 'templateId required' });
+
+        const template = await prisma.mockupTemplate.findFirst({
+            where: { id: templateId, workspaceId: req.workspaceId },
+        });
+        if (!template) return res.status(404).json({ error: 'Template not found' });
+
+        const sharp = require('sharp');
+        const imagePath = path.join(__dirname, '../../', template.baseImagePath);
+
+        const { data, info } = await sharp(imagePath)
+            .greyscale()
+            .raw()
+            .toBuffer({ resolveWithObject: true });
+
+        const { width, height } = info;
+
+        // Divide image into a 10x10 grid, find brightest (most printable) region
+        const gridSize = 10;
+        const cellW = Math.floor(width / gridSize);
+        const cellH = Math.floor(height / gridSize);
+
+        let bestCell = { row: 2, col: 2, brightness: 0 };
+
+        for (let row = 0; row < gridSize; row++) {
+            for (let col = 0; col < gridSize; col++) {
+                let sum = 0, count = 0;
+                for (let y = row * cellH; y < (row + 1) * cellH; y++) {
+                    for (let x = col * cellW; x < (col + 1) * cellW; x++) {
+                        sum += data[y * width + x];
+                        count++;
+                    }
+                }
+                const brightness = sum / count;
+                if (brightness > bestCell.brightness) {
+                    bestCell = { row, col, brightness };
+                }
+            }
+        }
+
+        // Expand to a print area (3x4 cells centered on best cell)
+        const printCols = 3;
+        const printRows = 4;
+        const startCol = Math.max(0, bestCell.col - Math.floor(printCols / 2));
+        const startRow = Math.max(0, bestCell.row - Math.floor(printRows / 2));
+        const endCol = Math.min(gridSize, startCol + printCols);
+        const endRow = Math.min(gridSize, startRow + printRows);
+
+        const printArea = {
+            x: parseFloat((startCol / gridSize).toFixed(3)),
+            y: parseFloat((startRow / gridSize).toFixed(3)),
+            width: parseFloat(((endCol - startCol) / gridSize).toFixed(3)),
+            height: parseFloat(((endRow - startRow) / gridSize).toFixed(3)),
+        };
+
+        res.json({ printArea, confidence: parseFloat((bestCell.brightness / 255).toFixed(2)) });
+    } catch (err) {
+        console.error('[Detect Print Area]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGallery, apiPipeline, apiExport, apiJobs, apiTools, type GalleryImage } from '@/lib/api';
+import { apiGallery, apiPipeline, apiExport, apiJobs, apiTools, apiSeo, type GalleryImage } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn, truncateId } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -11,7 +11,8 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
     CheckCircle, XCircle, RefreshCw, Loader2,
     Download, Play, Maximize2, Copy, Image as ImageIcon, Images, Info,
-    History, Scissors, ZoomIn
+    History, Scissors, ZoomIn, Store, Trash2,
+    Check, X, Layers, Tag, Clock, ChevronUp, ChevronDown
 } from 'lucide-react';
 
 function timeAgo(dateStr: string): string {
@@ -55,6 +56,20 @@ function GalleryInner() {
     
     const [processingImage, setProcessingImage] = useState<string | null>(null);
     const [bgModel, setBgModel] = useState<'birefnet' | 'bria'>('birefnet');
+    const [publishingImage, setPublishingImage] = useState<string | null>(null);
+    const [listingPrice, setListingPrice] = useState('19.99');
+    const [showHistory, setShowHistory] = useState(false);
+    const historyRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+                setShowHistory(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
 
     const setActiveJobId = (id: string) => {
         const params = new URLSearchParams(searchParams.toString());
@@ -114,6 +129,37 @@ function GalleryInner() {
             toast.error(err instanceof Error ? err.message : 'BG removal failed');
         } finally {
             setProcessingImage(null);
+        }
+    };
+
+    const handlePublishToEtsy = async (imgId: string, imgUrl: string) => {
+        setPublishingImage(imgId);
+        const toastId = toast.loading('Generating SEO…');
+        try {
+            const seo = await apiSeo.generate(imgUrl);
+            toast.loading('Creating Etsy draft…', { id: toastId });
+            const res = await fetch('/api/etsy-browser/create-draft', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    title: seo.title,
+                    description: seo.description,
+                    tags: seo.tags,
+                    price: listingPrice,
+                    imageUrls: [imgUrl],
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success('Draft created on Etsy!', { id: toastId });
+            } else {
+                toast.error(data.error || 'Draft creation failed', { id: toastId });
+            }
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Publish failed', { id: toastId });
+        } finally {
+            setPublishingImage(null);
         }
     };
 
@@ -228,139 +274,206 @@ function GalleryInner() {
         setBulkConfirm(null);
     };
 
+    const bulkPublishToEtsy = async () => {
+        const ids = Array.from(selected);
+        const imgs = filtered.filter(i => ids.includes(i.id) && i.imageUrl && i.imageUrl !== 'PENDING');
+        if (imgs.length === 0) { toast.error('No valid images selected'); return; }
+
+        let done = 0;
+        for (const img of imgs) {
+            setPublishingImage(img.id);
+            const toastId = `publish-${img.id}`;
+            toast.loading(`Publishing ${done + 1}/${imgs.length}… (SEO)`, { id: toastId });
+            try {
+                const seo = await apiSeo.generate(img.imageUrl);
+                toast.loading(`Publishing ${done + 1}/${imgs.length}… (Draft)`, { id: toastId });
+                const res = await fetch('/api/etsy-browser/create-draft', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        title: seo.title,
+                        description: seo.description,
+                        tags: seo.tags,
+                        price: listingPrice,
+                        imageUrls: [img.imageUrl],
+                    }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    done++;
+                    toast.dismiss(toastId);
+                } else {
+                    toast.error(`Failed: ${data.error || 'unknown'}`, { id: toastId });
+                }
+            } catch (err: unknown) {
+                toast.error(err instanceof Error ? err.message : 'Publish failed', { id: toastId });
+            }
+        }
+        setPublishingImage(null);
+        toast.success(`Published ${done}/${imgs.length} drafts to Etsy`);
+        clearSelect();
+    };
+
+    const handleDelete = async (imageId: string) => {
+        if (!confirm('Delete this image permanently?')) return;
+        try {
+            await fetch(`/api/gallery/${imageId}`, { method: 'DELETE', credentials: 'include' });
+            queryClient.setQueryData(['gallery', activeJobId], (old: GalleryImage[] | undefined) =>
+                old ? old.filter(i => i.id !== imageId) : []
+            );
+            toast.success('Image deleted');
+        } catch {
+            toast.error('Failed to delete');
+        }
+    };
+
+    const bulkDelete = async () => {
+        if (!confirm(`Delete ${selected.size} images?`)) return;
+        const ids = Array.from(selected);
+        for (const id of ids) {
+            await fetch(`/api/gallery/${id}`, { method: 'DELETE', credentials: 'include' });
+        }
+        queryClient.setQueryData(['gallery', activeJobId], (old: GalleryImage[] | undefined) =>
+            old ? old.filter(i => !ids.includes(i.id)) : []
+        );
+        clearSelect();
+        toast.success(`Deleted ${ids.length} images`);
+    };
+
     const approvedCount = images.filter(i => i.isApproved || i.status === 'APPROVED').length;
     const FILTERS = ['all', 'PENDING', 'COMPLETED', 'APPROVED', 'REJECTED'] as const;
 
     return (
-        <div className="flex gap-6 h-[calc(100vh-8rem)] animate-fade-in">
+        <div className="flex flex-col h-[calc(100vh-8rem)] animate-fade-in gap-4">
 
-            {/* Left Column: Job History */}
-            <div className="w-80 flex flex-col bg-bg-surface border border-border-default rounded-[12px] overflow-hidden shadow-sm shrink-0">
-                <div className="p-4 border-b border-border-default flex items-center justify-between bg-bg-base">
-                    <div className="flex items-center gap-2">
-                        <History className="w-4 h-4 text-text-secondary" />
-                        <h2 className="text-sm font-semibold text-text-primary">History</h2>
-                    </div>
-                    <div className="px-2 py-0.5 bg-accent/10 text-accent text-[10px] font-medium rounded-full">
-                        {jobs.length} Jobs
-                    </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                    {/* All Images shortcut */}
+            {/* Top Bar: History Dropdown + Active Job Info + Shortcuts */}
+            <div className="flex items-center gap-3">
+                {/* History Dropdown */}
+                <div ref={historyRef} className="relative">
                     <button
-                        onClick={() => setActiveJobId('__all__')}
+                        onClick={() => setShowHistory(v => !v)}
                         className={cn(
-                            "w-full flex items-center gap-3 p-2.5 rounded-[8px] transition-all text-left border mb-2",
-                            activeJobId === '__all__'
-                                ? "bg-accent-subtle border-accent"
-                                : "hover:bg-bg-elevated border-transparent"
+                            "flex items-center gap-2 px-3 py-2 rounded-[8px] border text-sm font-medium transition-all",
+                            showHistory
+                                ? "bg-accent-subtle border-accent text-accent"
+                                : "bg-bg-surface border-border-default text-text-secondary hover:text-text-primary hover:border-border-strong"
                         )}
                     >
-                        <div className="w-10 h-10 rounded-[6px] bg-bg-elevated flex items-center justify-center border border-border-subtle shrink-0">
-                            <Images className="w-4 h-4 text-text-tertiary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className={cn("text-[11px] font-semibold", activeJobId === '__all__' ? "text-accent" : "text-text-primary")}>All Images</div>
-                            <div className="text-[10px] text-text-tertiary">Recent across all jobs</div>
-                        </div>
+                        <History className="w-4 h-4" />
+                        History
+                        <span className="px-1.5 py-0.5 bg-accent/10 text-accent text-[10px] font-medium rounded-full">{jobs.length}</span>
+                        {showHistory ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     </button>
-                    <div className="border-t border-border-subtle mb-2" />
 
-                    {isJobsLoading ? (
-                        <div className="space-y-2 p-2">
-                            {[...Array(5)].map((_, i) => (
-                                <div key={i} className="w-full flex items-center gap-3 p-2.5 rounded-[8px] border border-border-subtle">
-                                    <div className="w-10 h-10 rounded-full skeleton-shimmer bg-bg-elevated shrink-0" />
-                                    <div className="flex-1 space-y-2">
-                                        <div className="h-3 w-1/2 rounded bg-bg-elevated skeleton-shimmer" />
-                                        <div className="h-2 w-1/3 rounded bg-bg-elevated skeleton-shimmer" />
+                    {showHistory && (
+                        <div className="absolute top-full left-0 z-30 w-80 mt-1 bg-bg-surface border border-border-default rounded-[12px] shadow-lg overflow-hidden">
+                            <div className="p-2 max-h-96 overflow-y-auto custom-scrollbar space-y-1">
+                                <button
+                                    onClick={() => { setActiveJobId('__all__'); setShowHistory(false); }}
+                                    className={cn(
+                                        "w-full flex items-center gap-3 p-2.5 rounded-[8px] transition-all text-left border mb-2",
+                                        activeJobId === '__all__'
+                                            ? "bg-accent-subtle border-accent"
+                                            : "hover:bg-bg-elevated border-transparent"
+                                    )}
+                                >
+                                    <div className="w-8 h-8 rounded-[6px] bg-bg-elevated flex items-center justify-center border border-border-subtle shrink-0">
+                                        <Images className="w-3.5 h-3.5 text-text-tertiary" />
                                     </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : jobs.length === 0 ? (
-                        <div className="text-center py-10 px-4 text-sm text-text-tertiary">
-                            No jobs yet
-                        </div>
-                    ) : (
-                        jobs.map(job => (
-                            <button
-                                key={job.id}
-                                onClick={() => setActiveJobId(job.id)}
-                                className={cn(
-                                    "w-full flex items-center gap-3 p-2.5 rounded-[8px] transition-all text-left border relative group",
-                                    activeJobId === job.id
-                                        ? "bg-accent-subtle border-accent"
-                                        : "hover:bg-bg-elevated border-transparent"
-                                )}
-                            >
-                                {job.previewUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={job.previewUrl} alt="Preview" className="w-10 h-10 rounded-[6px] object-cover bg-bg-elevated shadow-sm shrink-0 border border-border-subtle" />
+                                    <div className="flex-1 min-w-0">
+                                        <div className={cn("text-[11px] font-semibold", activeJobId === '__all__' ? "text-accent" : "text-text-primary")}>All Images</div>
+                                        <div className="text-[10px] text-text-tertiary">Recent across all jobs</div>
+                                    </div>
+                                </button>
+                                <div className="border-t border-border-subtle mb-2" />
+                                {isJobsLoading ? (
+                                    <div className="space-y-2 p-1">
+                                        {[...Array(3)].map((_, i) => (
+                                            <div key={i} className="w-full flex items-center gap-3 p-2.5 rounded-[8px] border border-border-subtle">
+                                                <div className="w-8 h-8 rounded-full skeleton-shimmer bg-bg-elevated shrink-0" />
+                                                <div className="flex-1 space-y-1">
+                                                    <div className="h-2.5 w-1/2 rounded bg-bg-elevated skeleton-shimmer" />
+                                                    <div className="h-2 w-1/3 rounded bg-bg-elevated skeleton-shimmer" />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : jobs.length === 0 ? (
+                                    <div className="text-center py-6 text-xs text-text-tertiary">No jobs yet</div>
                                 ) : (
-                                    <div className="w-10 h-10 rounded-[6px] bg-bg-elevated flex items-center justify-center border border-border-subtle shrink-0">
-                                        <ImageIcon className="w-4 h-4 text-text-tertiary opacity-40" />
-                                    </div>
+                                    jobs.map(job => (
+                                        <button
+                                            key={job.id}
+                                            onClick={() => { setActiveJobId(job.id); setShowHistory(false); }}
+                                            className={cn(
+                                                "w-full flex items-center gap-3 p-2.5 rounded-[8px] transition-all text-left border",
+                                                activeJobId === job.id
+                                                    ? "bg-accent-subtle border-accent"
+                                                    : "hover:bg-bg-elevated border-transparent"
+                                            )}
+                                        >
+                                            {job.previewUrl ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img src={job.previewUrl} alt="Preview" className="w-8 h-8 rounded-[6px] object-cover bg-bg-elevated shrink-0 border border-border-subtle" />
+                                            ) : (
+                                                <div className="w-8 h-8 rounded-[6px] bg-bg-elevated flex items-center justify-center border border-border-subtle shrink-0">
+                                                    <ImageIcon className="w-3.5 h-3.5 text-text-tertiary opacity-40" />
+                                                </div>
+                                            )}
+                                            <div className="flex-1 min-w-0 pr-1">
+                                                <div className="flex justify-between items-center mb-0.5">
+                                                    <span className={cn("text-[10px] font-mono font-medium truncate", activeJobId === job.id ? "text-accent" : "text-text-primary")}>
+                                                        {truncateId(job.id)}
+                                                    </span>
+                                                    <div className="flex items-center transform scale-75 origin-right">
+                                                        <StatusBadge status={job.status} />
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-between items-center text-[10px] text-text-tertiary">
+                                                    <span>{timeAgo(job.createdAt)}</span>
+                                                    <span>{job.imageCount} img</span>
+                                                </div>
+                                            </div>
+                                        </button>
+                                    ))
                                 )}
-                                
-                                <div className="flex-1 min-w-0 pr-1">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className={cn(
-                                            "text-[10px] font-mono font-medium truncate",
-                                            activeJobId === job.id ? "text-accent" : "text-text-primary"
-                                        )}>
-                                            {truncateId(job.id)}
-                                        </span>
-                                        <div className="flex items-center transform scale-75 origin-right">
-                                            <StatusBadge status={job.status} />
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="flex justify-between items-center text-[10px] text-text-tertiary">
-                                        <span>{timeAgo(job.createdAt)}</span>
-                                        <span className="flex items-center gap-1 font-medium bg-bg-elevated px-1.5 py-0.5 rounded border border-border-subtle">
-                                            {job.imageCount} images
-                                        </span>
-                                    </div>
-                                </div>
-                            </button>
-                        ))
+                            </div>
+                        </div>
                     )}
+                </div>
+
+                {/* Active job title */}
+                {activeJobId && (
+                    <div className="flex items-center gap-2">
+                        <h1 className="text-lg font-bold text-text-primary flex items-center gap-2">
+                            {allImagesMode ? (
+                                <span className="text-accent bg-accent/10 px-2 py-0.5 rounded text-sm">All Images</span>
+                            ) : (
+                                <span className="font-mono text-accent bg-accent/10 px-2 py-0.5 rounded text-sm">{truncateId(activeJobId)}</span>
+                            )}
+                            Gallery
+                        </h1>
+                        <span className="text-xs text-text-tertiary hidden sm:block">
+                            {allImagesMode ? 'Latest 100 across all jobs' : 'Review + approve generated designs'}
+                        </span>
+                    </div>
+                )}
+
+                <div className="ml-auto flex items-center gap-1.5 text-xs text-text-tertiary bg-bg-surface px-3 py-1.5 rounded-[8px] border border-border-default">
+                    <Info className="w-3 h-3" />
+                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">A</kbd> approve ·
+                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">R</kbd> reject ·
+                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">←→</kbd> navigate ·
+                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Esc</kbd> clear
                 </div>
             </div>
 
-            {/* Right Column: Gallery Content */}
+            {/* Full-width Gallery Content */}
             <div className="flex-1 flex flex-col min-w-0 bg-bg-surface border border-border-default rounded-[12px] p-6 overflow-hidden shadow-sm relative">
 
                 {activeJobId && (
                     <div className="flex flex-col gap-4 mb-6 sticky top-0 bg-bg-surface z-20 pb-2 border-b border-border-subtle">
-                        {/* Header area inside content */}
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
-                                    {allImagesMode ? (
-                                        <span className="text-accent bg-accent/10 px-2 py-0.5 rounded text-base">All Images</span>
-                                    ) : (
-                                        <span className="font-mono text-accent bg-accent/10 px-2 py-0.5 rounded text-base">{truncateId(activeJobId)}</span>
-                                    )}
-                                    Gallery
-                                </h1>
-                                <p className="text-xs text-text-secondary mt-1">
-                                    {allImagesMode ? 'Latest 100 images across all jobs' : 'Review + approve generated designs'}
-                                </p>
-                            </div>
-                            
-                            <div className="flex items-center gap-1.5 text-xs text-text-tertiary bg-bg-elevated px-3 py-1.5 rounded-[8px] border border-border-default">
-                                <Info className="w-3 h-3" />
-                                <kbd className="px-1 bg-bg-overlay rounded text-[10px]">A</kbd> approve ·
-                                <kbd className="px-1 bg-bg-overlay rounded text-[10px]">R</kbd> reject ·
-                                <kbd className="px-1 bg-bg-overlay rounded text-[10px]">←→</kbd> navigate ·
-                                <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Shift</kbd> range ·
-                                <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Esc</kbd> clear
-                            </div>
-                        </div>
-
                         {/* Toolbar */}
                         <div className="flex flex-wrap items-center justify-between gap-4">
                             {/* Filters */}
@@ -385,10 +498,10 @@ function GalleryInner() {
 
                             {/* Batch Actions */}
                             {images.length > 0 && (
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                     {selected.size > 0 && <span className="text-xs text-accent font-medium">{selected.size} selected</span>}
                                     <button onClick={selectAll} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors bg-bg-base">Select All</button>
-                                    
+
                                     {selected.size > 0 && (
                                         <>
                                             <button onClick={clearSelect} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors bg-bg-base">Clear</button>
@@ -398,6 +511,13 @@ function GalleryInner() {
                                             <button onClick={() => setBulkConfirm('reject')} className="flex items-center gap-1.5 px-3 py-1.5 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-xs font-medium rounded-[6px] border border-[rgba(239,68,68,0.20)] transition-colors">
                                                 <XCircle className="w-3.5 h-3.5" /> Reject
                                             </button>
+                                            <button onClick={bulkDelete} className="flex items-center gap-1.5 px-3 py-1.5 bg-danger-subtle hover:bg-danger text-danger hover:text-white text-xs font-medium rounded-[6px] border border-danger/30 transition-colors">
+                                                <Trash2 className="w-3.5 h-3.5" /> Delete ({selected.size})
+                                            </button>
+                                            <button onClick={bulkPublishToEtsy} disabled={!!publishingImage} className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 text-xs font-medium rounded-[6px] border border-orange-500/30 transition-colors disabled:opacity-40">
+                                                {publishingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Store className="w-3.5 h-3.5" />}
+                                                Publish to Etsy ({selected.size})
+                                            </button>
                                         </>
                                     )}
 
@@ -406,6 +526,10 @@ function GalleryInner() {
                                     <button onClick={() => setBulkConfirm('pipeline')} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-subtle hover:bg-[rgba(124,58,237,0.18)] text-accent text-xs font-medium rounded-[6px] border border-accent-border transition-colors">
                                         <Play className="w-3.5 h-3.5" /> Run Pipeline ({approvedCount})
                                     </button>
+                                    <div className="flex items-center gap-1 bg-bg-elevated border border-border-default rounded-[6px] px-2 h-[30px]">
+                                        <span className="text-text-tertiary text-xs">$</span>
+                                        <input type="number" min="0.01" step="0.01" value={listingPrice} onChange={e => setListingPrice(e.target.value)} className="w-14 bg-transparent text-text-primary text-xs focus:outline-none" title="Default listing price for Etsy drafts" />
+                                    </div>
                                     <a href={apiExport.bundleUrl(activeJobId)} className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated hover:bg-bg-overlay text-text-primary text-xs font-medium rounded-[6px] border border-border-default transition-colors shadow-sm" target="_blank" rel="noopener noreferrer">
                                         <Download className="w-3.5 h-3.5" /> Bundle
                                     </a>
@@ -418,15 +542,14 @@ function GalleryInner() {
                 {/* Content Area */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
                     {!activeJobId ? (
-                        <div className="flex flex-col items-center justify-center h-full text-text-tertiary">
-                            <p className="text-sm font-medium text-text-secondary cursor-default select-none pointer-events-none">← Select a job from history to view images</p>
+                        <div className="flex flex-col items-center justify-center h-full text-text-tertiary gap-3">
+                            <History className="w-8 h-8 opacity-30" />
+                            <p className="text-sm font-medium text-text-secondary">Open History to select a job</p>
                         </div>
                     ) : isLoading ? (
-                        <div className="masonry-grid">
-                            {[...Array(6)].map((_, i) => (
-                                <div key={i} className="masonry-item">
-                                    <div className={cn('rounded-[10px] skeleton-shimmer', i % 3 === 0 ? 'h-56' : i % 3 === 1 ? 'h-40' : 'h-64')} />
-                                </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {[...Array(8)].map((_, i) => (
+                                <div key={i} className="aspect-square rounded-[10px] skeleton-shimmer bg-bg-elevated" />
                             ))}
                         </div>
                     ) : filtered.length === 0 ? (
@@ -435,7 +558,7 @@ function GalleryInner() {
                             <p className="text-sm">No images match this filter</p>
                         </div>
                     ) : (
-                        <div className="masonry-grid pb-20">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-20">
                             {filtered.map((img, idx) => (
                                 <GalleryCard
                                     key={img.id}
@@ -444,12 +567,17 @@ function GalleryInner() {
                                     onToggleSelect={(e) => handleSelect(idx, e)}
                                     onApprove={() => approveMutation.mutate(img.id)}
                                     onReject={() => rejectMutation.mutate(img.id)}
+                                    onDelete={() => handleDelete(img.id)}
                                     onView={() => setViewImg(img)}
                                     onCopyPrompt={() => { navigator.clipboard.writeText(img.rawResponse || img.id); toast.success('Prompt copied'); }}
                                     onRegenerate={() => pipelineMutation.mutate(img.id)}
                                     onRemoveBg={(model) => handleRemoveBg(img.id, img.imageUrl, model)}
                                     onUpscale={(scale) => handleUpscale(img.id, img.imageUrl, scale)}
+                                    onPublishToEtsy={() => handlePublishToEtsy(img.id, img.imageUrl)}
+                                    onMockup={() => router.push(`/dashboard/mockups?designUrl=${encodeURIComponent(img.imageUrl)}&designImageId=${img.id}`)}
+                                    onSeo={() => router.push(`/dashboard/seo?imageUrl=${encodeURIComponent(img.imageUrl)}`)}
                                     isProcessing={processingImage === img.id}
+                                    isPublishing={publishingImage === img.id}
                                 />
                             ))}
                         </div>
@@ -458,7 +586,7 @@ function GalleryInner() {
 
                 {/* Fade overlay at bottom of grid */}
                 {activeJobId && images.length > 0 && (
-                     <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-bg-surface to-transparent pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-bg-surface to-transparent pointer-events-none" />
                 )}
             </div>
 
@@ -472,7 +600,7 @@ function GalleryInner() {
                             <StatusBadge status={viewImg.status} className="px-3" />
                             <div className="w-px h-6 bg-border-default"></div>
                             <button onClick={() => { approveMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-2 px-4 py-2 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-sm font-medium rounded-[10px] border border-[rgba(34,197,94,0.20)] transition-colors">
-                                <CheckCircle className="w-4 h-4" /> Approve Focus (A)
+                                <CheckCircle className="w-4 h-4" /> Approve (A)
                             </button>
                             <button onClick={() => { rejectMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-2 px-4 py-2 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-sm font-medium rounded-[10px] border border-[rgba(239,68,68,0.20)] transition-colors">
                                 <XCircle className="w-4 h-4" /> Reject (R)
@@ -495,19 +623,22 @@ function GalleryInner() {
 interface GalleryCardProps {
     img: GalleryImage; selected: boolean;
     onToggleSelect: (e: React.MouseEvent) => void; onApprove: () => void; onReject: () => void;
+    onDelete: () => void;
     onView: () => void; onCopyPrompt: () => void; onRegenerate: () => void;
     onRemoveBg: (model: 'birefnet' | 'bria') => void;
     onUpscale: (scale: 2 | 4) => void;
+    onPublishToEtsy: () => void;
     isProcessing: boolean;
+    isPublishing: boolean;
 }
 
-function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onView, onCopyPrompt, onRegenerate, onRemoveBg, onUpscale, isProcessing }: GalleryCardProps) {
+function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDelete, onView, onCopyPrompt, onRegenerate, onRemoveBg, onUpscale, onPublishToEtsy, isProcessing, isPublishing }: GalleryCardProps) {
     const isPending = img.imageUrl === 'PENDING' || !img.imageUrl;
     const isRejected = img.status === 'REJECTED';
 
     return (
         <div className={cn(
-            'masonry-item relative group rounded-[10px] overflow-hidden border transition-all duration-200 cursor-pointer shadow-sm',
+            'relative group rounded-[10px] overflow-hidden border transition-all duration-200 cursor-pointer shadow-sm',
             selected ? 'border-accent ring-2 ring-accent/30' : 'border-border-subtle hover:border-border-strong',
             isRejected && 'opacity-40 grayscale-[0.8]'
         )}>
@@ -531,7 +662,7 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onVie
                 </div>
             ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={img.imageUrl} alt="Generated design" className="w-full object-cover block" onClick={onView} />
+                <img src={img.imageUrl} alt="Generated design" className="w-full aspect-square object-cover block" onClick={onView} />
             )}
 
             {/* Hover Overlay */}
@@ -542,6 +673,9 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onVie
                     </button>
                     <button onClick={e => { e.stopPropagation(); onReject(); }} className="flex-1 flex justify-center items-center gap-1.5 px-2 py-2 bg-danger-subtle text-danger text-xs font-medium rounded-[8px] border border-[rgba(239,68,68,0.20)] transition-colors backdrop-blur-md hover:bg-[rgba(239,68,68,0.18)]">
                         <XCircle className="w-3.5 h-3.5" /> Reject
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onDelete(); }} className="flex justify-center items-center p-2 bg-[rgba(127,0,0,0.40)] hover:bg-[rgba(180,0,0,0.60)] text-red-300 rounded-[8px] border border-red-900/30 transition-colors backdrop-blur-md" title="Delete permanently">
+                        <Trash2 className="w-3.5 h-3.5" />
                     </button>
                 </div>
                 
@@ -554,6 +688,32 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onVie
                     </button>
                     <button onClick={e => { e.stopPropagation(); onRegenerate(); }} title="Regenerate Pipeline" className="flex items-center gap-1.5 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10">
                         <RefreshCw className="w-3 h-3" />
+                    </button>
+
+                    <button
+                        onClick={async (e) => {
+                            e.stopPropagation();
+                            const API_BASE = '';
+                            const url = img.imageUrl.startsWith('http') ? img.imageUrl : `${API_BASE}/${img.imageUrl}`;
+                            try {
+                                const response = await fetch(url);
+                                const blob = await response.blob();
+                                const blobUrl = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = blobUrl;
+                                a.download = `design-${img.id.slice(0,8)}.png`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(blobUrl);
+                            } catch {
+                                window.open(url, '_blank');
+                            }
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 bg-bg-overlay hover:bg-accent-subtle text-text-secondary hover:text-accent text-xs rounded border border-border-default transition-colors"
+                        title="Download"
+                    >
+                        <Download className="w-3 h-3" />
                     </button>
                     
                     {/* Remove BG butonu — dropdown ile model seçimi */}
@@ -578,13 +738,24 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onVie
                     </div>
 
                     {/* Upscale butonu */}
-                    <button 
+                    <button
                         onClick={e => { e.stopPropagation(); onUpscale(4); }}
                         disabled={isProcessing}
                         className="flex items-center gap-1 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10 disabled:opacity-50"
                         title="Upscale 4x"
                     >
                         {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ZoomIn className="w-3 h-3" />}
+                    </button>
+
+                    {/* Publish to Etsy */}
+                    <button
+                        onClick={e => { e.stopPropagation(); onPublishToEtsy(); }}
+                        disabled={isPublishing || isProcessing || img.imageUrl === 'PENDING' || !img.imageUrl}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-orange-600/80 hover:bg-orange-500 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md border border-orange-400/30 disabled:opacity-50"
+                        title="Publish to Etsy"
+                    >
+                        {isPublishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Store className="w-3 h-3" />}
+                        {isPublishing ? 'Publishing…' : 'Etsy'}
                     </button>
                 </div>
                 <p className="text-[9px] text-white/50 mt-2 font-mono text-center tracking-widest uppercase">{truncateId(img.id)}</p>

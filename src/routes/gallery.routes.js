@@ -23,7 +23,7 @@ const FAILED_PLACEHOLDER = 'data:image/svg+xml;base64,' + Buffer.from(
 // POST /api/gallery/save-mockup — save a rendered mockup URL as a GalleryImage record
 router.post('/save-mockup', async (req, res) => {
     try {
-        const { imageUrl } = req.body;
+        const { imageUrl, designImageId } = req.body;
         if (!imageUrl) return res.status(400).json({ error: 'imageUrl is required' });
         if (!req.workspaceId) return res.status(401).json({ error: 'Authentication required' });
 
@@ -53,6 +53,7 @@ router.post('/save-mockup', async (req, res) => {
                 status: 'COMPLETED',
                 isApproved: true,
                 cost: 0,
+                ...(designImageId ? { seed: designImageId } : {}),
             }
         });
 
@@ -169,6 +170,28 @@ router.post('/:imageId/reject', async (req, res) => {
         });
         res.json(image);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/gallery/:imageId — delete an image record
+router.delete('/:imageId', async (req, res) => {
+    try {
+        const { imageId } = req.params;
+        if (!req.workspaceId) return res.status(401).json({ error: 'Unauthorized' });
+
+        const image = await prisma.image.findFirst({
+            where: { id: imageId },
+            include: { job: true },
+        });
+
+        if (!image) return res.status(404).json({ error: 'Image not found' });
+        if (image.job.workspaceId !== req.workspaceId) return res.status(403).json({ error: 'Forbidden' });
+
+        await prisma.image.delete({ where: { id: imageId } });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[Gallery DELETE]', err);
         res.status(500).json({ error: err.message });
     }
 });

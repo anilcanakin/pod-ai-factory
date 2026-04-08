@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
-import { apiMockups, MockupTemplate, MockupConfig, apiGallery, apiJobs, GalleryImage, JobSummary } from '@/lib/api';
+import { apiMockups, MockupTemplate, MockupConfig, apiGallery, GalleryImage } from '@/lib/api';
 import {
     Plus, Trash2, X, Image as ImageIcon, RotateCw, Layers,
     Eye, Download, Search, Loader2, Save, Grid3x3, CheckCircle2,
-    AlertCircle, Package
+    AlertCircle, Package, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
@@ -89,6 +90,15 @@ export function MockupsClient() {
     const [searchQuery, setSearchQuery] = useState('');
     const { toasts, addToast } = useToast();
 
+    const { data: renderedMockups, refetch: refetchMockups } = useQuery({
+        queryKey: ['rendered-mockups'],
+        queryFn: async () => {
+            const all = await apiGallery.getRecent();
+            return all.filter((img: GalleryImage) => img.engine === 'mockup');
+        },
+        staleTime: 10000,
+    });
+
     // Pre-select design from URL param (e.g. coming from Factory "Send to Mockup")
     const initialDesignUrl = searchParams.get('designUrl');
     const initialDesignImageId = searchParams.get('designImageId');
@@ -149,7 +159,14 @@ export function MockupsClient() {
             const result = await apiMockups.renderBatch(bulkDesignImageId, Array.from(bulkSelectedIds));
             setBulkResults(result.results);
             const successCount = result.results.filter(r => r.status === 'success').length;
+            // Auto-save successful renders to gallery
+            for (const r of result.results) {
+                if (r.status === 'success' && r.url) {
+                    try { await apiGallery.saveMockup(r.url.startsWith('http') ? r.url : `http://localhost:3000/${r.url}`, bulkDesignImageId ?? undefined); } catch {}
+                }
+            }
             addToast('success', `Rendered ${successCount} of ${result.results.length} mockups`);
+            refetchMockups();
         } catch (err: any) {
             addToast('error', err.message);
         } finally {
@@ -184,7 +201,7 @@ export function MockupsClient() {
                     <button
                         id="upload-template-btn"
                         onClick={() => setShowUpload(true)}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-accent hover:bg-accent/90 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-accent/20"
                     >
                         <Plus className="w-4 h-4" /> Upload Template
                     </button>
@@ -276,12 +293,26 @@ export function MockupsClient() {
                                 <div key={r.templateId} className="bg-slate-900/50 rounded-xl overflow-hidden border border-slate-700">
                                     {r.status === 'success' && r.url ? (
                                         <>
-                                            <img src={`${API_BASE}/${r.url}`} alt={r.templateName} className="w-full aspect-square object-contain" />
+                                            {(() => {
+                                                const resolvedUrl = r.url?.startsWith('http')
+                                                    ? r.url
+                                                    : `http://localhost:3000/${r.url?.startsWith('/') ? r.url.slice(1) : r.url}`;
+                                                return (
+                                                    <img
+                                                        src={resolvedUrl}
+                                                        alt={r.templateName}
+                                                        className="w-full aspect-square object-contain"
+                                                        onError={(e) => { console.error('Bulk render img failed:', r.url); }}
+                                                    />
+                                                );
+                                            })()}
                                             <div className="p-2 flex items-center justify-between">
                                                 <p className="text-[10px] text-slate-400 truncate">{r.templateName}</p>
                                                 <button
                                                     onClick={async () => {
-                                                        const url = `${API_BASE}/${r.url}`;
+                                                        const url = r.url?.startsWith('http')
+                                                            ? r.url
+                                                            : `http://localhost:3000/${r.url?.startsWith('/') ? r.url.slice(1) : r.url}`;
                                                         try {
                                                             const res = await fetch(url);
                                                             const blob = await res.blob();
@@ -328,7 +359,7 @@ export function MockupsClient() {
                     {templates.length === 0 && (
                         <button
                             onClick={() => setShowUpload(true)}
-                            className="mt-6 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-colors"
+                            className="mt-6 px-5 py-2.5 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-xl transition-colors"
                         >
                             <Plus className="w-4 h-4 inline mr-1" /> Upload Template
                         </button>
@@ -359,12 +390,17 @@ export function MockupsClient() {
                 </div>
             )}
 
+            {/* Rendered Mockups */}
+            {renderedMockups && renderedMockups.length > 0 && (
+                <RenderedMockupsSection renderedMockups={renderedMockups} refetchMockups={refetchMockups} addToast={addToast} />
+            )}
+
             {showUpload && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="bg-[#1a2332] border border-slate-700 rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                    <div className="bg-bg-elevated border border-border-default rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between mb-5">
-                            <h2 className="text-lg font-semibold text-white">Upload Mockup Template</h2>
-                            <button onClick={() => setShowUpload(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+                            <h2 className="text-lg font-semibold text-text-primary">Upload Mockup Template</h2>
+                            <button onClick={() => setShowUpload(false)} className="text-text-tertiary hover:text-text-primary"><X className="w-5 h-5" /></button>
                         </div>
                         <TemplateUploader
                             onSuccess={() => {
@@ -816,7 +852,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
         if (!renderResult) return;
         setSavingToGallery(true);
         try {
-            await apiGallery.saveMockup(renderResult);
+            await apiGallery.saveMockup(renderResult, designImageId ?? undefined);
             addToast('success', 'Saved to gallery!');
         } catch (err: any) {
             addToast('error', err.message);
@@ -833,8 +869,15 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
             // Save config first (Standard v1 shape)
             await apiMockups.updateTemplate(template.id, { configJson: { printArea, transform: { rotation, opacity, blendMode } } });
             const result = await apiMockups.render(designImageId, template.id, placement);
-            setRenderResult(`${API_BASE}/${result.mockupUrl}`);
-            addToast('success', 'Mockup rendered!');
+            const renderedUrl = `http://localhost:3000/${result.mockupUrl}`;
+            setRenderResult(renderedUrl);
+            // Auto-save to gallery
+            try {
+                await apiGallery.saveMockup(renderedUrl, designImageId ?? undefined);
+                addToast('success', 'Mockup rendered and saved to gallery!');
+            } catch {
+                addToast('info', 'Mockup rendered. Click "Save to Gallery" to save.');
+            }
         } catch (err: any) {
             addToast('error', 'Render failed: ' + err.message);
         } finally {
@@ -1017,14 +1060,6 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
                                             <Download className="w-3 h-3" /> Download
                                         </button>
                                         <button
-                                            onClick={handleSaveToGallery}
-                                            disabled={savingToGallery}
-                                            className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors disabled:opacity-40"
-                                        >
-                                            {savingToGallery ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                                            {savingToGallery ? 'Saving…' : 'Save to Gallery'}
-                                        </button>
-                                        <button
                                             onClick={async () => {
                                                 const response = await fetch('/api/etsy-browser/pin-pinterest', {
                                                     method: 'POST',
@@ -1081,106 +1116,187 @@ function DesignPickerModal({ onClose, onSelect }: {
     onClose: () => void;
     onSelect: (img: GalleryImage) => void;
 }) {
-    const [jobs, setJobs] = useState<JobSummary[]>([]);
-    const [loadingJobs, setLoadingJobs] = useState(true);
-    const [selectedJobId, setSelectedJobId] = useState('');
     const [images, setImages] = useState<GalleryImage[]>([]);
-    const [loadingImages, setLoadingImages] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
 
     useEffect(() => {
-        apiJobs.list()
-            .then(setJobs)
+        apiGallery.getRecent()
+            .then(all => setImages(all.filter((i: GalleryImage) => i.engine !== 'mockup')))
             .catch(() => {})
-            .finally(() => setLoadingJobs(false));
+            .finally(() => setLoading(false));
     }, []);
 
-    const loadJob = async (jobId: string) => {
-        setSelectedJobId(jobId);
-        setLoadingImages(true);
+    const filtered = search
+        ? images.filter(i => i.id.toLowerCase().includes(search.toLowerCase()))
+        : images;
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
+            <div className="bg-[#1a2332] border border-slate-700 rounded-2xl w-full max-w-4xl p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-white">Select a Design</h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+                </div>
+                <input
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Search by ID..."
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500"
+                    autoFocus
+                />
+                <div className="flex-1 overflow-y-auto">
+                    {loading ? (
+                        <div className="flex items-center justify-center py-12">
+                            <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+                        </div>
+                    ) : filtered.length === 0 ? (
+                        <div className="text-center py-12 text-slate-500">No designs found</div>
+                    ) : (
+                        <div className="grid grid-cols-4 gap-3">
+                            {filtered.map(img => {
+                                const url = img.imageUrl.startsWith('http') ? img.imageUrl : `${API_BASE}/${img.imageUrl}`;
+                                return (
+                                    <button
+                                        key={img.id}
+                                        onClick={() => onSelect(img)}
+                                        className="group relative aspect-square bg-slate-900/60 rounded-xl overflow-hidden border-2 border-transparent hover:border-blue-500 transition-all"
+                                    >
+                                        <img src={url} alt="Design" className="w-full h-full object-contain p-2"
+                                            onError={e => { e.currentTarget.style.display = 'none'; }} />
+                                        <div className="absolute inset-0 bg-blue-600/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <span className="px-3 py-1 bg-blue-600 text-white text-xs rounded-full font-medium">Select</span>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Rendered Mockups Section (date-grouped accordion) ───────────────────────
+function RenderedMockupsSection({ renderedMockups, refetchMockups, addToast }: {
+    renderedMockups: GalleryImage[];
+    refetchMockups: () => void;
+    addToast: (type: ToastType, msg: string) => void;
+}) {
+    const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+    const grouped = useMemo(() => {
+        const map = new Map<string, GalleryImage[]>();
+        for (const img of renderedMockups) {
+            const date = new Date(img.createdAt).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'long', day: 'numeric',
+            });
+            if (!map.has(date)) map.set(date, []);
+            map.get(date)!.push(img);
+        }
+        return Array.from(map.entries());
+    }, [renderedMockups]);
+
+    const toggle = (date: string) => setCollapsed(prev => {
+        const next = new Set(prev);
+        if (next.has(date)) next.delete(date); else next.add(date);
+        return next;
+    });
+
+    const handleDelete = async (imageId: string) => {
         try {
-            const imgs = await apiGallery.getImages(jobId);
-            setImages(imgs.filter(i => i.isApproved || i.status === 'PROCESSED' || i.status === 'COMPLETED'));
-        } catch (err: any) {
-            setImages([]);
-        } finally {
-            setLoadingImages(false);
+            await fetch(`${API_BASE}/api/gallery/${imageId}`, {
+                method: 'DELETE',
+                credentials: 'include',
+            });
+            refetchMockups();
+            addToast('success', 'Mockup deleted');
+        } catch {
+            addToast('error', 'Failed to delete');
         }
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
-            <div className="bg-[#1a2332] border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[80vh] flex flex-col overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 shrink-0">
-                    <h3 className="text-lg font-semibold text-white">Select a Design</h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
-                </div>
-
-                <div className="flex flex-1 overflow-hidden">
-                    {/* Job list sidebar */}
-                    <div className="w-52 border-r border-slate-700 overflow-y-auto p-2 space-y-1 shrink-0">
-                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest px-2 pb-1">Job History</p>
-                        {loadingJobs ? (
-                            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-slate-500" /></div>
-                        ) : jobs.length === 0 ? (
-                            <p className="text-center text-slate-500 text-xs py-8">No jobs yet</p>
-                        ) : (
-                            jobs.map(job => (
-                                <button
-                                    key={job.id}
-                                    onClick={() => loadJob(job.id)}
-                                    className={cn(
-                                        'w-full flex items-center gap-2 p-2 rounded-lg text-left transition-colors border',
-                                        selectedJobId === job.id
-                                            ? 'bg-blue-600/20 border-blue-500/40'
-                                            : 'border-transparent hover:bg-slate-800'
-                                    )}
-                                >
-                                    {job.previewUrl ? (
-                                        <img src={job.previewUrl} alt="" className="w-9 h-9 rounded object-cover shrink-0 border border-slate-600" />
-                                    ) : (
-                                        <div className="w-9 h-9 rounded bg-slate-700 flex items-center justify-center shrink-0">
-                                            <ImageIcon className="w-4 h-4 text-slate-500" />
-                                        </div>
-                                    )}
-                                    <div className="min-w-0">
-                                        <p className={cn('text-[11px] font-mono truncate', selectedJobId === job.id ? 'text-blue-300' : 'text-slate-300')}>
-                                            {job.id.slice(0, 8)}…
-                                        </p>
-                                        <p className="text-[10px] text-slate-500">{job.imageCount} imgs</p>
-                                    </div>
-                                </button>
-                            ))
-                        )}
-                    </div>
-
-                    {/* Images panel */}
-                    <div className="flex-1 overflow-y-auto p-4">
-                        {!selectedJobId ? (
-                            <p className="text-center text-slate-500 py-16 text-sm">← Select a job to browse approved designs</p>
-                        ) : loadingImages ? (
-                            <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-slate-500" /></div>
-                        ) : images.length === 0 ? (
-                            <div className="text-center py-16">
-                                <AlertCircle className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-                                <p className="text-slate-400 font-medium">No approved designs found</p>
-                                <p className="text-slate-500 text-sm mt-1">Approve a design first in Gallery</p>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-3 gap-3">
-                                {images.map(img => (
-                                    <button key={img.id} onClick={() => onSelect(img)}
-                                        className="relative aspect-square bg-slate-900/60 rounded-xl overflow-hidden border-2 border-transparent hover:border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-600/10">
-                                        <img src={img.imageUrl.startsWith('http') ? img.imageUrl : `${API_BASE}/${img.imageUrl}`}
-                                            alt="Design" className="w-full h-full object-contain p-2" />
-                                        <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/80 to-transparent">
-                                            <span className="text-[10px] text-slate-300 font-medium">{img.status} • {img.engine}</span>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
+        <div className="space-y-4">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-purple-400" />
+                Rendered Mockups ({renderedMockups.length})
+            </h2>
+            <div className="space-y-3">
+                {grouped.map(([date, imgs]) => {
+                    const isOpen = !collapsed.has(date);
+                    return (
+                        <div key={date} className="bg-slate-800/40 border border-slate-700/60 rounded-2xl overflow-hidden">
+                            <button
+                                onClick={() => toggle(date)}
+                                className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-700/30 transition-colors"
+                            >
+                                <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-purple-500 inline-block shrink-0" />
+                                    {date}
+                                    <span className="text-xs text-slate-500 font-normal">
+                                        ({imgs.length} mockup{imgs.length !== 1 ? 's' : ''})
+                                    </span>
+                                </span>
+                                {isOpen
+                                    ? <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+                                    : <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+                                }
+                            </button>
+                            {isOpen && (
+                                <div className="px-4 pb-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                    {imgs.map(img => {
+                                        const url = img.imageUrl.startsWith('http')
+                                            ? img.imageUrl
+                                            : `${API_BASE}/${img.imageUrl}`;
+                                        return (
+                                            <div key={img.id} className="group relative aspect-square bg-slate-900/50 border border-slate-700 rounded-xl overflow-hidden hover:border-purple-500/50 transition-all">
+                                                <img
+                                                    src={url}
+                                                    alt="Mockup"
+                                                    className="w-full h-full object-cover"
+                                                    onError={e => { e.currentTarget.style.display = 'none'; }}
+                                                />
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={async () => {
+                                                            try {
+                                                                const r = await fetch(url);
+                                                                const blob = await r.blob();
+                                                                const a = document.createElement('a');
+                                                                a.href = URL.createObjectURL(blob);
+                                                                a.download = `mockup-${img.id.slice(0, 8)}.png`;
+                                                                a.click();
+                                                            } catch { window.open(url, '_blank'); }
+                                                        }}
+                                                        className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+                                                        title="Download"
+                                                    >
+                                                        <Download className="w-4 h-4 text-white" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(img.id)}
+                                                        className="p-2 bg-red-500/40 hover:bg-red-500/60 rounded-lg transition-colors"
+                                                        title="Delete"
+                                                    >
+                                                        <Trash2 className="w-4 h-4 text-white" />
+                                                    </button>
+                                                </div>
+                                                <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/80 to-transparent">
+                                                    <p className="text-[9px] text-white/60 font-mono">
+                                                        {new Date(img.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

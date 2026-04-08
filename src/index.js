@@ -19,6 +19,31 @@ app.use('/assets/mockups', (req, res, next) => {
     next();
 }, express.static(path.join(__dirname, '../assets/mockups')));
 
+// Serve rendered mockup outputs publicly with CORS
+const outputsDir = path.join(__dirname, '../assets/outputs');
+if (!require('fs').existsSync(outputsDir)) {
+    require('fs').mkdirSync(outputsDir, { recursive: true });
+}
+app.use('/assets/outputs', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+}, express.static(path.join(__dirname, '../assets/outputs')));
+
+// Create Supabase Storage bucket on startup
+if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    supabase.storage.createBucket('mockup-outputs', { public: true, fileSizeLimit: 52428800 })
+        .then(({ error }) => {
+            if (!error || error.message?.includes('already exists')) {
+                console.log('[Storage] Bucket ready: mockup-outputs');
+            } else {
+                console.warn('[Storage] Bucket create warning:', error.message);
+            }
+        }).catch(() => {});
+}
+
 // Middleware
 app.use(cors({ origin: 'http://localhost:3001', credentials: true }));
 app.use(cookieParser());

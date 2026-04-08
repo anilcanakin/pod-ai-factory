@@ -19,6 +19,7 @@
 const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
+const { uploadToStorage } = require('./storage.service');
 
 const ASSETS_ROOT = path.join(__dirname, '../../assets');
 
@@ -185,7 +186,22 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
         .png()
         .toFile(outputPath);
 
-    return `assets/outputs/mockups/${workspaceId}/${outputFilename}`;
+    // 11. Upload to Supabase Storage
+    let publicUrl = null;
+    try {
+        const storagePath = `mockups/${workspaceId}/${path.basename(outputPath)}`;
+        publicUrl = await uploadToStorage(outputPath, storagePath);
+        console.log('[Render] Uploaded to storage:', publicUrl);
+        // Clean up local file after upload
+        fs.unlink(outputPath, (err) => {
+            if (err) console.warn('[Render] Failed to delete local file:', err.message);
+        });
+    } catch (storageErr) {
+        console.warn('[Render] Storage upload failed, using local URL:', storageErr.message);
+    }
+
+    const resultUrl = publicUrl || `assets/outputs/mockups/${workspaceId}/${outputFilename}`;
+    return resultUrl;
 }
 
 module.exports = { renderMockup };

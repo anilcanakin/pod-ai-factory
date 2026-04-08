@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Image as ImageIcon, Plus, Loader2, AlertCircle } from 'lucide-react';
+import { Image as ImageIcon, Plus, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { apiMockups } from '@/lib/api';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
 
 const CATEGORIES = ['tshirt', 'sweatshirt', 'hoodie', 'mug', 'sticker', 'phone_case'];
 
@@ -35,6 +37,8 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState('');
     const [cursor, setCursor] = useState('crosshair');
+    const [uploadedTemplateId, setUploadedTemplateId] = useState<string | null>(null);
+    const [detecting, setDetecting] = useState(false);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const dragMode = useRef<DragMode>(null);
@@ -209,7 +213,8 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
         }));
 
         try {
-            await apiMockups.uploadTemplate(fd);
+            const t = await apiMockups.uploadTemplate(fd);
+            setUploadedTemplateId(t.id);
             onSuccess();
         } catch (err: any) {
             setError(err.message || 'Upload failed');
@@ -246,21 +251,21 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
 
             <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-sm text-slate-300 mb-1.5">Template Name *</label>
+                    <label className="block text-sm text-text-secondary mb-1.5">Template Name *</label>
                     <input
                         type="text"
                         value={name}
                         onChange={e => setName(e.target.value)}
                         placeholder="e.g. White T-Shirt Front"
-                        className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
+                        className="w-full px-3 py-2.5 bg-bg-elevated border border-border-default rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
                     />
                 </div>
                 <div>
-                    <label className="block text-sm text-slate-300 mb-1.5">Category</label>
+                    <label className="block text-sm text-text-secondary mb-1.5">Category</label>
                     <select
                         value={category}
                         onChange={e => onCategoryChange(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                        className="w-full px-3 py-2.5 bg-bg-elevated border border-border-default rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
                     >
                         {CATEGORIES.map(c => (
                             <option key={c} value={c}>{c.replace('_', ' ')}</option>
@@ -271,22 +276,22 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
 
             <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-sm text-slate-300 mb-1.5">Base Image *</label>
-                    <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-600 rounded-xl cursor-pointer hover:border-blue-500/50 hover:bg-slate-800/30 transition-all min-h-[90px]">
+                    <label className="block text-sm text-text-secondary mb-1.5">Base Image *</label>
+                    <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-border-default rounded-xl cursor-pointer hover:border-accent/40 hover:bg-accent-subtle transition-all min-h-[90px]">
                         {basePreview ? (
                             <img src={basePreview} alt="Base preview" className="h-14 object-contain rounded mb-1" />
                         ) : (
-                            <ImageIcon className="w-7 h-7 text-slate-600 mb-1" />
+                            <ImageIcon className="w-7 h-7 text-text-tertiary mb-1" />
                         )}
-                        <span className="text-xs text-slate-500">{baseFile ? baseFile.name : 'Click to upload image'}</span>
+                        <span className="text-xs text-text-tertiary">{baseFile ? baseFile.name : 'Click to upload image'}</span>
                         <input type="file" accept="image/*" onChange={onBaseChange} className="sr-only" />
                     </label>
                 </div>
                 <div>
-                    <label className="block text-sm text-slate-300 mb-1.5">Mask Image (optional)</label>
-                    <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-600 rounded-xl cursor-pointer hover:border-blue-500/50 hover:bg-slate-800/30 transition-all min-h-[90px]">
-                        <ImageIcon className="w-7 h-7 text-slate-600 mb-1" />
-                        <span className="text-xs text-slate-500">{maskFile ? maskFile.name : 'Click to upload'}</span>
+                    <label className="block text-sm text-text-secondary mb-1.5">Mask Image (optional)</label>
+                    <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-border-default rounded-xl cursor-pointer hover:border-accent/40 hover:bg-accent-subtle transition-all min-h-[90px]">
+                        <ImageIcon className="w-7 h-7 text-text-tertiary mb-1" />
+                        <span className="text-xs text-text-tertiary">{maskFile ? maskFile.name : 'Click to upload'}</span>
                         <input type="file" accept="image/*" onChange={e => setMaskFile(e.target.files?.[0] || null)} className="sr-only" />
                     </label>
                 </div>
@@ -294,15 +299,47 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
 
             {/* Visual Print Area Selector */}
             <div>
-                <label className="block text-sm text-slate-300 mb-1.5">
-                    Print Area
-                    {basePreview
-                        ? <span className="text-slate-500 font-normal"> — drag to draw · drag inside to move · drag handles to resize</span>
-                        : <span className="text-slate-600 font-normal"> — upload base image to edit</span>}
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm text-text-secondary">
+                        Print Area
+                        {basePreview
+                            ? <span className="text-text-tertiary font-normal"> — drag to draw · drag inside to move · drag handles to resize</span>
+                            : <span className="text-text-tertiary font-normal"> — upload base image to edit</span>}
+                    </label>
+                    {uploadedTemplateId && (
+                        <button
+                            onClick={async () => {
+                                setDetecting(true);
+                                try {
+                                    const res = await fetch(`${API_BASE}/api/mockups/templates/detect-print-area`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        credentials: 'include',
+                                        body: JSON.stringify({ templateId: uploadedTemplateId }),
+                                    });
+                                    const data = await res.json();
+                                    if (data.printArea) {
+                                        setPrintArea(data.printArea);
+                                    } else {
+                                        setError(data.error || 'Detection failed');
+                                    }
+                                } catch {
+                                    setError('Detection failed');
+                                } finally {
+                                    setDetecting(false);
+                                }
+                            }}
+                            disabled={detecting}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs rounded-lg border border-purple-500/30 transition-colors disabled:opacity-40"
+                        >
+                            {detecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                            Auto Detect Print Area
+                        </button>
+                    )}
+                </div>
                 <div
                     ref={containerRef}
-                    className="relative w-full rounded-xl overflow-hidden border border-slate-700 bg-slate-900 select-none"
+                    className="relative w-full rounded-xl overflow-hidden border border-border-default bg-bg-base select-none"
                     style={{ aspectRatio: '1 / 1', cursor: basePreview ? cursor : 'default' }}
                     onMouseDown={basePreview ? onMouseDown : undefined}
                     onMouseMove={basePreview ? onMouseMove : undefined}
@@ -317,14 +354,14 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
                             draggable={false}
                         />
                     ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-sm">
+                        <div className="absolute inset-0 flex items-center justify-center text-text-tertiary text-sm">
                             Upload base image to define print area
                         </div>
                     )}
 
                     {/* Print area rectangle */}
                     <div
-                        className="absolute border-2 border-blue-400 bg-blue-400/20 pointer-events-none"
+                        className="absolute border-2 border-accent bg-accent-subtle pointer-events-none"
                         style={{
                             left: `${printArea.x * 100}%`,
                             top: `${printArea.y * 100}%`,
@@ -333,7 +370,7 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
                         }}
                     >
                         {dims && (
-                            <div className="absolute -top-6 left-0 bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded-sm font-mono whitespace-nowrap leading-tight">
+                            <div className="absolute -top-6 left-0 bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-sm font-mono whitespace-nowrap leading-tight">
                                 {dims.w} × {dims.h}
                             </div>
                         )}
@@ -343,7 +380,7 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
                     {basePreview && handles.map(([handle, hx, hy]) => (
                         <div
                             key={handle}
-                            className="absolute w-2.5 h-2.5 bg-white border-2 border-blue-500 rounded-sm pointer-events-none"
+                            className="absolute w-2.5 h-2.5 bg-white border-2 border-accent rounded-sm pointer-events-none"
                             style={{
                                 left: `calc(${hx * 100}% - 5px)`,
                                 top: `calc(${hy * 100}% - 5px)`,
@@ -352,7 +389,7 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
                         />
                     ))}
                 </div>
-                <p className="text-xs text-slate-600 mt-1.5">
+                <p className="text-xs text-text-tertiary mt-1.5">
                     x: {printArea.x.toFixed(3)} · y: {printArea.y.toFixed(3)} · w: {printArea.width.toFixed(3)} · h: {printArea.height.toFixed(3)}
                 </p>
             </div>
@@ -361,7 +398,7 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
                 <button
                     onClick={submit}
                     disabled={uploading}
-                    className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20"
+                    className="px-5 py-2.5 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-accent/20"
                 >
                     {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                     {uploading ? 'Uploading...' : 'Create Template'}

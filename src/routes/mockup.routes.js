@@ -41,6 +41,7 @@ router.post('/render', async (req, res) => {
         const mockupUrl = await renderMockup({
             designPath,
             template,
+            imageId,
             workspaceId: req.workspaceId,
             placement,
         });
@@ -51,7 +52,7 @@ router.post('/render', async (req, res) => {
 
         res.json(mockup);
     } catch (err) {
-        console.error('[Mockup /render]', err);
+        console.error('[Mockup /render] Error:', err.message, err.stack);
         res.status(500).json({ error: err.message });
     }
 });
@@ -93,19 +94,21 @@ router.post('/render-batch', async (req, res) => {
                 const mockupUrl = await renderMockup({
                     designPath,
                     template,
+                    imageId,
                     workspaceId: req.workspaceId,
                     placement,
                 });
                 const mockup = await prisma.mockup.create({
                     data: { imageId, templateId: template.id, mockupUrl }
                 });
-                results.push({ templateId: template.id, templateName: template.name, status: 'OK', mockup });
+                results.push({ templateId: template.id, templateName: template.name, status: 'success', url: mockupUrl, mockup });
             } catch (err) {
-                results.push({ templateId: template.id, templateName: template.name, status: 'FAILED', error: err.message });
+                console.error(`[Mockup /render-batch] Template ${template.id} failed:`, err.message, err.stack);
+                results.push({ templateId: template.id, templateName: template.name, status: 'failed', error: err.message });
             }
         }
 
-        const ok = results.filter(r => r.status === 'OK').length;
+        const ok = results.filter(r => r.status === 'success').length;
         res.json({
             message: `Rendered ${ok}/${templates.length} mockups`,
             results

@@ -9,8 +9,10 @@ router.post('/create-draft', async (req, res) => {
             return res.status(400).json({ error: 'title, description, tags required' });
         }
 
+        const resolvedPrice = price ?? process.env.DEFAULT_LISTING_PRICE ?? '19.99';
+
         const { createEtsyDraft } = require('../services/etsy-browser.service');
-        const result = await createEtsyDraft({ title, description, tags, price, imageUrls });
+        const result = await createEtsyDraft({ title, description, tags, price: resolvedPrice, imageUrls });
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });

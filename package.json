@@ -24,6 +24,7 @@
     "@fal-ai/client": "^1.9.5",
     "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^5.15.0",
+    "@supabase/supabase-js": "^2.102.1",
     "archiver": "^7.0.1",
     "bullmq": "^5.70.1",
     "canvas": "^3.2.1",

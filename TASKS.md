@@ -159,6 +159,25 @@ Completed:
 
 ---
 
+### ~~Q. Enhanced Brain System~~ ✅ DONE
+Completed:
+- multimodal-brain.service.js: added analyzeVideoFull() — ffmpeg frame extraction (20 frames) + audio extraction + Whisper transcription via fal-ai + Claude Vision per-frame analysis (every 3rd frame, claude-haiku-4-5) + synthesis prompt → structured knowledge. Added addTextKnowledge() — Claude processes pasted text into structured insights. Added extractSeoKnowledge() — after any analysis, Claude extracts SEO-relevant parts and auto-merges into seoKnowledgeBase. Legacy processVideo() (Gemini) kept for /ingest-video backward compat.
+- brain.routes.js: added POST /analyze-video (multer 500MB, calls analyzeVideoFull), POST /add-text (calls addTextKnowledge), GET /knowledge (returns grouped entries by type: video/text/auto). /ingest-video preserved.
+- api.ts: CorporateMemory interface extended with optional synthesis/transcript/frameCount/videoType/seoUpdated fields (both Gemini and Claude format supported). Added VideoAnalysis, KnowledgeGroup interfaces. apiBrain extended: analyzeVideo() with XHR upload progress callback, addText(), getKnowledge().
+- BrainClient.tsx: full rebuild — tabbed input panel (Video/Text), drag-drop video zone with video type selector (training/meeting/etsy_update/tutorial), 4-step processing indicator (Upload→Whisper→Claude Vision→Save) with progress bar, text paste form with title/source/content fields. Memory detail view supports both old Gemini IF-THEN format and new Claude synthesis text format. Transcript accordion, SEO-updated badge.
+
+---
+
+### ~~P. Critical Bug Fixes~~ ✅ DONE
+Completed:
+- fulfillment.routes.js created (GET /api/fulfillment/orders, POST /api/fulfillment/create) and registered in index.js
+- listing-assembler.service.js rewritten — correct Prisma models (image, sEOContent, designJob) replacing non-existent design/generation/ListingSEO references
+- autonomous-manager.service.js: env var fallback GOOGLE_API_KEY || GEMINI_API_KEY; removed prisma.jobLog.create (FK mismatch) replaced with console.log
+- competitor-radar.service.js: CSS selectors updated to [data-listing-id] / [data-currency-value]; browser.close() replaced with page.close() to preserve persistent session
+- .env.example: added YUPPION_API_KEY and GEMINI_API_KEY entries
+
+---
+
 ### 15. Etsy Draft Assembly (waiting for API approval)
 When Etsy API is approved:
 Combine mockup image + SEO content + pricing template

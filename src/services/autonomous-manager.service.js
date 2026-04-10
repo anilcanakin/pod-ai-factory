@@ -3,7 +3,7 @@ const prisma = new PrismaClient();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const etsyBrowser = require('./etsy-browser.service');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY);
 
 /**
  * AutonomousManagerService
@@ -71,17 +71,9 @@ class AutonomousManagerService {
 
       console.log(`[Agent] Audit complete. ${plan.actions.length} actions recommended.`);
 
-      // 4. Notification Log (Instead of auto-executing for now, for safety)
+      // 4. Log recommendations (auto-execution disabled for safety)
       for (const action of plan.actions) {
-        await prisma.jobLog.create({
-          data: {
-            jobId: action.listingId, // Mocking listingId as jobId for log
-            eventType: 'AGENT_RECOMMENDATION',
-            status: 'PENDING',
-            message: `[AI Manager] ${action.reason}`,
-            data: action
-          }
-        });
+        console.log('[Agent] Action recommended:', action);
       }
 
       return plan;

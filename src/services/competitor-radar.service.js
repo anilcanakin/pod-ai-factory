@@ -18,14 +18,15 @@ class CompetitorRadarService {
       await page.goto(shopUrl, { waitUntil: 'networkidle' });
       await page.waitForTimeout(3000);
 
-      // Extract listing names and prices
+      // Extract listing names and prices using Etsy's data attributes
       const designs = await page.evaluate(() => {
-        const items = Array.from(document.querySelectorAll('.listing-link'));
-        return items.map(item => ({
-          title: item.querySelector('h3')?.textContent?.trim(),
-          price: item.querySelector('.currency-value')?.textContent?.trim(),
-          url: item.getAttribute('href')
-        })).slice(0, 10); // Last 10 listings
+        const items = document.querySelectorAll('[data-listing-id]');
+        return Array.from(items).slice(0, 20).map(item => ({
+          id: item.getAttribute('data-listing-id'),
+          title: item.querySelector('h3')?.textContent?.trim() || '',
+          price: item.querySelector('[data-currency-value]')?.textContent?.trim() || '',
+          url: item.querySelector('a')?.href || ''
+        }));
       });
 
       return { success: true, designs };
@@ -33,7 +34,7 @@ class CompetitorRadarService {
       console.error("[Radar] Scan failed:", error.message);
       return { success: false, error: error.message };
     } finally {
-      await browser.close();
+      await page.close(); // Close only the page, keep persistent browser session alive
     }
   }
 }

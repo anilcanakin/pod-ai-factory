@@ -13,7 +13,7 @@ import {
     Filter
 } from 'lucide-react';
 import { apiFulfillment, OrderItem } from '@/lib/api';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 
 export function OrdersClient() {
     const [orders, setOrders] = useState<OrderItem[]>([]);

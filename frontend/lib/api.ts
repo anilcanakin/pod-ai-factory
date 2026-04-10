@@ -403,17 +403,43 @@ export interface CorporateMemory {
     type: string;
     title: string;
     content: string;
+    sourceUrl?: string | null;
     analysisResult: {
-        summary: string;
-        actionableRules: Array<{ condition: string; action: string; rationale: string }>;
-        uiInsights: Array<{ element: string; recommendation: string }>;
-        strategicNotes: string[];
-    };
+        // Legacy Gemini format
+        summary?: string;
+        actionableRules?: Array<{ condition: string; action: string; rationale: string }>;
+        uiInsights?: Array<{ element: string; recommendation: string }>;
+        strategicNotes?: string[];
+        // Enhanced Claude format
+        synthesis?: string;
+        transcript?: string;
+        frameCount?: number;
+        videoType?: string;
+        sourceType?: string;
+        source?: string;
+        seoUpdated?: boolean;
+    } | null;
     createdAt: string;
+}
+
+export interface VideoAnalysis {
+    transcript: string;
+    frameCount: number;
+    synthesis: string;
+    videoType: string;
+    memory: CorporateMemory;
+    seoUpdated: boolean;
+}
+
+export interface KnowledgeGroup {
+    entries: CorporateMemory[];
+    grouped: { video: CorporateMemory[]; text: CorporateMemory[]; auto: CorporateMemory[] };
+    total: number;
 }
 
 export const apiBrain = {
     list: () => request<CorporateMemory[]>('/brain'),
+    getKnowledge: () => request<KnowledgeGroup>('/brain/knowledge'),
     ingestVideo: (formData: FormData) =>
         fetch(`${BASE}/brain/ingest-video`, { method: 'POST', credentials: 'include', body: formData }).then(async (res) => {
             if (!res.ok) {
@@ -421,6 +447,34 @@ export const apiBrain = {
                 throw new Error(body.error || `HTTP ${res.status}`);
             }
             return res.json() as Promise<CorporateMemory>;
+        }),
+    analyzeVideo: (formData: FormData, onProgress?: (pct: number) => void): Promise<VideoAnalysis> =>
+        new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `${BASE}/brain/analyze-video`);
+            xhr.withCredentials = true;
+            if (onProgress) {
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+                };
+            }
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try { resolve(JSON.parse(xhr.responseText)); } catch { reject(new Error('Invalid response')); }
+                } else {
+                    try {
+                        const body = JSON.parse(xhr.responseText);
+                        reject(new Error(body.error || `HTTP ${xhr.status}`));
+                    } catch { reject(new Error(`HTTP ${xhr.status}`)); }
+                }
+            };
+            xhr.onerror = () => reject(new Error('Network error'));
+            xhr.send(formData);
+        }),
+    addText: (title: string, content: string, source: string) =>
+        request<CorporateMemory & { seoUpdated: boolean }>('/brain/add-text', {
+            method: 'POST',
+            body: JSON.stringify({ title, content, source })
         }),
     delete: (id: string) => request<{ success: boolean }>(`/brain/${id}`, { method: 'DELETE' }),
 };
@@ -477,9 +531,9 @@ export interface OrderItem {
 
 export const apiFulfillment = {
     listOrders: () => request<OrderItem[]>('/fulfillment/orders'),
-    submitOrder: (orderId: string) => request<{ success: boolean; orderId: string }>('/fulfillment/orders/submit', { 
-        method: 'POST', 
-        body: JSON.stringify({ orderId }) 
+    submitOrder: (orderId: string) => request<{ success: boolean; orderId: string }>('/fulfillment/create', {
+        method: 'POST',
+        body: JSON.stringify({ externalOrderId: orderId })
     }),
 };
 

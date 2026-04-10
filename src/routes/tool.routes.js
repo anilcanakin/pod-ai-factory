@@ -58,9 +58,40 @@ router.post('/remove-bg', async (req, res) => {
             : 'BiRefNet';
 
         logNotification(workspaceId, 'success', `Background removed — ${modelLabel}`, { model: modelLabel });
+
+        // Find or create a "Processed Images" job for this workspace
+        let processedJob = await prisma.designJob.findFirst({
+            where: { workspaceId: req.workspaceId, mode: 'processed' }
+        });
+        if (!processedJob) {
+            processedJob = await prisma.designJob.create({
+                data: {
+                    workspaceId: req.workspaceId,
+                    originalImage: 'processed',
+                    mode: 'processed',
+                    status: 'COMPLETED',
+                    basePrompt: 'Processed Images',
+                }
+            });
+        }
+
+        const savedImage = await prisma.image.create({
+            data: {
+                jobId: processedJob.id,
+                variantType: 'bg_removed',
+                promptUsed: `BG Remove - ${modelLabel}`,
+                engine: 'bg_remove',
+                imageUrl: outputUrl,
+                status: 'COMPLETED',
+                isApproved: true,
+                cost: model === 'bria' ? 0.018 : 0,
+            }
+        });
+
         res.json({
             url: outputUrl,
-            model: modelLabel
+            model: modelLabel,
+            savedImageId: savedImage.id
         });
 
     } catch (err) {
@@ -101,10 +132,40 @@ router.post('/upscale', async (req, res) => {
             return res.status(500).json({ error: 'No output image returned from model' });
         }
 
+        // Find or create a "Processed Images" job for this workspace
+        let processedJob = await prisma.designJob.findFirst({
+            where: { workspaceId: req.workspaceId, mode: 'processed' }
+        });
+        if (!processedJob) {
+            processedJob = await prisma.designJob.create({
+                data: {
+                    workspaceId: req.workspaceId,
+                    originalImage: 'processed',
+                    mode: 'processed',
+                    status: 'COMPLETED',
+                    basePrompt: 'Processed Images',
+                }
+            });
+        }
+
+        const savedImage = await prisma.image.create({
+            data: {
+                jobId: processedJob.id,
+                variantType: 'upscaled',
+                promptUsed: `Upscale - AuraSR v2 (${scaleFactor}x)`,
+                engine: 'upscale',
+                imageUrl: outputUrl,
+                status: 'COMPLETED',
+                isApproved: true,
+                cost: 0,
+            }
+        });
+
         res.json({
             url: outputUrl,
             scale: `${scaleFactor}x`,
-            model: 'AuraSR v2'
+            model: 'AuraSR v2',
+            savedImageId: savedImage.id
         });
 
     } catch (err) {

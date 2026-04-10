@@ -180,8 +180,8 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
     const onBaseChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const f = e.target.files?.[0] || null;
         if (!f) return;
-        if (!f.type.startsWith('image/')) {
-            setError('Base image must be an image file (PNG, JPG, WEBP)');
+        if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) {
+            setError('Base file must be an image or video (PNG, JPG, WEBM, MP4)');
             return;
         }
         setError('');
@@ -283,8 +283,8 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
                         ) : (
                             <ImageIcon className="w-7 h-7 text-text-tertiary mb-1" />
                         )}
-                        <span className="text-xs text-text-tertiary">{baseFile ? baseFile.name : 'Click to upload image'}</span>
-                        <input type="file" accept="image/*" onChange={onBaseChange} className="sr-only" />
+                        <span className="text-xs text-text-tertiary">{baseFile ? baseFile.name : 'Click to upload image or video'}</span>
+                        <input type="file" accept="image/*,video/*" onChange={onBaseChange} className="sr-only" />
                     </label>
                 </div>
                 <div>
@@ -347,12 +347,20 @@ export function TemplateUploader({ onSuccess }: { onSuccess: () => void }) {
                     onMouseLeave={basePreview ? onMouseUp : undefined}
                 >
                     {basePreview ? (
-                        <img
-                            src={basePreview}
-                            alt="Mockup base"
-                            className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-                            draggable={false}
-                        />
+                        baseFile?.type.startsWith('video/') ? (
+                            <video
+                                src={basePreview}
+                                autoPlay loop muted playsInline
+                                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                            />
+                        ) : (
+                            <img
+                                src={basePreview}
+                                alt="Mockup base"
+                                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                                draggable={false}
+                            />
+                        )
                     ) : (
                         <div className="absolute inset-0 flex items-center justify-center text-text-tertiary text-sm">
                             Upload base image to define print area

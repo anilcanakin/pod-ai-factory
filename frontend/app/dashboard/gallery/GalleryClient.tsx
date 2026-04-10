@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGallery, apiPipeline, apiExport, apiJobs, apiTools, apiSeo, type GalleryImage } from '@/lib/api';
+import { apiGallery, apiPipeline, apiExport, apiJobs, apiTools, apiSeo, apiEtsy, type GalleryImage } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn, truncateId } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -132,29 +132,15 @@ function GalleryInner() {
         }
     };
 
-    const handlePublishToEtsy = async (imgId: string, imgUrl: string) => {
+    const handlePublishToEtsy = async (imgId: string) => {
         setPublishingImage(imgId);
-        const toastId = toast.loading('Generating SEO…');
+        const toastId = toast.loading('Assembling assets and preparing Etsy draft...');
         try {
-            const seo = await apiSeo.generate(imgUrl);
-            toast.loading('Creating Etsy draft…', { id: toastId });
-            const res = await fetch('/api/etsy-browser/create-draft', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({
-                    title: seo.title,
-                    description: seo.description,
-                    tags: seo.tags,
-                    price: listingPrice,
-                    imageUrls: [imgUrl],
-                }),
-            });
-            const data = await res.json();
-            if (data.success) {
-                toast.success('Draft created on Etsy!', { id: toastId });
+            const result = await apiEtsy.dispatch(imgId);
+            if (result.success) {
+                toast.success('Successfully created draft on Etsy!', { id: toastId });
             } else {
-                toast.error(data.error || 'Draft creation failed', { id: toastId });
+                throw new Error(result.message);
             }
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Publish failed', { id: toastId });
@@ -276,42 +262,27 @@ function GalleryInner() {
 
     const bulkPublishToEtsy = async () => {
         const ids = Array.from(selected);
-        const imgs = filtered.filter(i => ids.includes(i.id) && i.imageUrl && i.imageUrl !== 'PENDING');
-        if (imgs.length === 0) { toast.error('No valid images selected'); return; }
+        if (ids.length === 0) { toast.error('No images selected'); return; }
 
         let done = 0;
-        for (const img of imgs) {
-            setPublishingImage(img.id);
-            const toastId = `publish-${img.id}`;
-            toast.loading(`Publishing ${done + 1}/${imgs.length}… (SEO)`, { id: toastId });
+        for (const id of ids) {
+            setPublishingImage(id);
+            const toastId = `publish-${id}`;
+            toast.loading(`Publishing ${done + 1}/${ids.length}…`, { id: toastId });
             try {
-                const seo = await apiSeo.generate(img.imageUrl);
-                toast.loading(`Publishing ${done + 1}/${imgs.length}… (Draft)`, { id: toastId });
-                const res = await fetch('/api/etsy-browser/create-draft', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({
-                        title: seo.title,
-                        description: seo.description,
-                        tags: seo.tags,
-                        price: listingPrice,
-                        imageUrls: [img.imageUrl],
-                    }),
-                });
-                const data = await res.json();
-                if (data.success) {
+                const result = await apiEtsy.dispatch(id);
+                if (result.success) {
                     done++;
                     toast.dismiss(toastId);
                 } else {
-                    toast.error(`Failed: ${data.error || 'unknown'}`, { id: toastId });
+                    toast.error(`Failed ${id}: ${result.message}`, { id: toastId });
                 }
             } catch (err: unknown) {
                 toast.error(err instanceof Error ? err.message : 'Publish failed', { id: toastId });
             }
         }
         setPublishingImage(null);
-        toast.success(`Published ${done}/${imgs.length} drafts to Etsy`);
+        toast.success(`Dispatched ${done} items to your Etsy Drafts.`);
         clearSelect();
     };
 
@@ -573,7 +544,7 @@ function GalleryInner() {
                                     onRegenerate={() => pipelineMutation.mutate(img.id)}
                                     onRemoveBg={(model) => handleRemoveBg(img.id, img.imageUrl, model)}
                                     onUpscale={(scale) => handleUpscale(img.id, img.imageUrl, scale)}
-                                    onPublishToEtsy={() => handlePublishToEtsy(img.id, img.imageUrl)}
+                                    onPublishToEtsy={() => handlePublishToEtsy(img.id)}
                                     onMockup={() => router.push(`/dashboard/mockups?designUrl=${encodeURIComponent(img.imageUrl)}&designImageId=${img.id}`)}
                                     onSeo={() => router.push(`/dashboard/seo?imageUrl=${encodeURIComponent(img.imageUrl)}`)}
                                     isProcessing={processingImage === img.id}
@@ -628,13 +599,33 @@ interface GalleryCardProps {
     onRemoveBg: (model: 'birefnet' | 'bria') => void;
     onUpscale: (scale: 2 | 4) => void;
     onPublishToEtsy: () => void;
+    onMockup: () => void;
+    onSeo: () => void;
     isProcessing: boolean;
     isPublishing: boolean;
 }
 
-function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDelete, onView, onCopyPrompt, onRegenerate, onRemoveBg, onUpscale, onPublishToEtsy, isProcessing, isPublishing }: GalleryCardProps) {
+function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDelete, onView, onCopyPrompt, onRegenerate, onRemoveBg, onUpscale, onPublishToEtsy, onMockup, onSeo, isProcessing, isPublishing }: GalleryCardProps) {
     const isPending = img.imageUrl === 'PENDING' || !img.imageUrl;
     const isRejected = img.status === 'REJECTED';
+
+    const handleDownload = async () => {
+        const url = img.imageUrl.startsWith('http') ? img.imageUrl : `/${img.imageUrl}`;
+        try {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = `design-${img.id.slice(0, 8)}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(blobUrl);
+        } catch {
+            window.open(url, '_blank');
+        }
+    };
 
     return (
         <div className={cn(
@@ -666,99 +657,51 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
             )}
 
             {/* Hover Overlay */}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3 pt-12">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                    <button onClick={e => { e.stopPropagation(); onApprove(); }} className="flex-1 flex justify-center items-center gap-1.5 px-2 py-2 bg-success-subtle text-success text-xs font-medium rounded-[8px] border border-[rgba(34,197,94,0.20)] transition-colors backdrop-blur-md hover:bg-[rgba(34,197,94,0.18)]">
-                        <CheckCircle className="w-3.5 h-3.5" /> Approve
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col">
+                {/* Top row: approve/reject */}
+                <div className="flex items-center justify-between p-2">
+                    <button onClick={e => { e.stopPropagation(); onApprove(); }}
+                        className="flex items-center gap-1 px-2 py-1 bg-success/80 hover:bg-success text-white text-[10px] font-medium rounded-[6px] transition-colors">
+                        <Check className="w-3 h-3" /> Approve
                     </button>
-                    <button onClick={e => { e.stopPropagation(); onReject(); }} className="flex-1 flex justify-center items-center gap-1.5 px-2 py-2 bg-danger-subtle text-danger text-xs font-medium rounded-[8px] border border-[rgba(239,68,68,0.20)] transition-colors backdrop-blur-md hover:bg-[rgba(239,68,68,0.18)]">
-                        <XCircle className="w-3.5 h-3.5" /> Reject
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); onDelete(); }} className="flex justify-center items-center p-2 bg-[rgba(127,0,0,0.40)] hover:bg-[rgba(180,0,0,0.60)] text-red-300 rounded-[8px] border border-red-900/30 transition-colors backdrop-blur-md" title="Delete permanently">
-                        <Trash2 className="w-3.5 h-3.5" />
+                    <button onClick={e => { e.stopPropagation(); onReject(); }}
+                        className="flex items-center gap-1 px-2 py-1 bg-danger/80 hover:bg-danger text-white text-[10px] font-medium rounded-[6px] transition-colors">
+                        <X className="w-3 h-3" /> Reject
                     </button>
                 </div>
-                
-                <div className="flex items-center justify-center gap-1.5 mt-2">
-                    <button onClick={e => { e.stopPropagation(); onView(); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10">
-                        <Maximize2 className="w-3 h-3" /> View
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); onCopyPrompt(); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10">
-                        <Copy className="w-3 h-3" /> Prompt
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); onRegenerate(); }} title="Regenerate Pipeline" className="flex items-center gap-1.5 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10">
-                        <RefreshCw className="w-3 h-3" />
-                    </button>
 
-                    <button
-                        onClick={async (e) => {
-                            e.stopPropagation();
-                            const API_BASE = '';
-                            const url = img.imageUrl.startsWith('http') ? img.imageUrl : `${API_BASE}/${img.imageUrl}`;
-                            try {
-                                const response = await fetch(url);
-                                const blob = await response.blob();
-                                const blobUrl = URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = blobUrl;
-                                a.download = `design-${img.id.slice(0,8)}.png`;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                                URL.revokeObjectURL(blobUrl);
-                            } catch {
-                                window.open(url, '_blank');
-                            }
-                        }}
-                        className="flex items-center gap-1 px-2 py-1 bg-bg-overlay hover:bg-accent-subtle text-text-secondary hover:text-accent text-xs rounded border border-border-default transition-colors"
-                        title="Download"
-                    >
-                        <Download className="w-3 h-3" />
-                    </button>
-                    
-                    {/* Remove BG butonu — dropdown ile model seçimi */}
-                    <div className="relative group/bg">
-                        <button 
-                            onClick={e => { e.stopPropagation(); onRemoveBg('birefnet'); }}
-                            disabled={isProcessing}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10 disabled:opacity-50"
-                            title="Remove Background"
-                        >
-                            {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Scissors className="w-3 h-3" />}
-                        </button>
-                        {/* Bria seçeneği — hover'da görünür */}
-                        <div className="absolute bottom-full left-0 mb-1 hidden group-hover/bg:block z-20">
-                            <button
-                                onClick={e => { e.stopPropagation(); onRemoveBg('bria'); }}
-                                className="whitespace-nowrap text-[10px] px-2 py-1 bg-bg-elevated border border-accent/30 text-accent rounded-[4px] hover:bg-accent-subtle"
-                            >
-                                Bria (Premium)
-                            </button>
-                        </div>
-                    </div>
+                {/* Middle: empty space for image visibility */}
+                <div className="flex-1" />
 
-                    {/* Upscale butonu */}
-                    <button
-                        onClick={e => { e.stopPropagation(); onUpscale(4); }}
+                {/* Bottom row: action buttons */}
+                <div className="flex items-center gap-1 p-2 flex-wrap">
+                    <button onClick={e => { e.stopPropagation(); handleDownload(); }}
+                        className="flex items-center gap-1 px-2 py-1 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded-[6px] border border-white/10 transition-colors">
+                        <Download className="w-3 h-3" /> Save
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onRemoveBg('birefnet'); }}
                         disabled={isProcessing}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-black/60 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md hover:bg-black/80 border border-white/10 disabled:opacity-50"
-                        title="Upscale 4x"
-                    >
-                        {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ZoomIn className="w-3 h-3" />}
+                        className="flex items-center gap-1 px-2 py-1 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded-[6px] border border-white/10 transition-colors disabled:opacity-50">
+                        {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Scissors className="w-3 h-3" />} BG
                     </button>
-
-                    {/* Publish to Etsy */}
-                    <button
-                        onClick={e => { e.stopPropagation(); onPublishToEtsy(); }}
-                        disabled={isPublishing || isProcessing || img.imageUrl === 'PENDING' || !img.imageUrl}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-orange-600/80 hover:bg-orange-500 text-white text-[10px] font-medium rounded-[6px] transition-colors backdrop-blur-md border border-orange-400/30 disabled:opacity-50"
-                        title="Publish to Etsy"
-                    >
-                        {isPublishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Store className="w-3 h-3" />}
-                        {isPublishing ? 'Publishing…' : 'Etsy'}
+                    <button onClick={e => { e.stopPropagation(); onUpscale(4); }}
+                        disabled={isProcessing}
+                        className="flex items-center gap-1 px-2 py-1 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded-[6px] border border-white/10 transition-colors disabled:opacity-50">
+                        {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ZoomIn className="w-3 h-3" />} 4x
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onMockup(); }}
+                        className="flex items-center gap-1 px-2 py-1 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded-[6px] border border-white/10 transition-colors">
+                        <Layers className="w-3 h-3" /> Mockup
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onSeo(); }}
+                        className="flex items-center gap-1 px-2 py-1 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded-[6px] border border-white/10 transition-colors">
+                        <Tag className="w-3 h-3" /> SEO
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onDelete(); }}
+                        className="flex items-center gap-1 px-2 py-1 bg-danger/60 hover:bg-danger text-white text-[10px] rounded-[6px] transition-colors ml-auto">
+                        <Trash2 className="w-3 h-3" />
                     </button>
                 </div>
-                <p className="text-[9px] text-white/50 mt-2 font-mono text-center tracking-widest uppercase">{truncateId(img.id)}</p>
             </div>
         </div>
     );

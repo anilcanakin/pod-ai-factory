@@ -271,6 +271,7 @@ export interface MockupMeta {
 }
 export interface MockupConfig {
     printArea: MockupPrintArea;
+    printAreas?: Array<{ id: string; label: string; x: number; y: number; width: number; height: number }>;
     transform: MockupTransform;
     render: MockupRender;
     meta: MockupMeta;
@@ -321,15 +322,20 @@ export const apiMockups = {
         request<{ message: string }>(`/mockups/templates/${id}`, { method: 'DELETE' }),
 
     // Render
-    render: (imageId: string, templateId: string, placement?: { scale: number; offsetX: number; offsetY: number; rotation: number }) =>
+    render: (imageId: string, templateId: string, placement?: { scale: number; offsetX: number; offsetY: number; rotation: number }, areaDesigns?: Record<string, { imageId: string; imageUrl: string }>) =>
         request<MockupRecord>('/mockups/render', {
             method: 'POST',
-            body: JSON.stringify({ imageId, templateId, placement }),
+            body: JSON.stringify({ imageId, templateId, placement, areaDesigns }),
         }),
     renderBatch: (imageId: string, templateIds: string[], placement?: { scale: number; offsetX: number; offsetY: number; rotation: number }) =>
         request<{ message: string; results: { templateId: string; templateName: string; status: string; url?: string; error?: string }[] }>('/mockups/render-batch', {
             method: 'POST',
             body: JSON.stringify({ imageId, templateIds, placement }),
+        }),
+    renderVideo: (mockupImageUrl: string, motionType: 'subtle' | 'rotate' | 'wave' | 'zoom' = 'subtle', duration: number = 5) =>
+        request<{ videoUrl: string; duration: string; motionType: string }>('/mockups/templates/render-video', {
+            method: 'POST',
+            body: JSON.stringify({ mockupImageUrl, motionType, duration }),
         }),
 };
 
@@ -355,12 +361,12 @@ export const apiSeo = {
 // ─── Tools (BG Removal & Upscale) ─────────────────────────────
 export const apiTools = {
     removeBg: (imageUrl: string, model: 'birefnet' | 'bria' | 'pixelcut' = 'birefnet') =>
-        request<{ url: string; model: string }>('/tools/remove-bg', {
+        request<{ url: string; model: string; savedImageId?: string }>('/tools/remove-bg', {
             method: 'POST',
             body: JSON.stringify({ imageUrl, model })
         }),
     upscale: (imageUrl: string, scale: number = 4) =>
-        request<{ url: string; scale: string; model: string }>('/tools/upscale', {
+        request<{ url: string; scale: string; model: string; savedImageId?: string }>('/tools/upscale', {
             method: 'POST',
             body: JSON.stringify({ imageUrl, scale })
         }),
@@ -389,4 +395,104 @@ export const apiNotifications = {
             body: JSON.stringify({ type, message, metadata }),
         }),
     readAll: () => request<{ ok: boolean }>('/notifications/read-all', { method: 'POST' }),
+};
+
+// ─── AI Corporate Brain (Multimodal RAG) ─────────────────────
+export interface CorporateMemory {
+    id: string;
+    type: string;
+    title: string;
+    content: string;
+    analysisResult: {
+        summary: string;
+        actionableRules: Array<{ condition: string; action: string; rationale: string }>;
+        uiInsights: Array<{ element: string; recommendation: string }>;
+        strategicNotes: string[];
+    };
+    createdAt: string;
+}
+
+export const apiBrain = {
+    list: () => request<CorporateMemory[]>('/brain'),
+    ingestVideo: (formData: FormData) =>
+        fetch(`${BASE}/brain/ingest-video`, { method: 'POST', credentials: 'include', body: formData }).then(async (res) => {
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `HTTP ${res.status}`);
+            }
+            return res.json() as Promise<CorporateMemory>;
+        }),
+    delete: (id: string) => request<{ success: boolean }>(`/brain/${id}`, { method: 'DELETE' }),
+};
+
+// ─── AI Autonomous Manager (Store Agent) ───────────────────
+export interface AgentAction {
+    listingId: string;
+    actionType: 'UPDATE_PRICE' | 'UPDATE_SEO' | 'UPDATE_MOCKUP' | 'NOTIFICATION';
+    reason: string;
+    details: Record<string, unknown>;
+}
+
+export interface AuditPlan {
+    executiveSummary: string;
+    actions: AgentAction[];
+}
+
+export const apiAgent = {
+    runAudit: () => request<AuditPlan>('/agent/audit', { method: 'POST' }),
+    applyAction: (action: AgentAction) => request<{ success: boolean }>('/agent/execute-action', {
+        method: 'POST',
+        body: JSON.stringify(action)
+    }),
+};
+
+// ─── Etsy Operations (Browser Agent) ─────────────────────────
+export interface PinterestPin {
+    imageUrl: string;
+    title: string;
+    description: string;
+    link?: string;
+}
+
+export const apiEtsy = {
+    pinToPinterest: (pin: PinterestPin) => request<{ success: boolean }>('/etsy-browser/pin-pinterest', {
+        method: 'POST',
+        body: JSON.stringify(pin)
+    }),
+    dispatch: (designId: string) => request<{ success: boolean; message: string }>('/etsy-browser/dispatch', {
+        method: 'POST',
+        body: JSON.stringify({ designId })
+    }),
+};
+
+// ─── Order Fulfillment (POD Production) ───────────────────
+export interface OrderItem {
+    id: string;
+    customer: string;
+    product: string;
+    sku: string;
+    designUrl: string;
+    status: 'AWAITING_FULFILLMENT' | 'IN_PRODUCTION' | 'SHIPPED';
+}
+
+export const apiFulfillment = {
+    listOrders: () => request<OrderItem[]>('/fulfillment/orders'),
+    submitOrder: (orderId: string) => request<{ success: boolean; orderId: string }>('/fulfillment/orders/submit', { 
+        method: 'POST', 
+        body: JSON.stringify({ orderId }) 
+    }),
+};
+
+// ─── Competitor Radar ──────────────────────────────────────
+export interface CompetitorDesign {
+    title: string;
+    price: string;
+    url: string;
+}
+
+export const apiRadar = {
+    scan: (shopUrl: string) => request<{ success: boolean; designs: CompetitorDesign[] }>('/radar/scan', {
+        method: 'POST',
+        body: JSON.stringify({ shopUrl })
+    }),
 };

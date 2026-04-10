@@ -88,7 +88,11 @@ function RemoveBgInner() {
         try {
             const result = await apiTools.removeBg(card.sourceUrl, model);
             setCards(prev => prev.map(c => c.id === id ? { ...c, resultUrl: result.url, status: 'done' } : c));
-            toast.success(`BG removed — ${result.model}`);
+            if (result.savedImageId) {
+                toast.success('Saved to gallery — ready for mockup!');
+            } else {
+                toast.success(`BG removed — ${result.model}`);
+            }
         } catch (err: unknown) {
             setCards(prev => prev.map(c => c.id === id ? { ...c, status: 'error' } : c));
             toast.error(err instanceof Error ? err.message : 'Failed');

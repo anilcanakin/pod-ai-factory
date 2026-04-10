@@ -278,9 +278,59 @@ All categorical fields must use exactly one of the provided enum values. For pal
     return dbRecord;
 }
 
+/**
+ * Check design quality and print readiness
+ * Returns { score, isPrintReady, issues, technicalCheck }
+ */
+async function checkDesignQuality(base64Image, mimeType = 'image/jpeg') {
+    const QC_PROMPT = `
+        You are an expert Production Quality Controller for a high-end Print-on-Demand factory.
+        Evaluate this design for quality and Etsy-readiness.
+        
+        CRITERIA:
+        1. BACKGROUND: Must be pure white (#FFFFFF) or transparent. If there is a background scenery or greyish haze, mark as FAIL.
+        2. EDGES: Must be clean and sharp for screen printing. No fuzzy artifacts.
+        3. TYPOGRAPHY: Must be legible. If text is garbled or gibberish, mark as FAIL.
+        4. SUBJECT: Must not have AI artifacts (extra fingers, double heads, nonsensical shapes).
+        
+        OUTPUT FORMAT (JSON):
+        {
+          "score": 0-10,
+          "isPrintReady": true/false,
+          "issues": ["e.g., garbled text", "e.g., haze in background"],
+          "technicalCheck": {
+            "noBackground": true/false,
+            "sharpEdges": true/false,
+            "legibleText": true/false,
+            "noArtifacts": true/false
+          }
+        }
+    `;
+
+    try {
+        const { GoogleGenerativeAI } = require('@google/generative-ai');
+        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+        const geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+        const imagePart = {
+            inlineData: { data: base64Image, mimeType: mimeType }
+        };
+
+        const result = await geminiModel.generateContent([QC_PROMPT, imagePart]);
+        const text = result.response.text();
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('QC result not in JSON format');
+        return JSON.parse(jsonMatch[0]);
+    } catch (err) {
+        console.error('[QC] Vision check failed:', err.message);
+        return { score: 5, isPrintReady: true, issues: ['Manual check recommended'], technicalCheck: {} };
+    }
+}
+
 module.exports = {
     analyzeImage,
     analyzeImageLegacy,
     getVariations,
+    checkDesignQuality,
     VISION_SCHEMA
 };

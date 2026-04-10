@@ -11,7 +11,7 @@ router.post('/render', async (req, res) => {
     try {
         if (!req.workspaceId) return res.status(401).json({ error: 'Unauthorized' });
 
-        const { imageId, templateId, placement } = req.body;
+        const { imageId, templateId, placement, areaDesigns } = req.body;
         if (!imageId || !templateId) {
             return res.status(400).json({ error: 'imageId and templateId are required' });
         }
@@ -38,19 +38,27 @@ router.post('/render', async (req, res) => {
         }
 
         // Standard v1: pass imageId + workspaceId for deterministic output path
+        console.log(`[Render Route] template.configJson.printAreas:`, JSON.stringify(template.configJson?.printAreas));
+        console.log(`[Render Route] areaDesigns received:`, JSON.stringify(areaDesigns));
         const mockupUrl = await renderMockup({
             designPath,
             template,
             imageId,
             workspaceId: req.workspaceId,
             placement,
+            areaDesigns,
         });
+
+        // Append cache-bust timestamp so browser always fetches the latest render
+        const cacheBustedUrl = mockupUrl.includes('?')
+            ? `${mockupUrl}&t=${Date.now()}`
+            : `${mockupUrl}?t=${Date.now()}`;
 
         const mockup = await prisma.mockup.create({
-            data: { imageId, templateId, mockupUrl }
+            data: { imageId, templateId, mockupUrl }  // store clean URL in DB
         });
 
-        res.json(mockup);
+        res.json({ ...mockup, mockupUrl: cacheBustedUrl });  // return cache-busted URL to client
     } catch (err) {
         console.error('[Mockup /render] Error:', err.message, err.stack);
         res.status(500).json({ error: err.message });

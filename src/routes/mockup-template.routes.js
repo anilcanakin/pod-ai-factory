@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
+const { detectPrintArea } = require('../services/mockup-render.service');
 
 const prisma = new PrismaClient();
 
@@ -46,9 +47,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage,
-    limits: { fileSize: 20 * 1024 * 1024 },
+    limits: { fileSize: 100 * 1024 * 1024 }, // increased to 100MB for videos
     fileFilter: (req, file, cb) => {
-        const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
+        const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.webm', '.mov'];
         const ext = path.extname(file.originalname).toLowerCase();
         if (allowed.includes(ext)) cb(null, true);
         else cb(new Error(`File type ${ext} not allowed. Use: ${allowed.join(', ')}`));
@@ -292,10 +293,18 @@ router.patch('/:id', async (req, res) => {
             const patch = req.body.configJson;
             data.configJson = {
                 printArea: patch.printArea ? { ...prev.printArea, ...patch.printArea } : prev.printArea,
+                // printAreas: array of {id, label, x, y, width, height} for multi-person/group mockups
+                // If patch sends an explicit empty array, honour it; if omitted, keep existing
+                printAreas: Array.isArray(patch.printAreas) ? patch.printAreas
+                    : (Array.isArray(prev.printAreas) ? prev.printAreas : undefined),
                 transform: patch.transform ? { ...prev.transform, ...patch.transform } : prev.transform,
                 render: patch.render ? { ...prev.render, ...patch.render } : prev.render,
                 meta: patch.meta ? { ...prev.meta, ...patch.meta } : prev.meta,
             };
+            console.log(`[PATCH] configJson updated for ${existing.id}:`);
+            console.log(`  printArea:`, JSON.stringify(data.configJson.printArea));
+            console.log(`  printAreas (${Array.isArray(data.configJson.printAreas) ? data.configJson.printAreas.length : 0} areas):`,
+                JSON.stringify(data.configJson.printAreas));
         }
 
         const template = await prisma.mockupTemplate.update({
@@ -344,58 +353,171 @@ router.post('/detect-print-area', async (req, res) => {
         });
         if (!template) return res.status(404).json({ error: 'Template not found' });
 
-        const sharp = require('sharp');
         const imagePath = path.join(__dirname, '../../', template.baseImagePath);
+        const printAreaResult = await detectPrintArea(imagePath);
 
-        const { data, info } = await sharp(imagePath)
-            .greyscale()
-            .raw()
-            .toBuffer({ resolveWithObject: true });
-
-        const { width, height } = info;
-
-        // Divide image into a 10x10 grid, find brightest (most printable) region
-        const gridSize = 10;
-        const cellW = Math.floor(width / gridSize);
-        const cellH = Math.floor(height / gridSize);
-
-        let bestCell = { row: 2, col: 2, brightness: 0 };
-
-        for (let row = 0; row < gridSize; row++) {
-            for (let col = 0; col < gridSize; col++) {
-                let sum = 0, count = 0;
-                for (let y = row * cellH; y < (row + 1) * cellH; y++) {
-                    for (let x = col * cellW; x < (col + 1) * cellW; x++) {
-                        sum += data[y * width + x];
-                        count++;
-                    }
-                }
-                const brightness = sum / count;
-                if (brightness > bestCell.brightness) {
-                    bestCell = { row, col, brightness };
-                }
-            }
-        }
-
-        // Expand to a print area (3x4 cells centered on best cell)
-        const printCols = 3;
-        const printRows = 4;
-        const startCol = Math.max(0, bestCell.col - Math.floor(printCols / 2));
-        const startRow = Math.max(0, bestCell.row - Math.floor(printRows / 2));
-        const endCol = Math.min(gridSize, startCol + printCols);
-        const endRow = Math.min(gridSize, startRow + printRows);
-
-        const printArea = {
-            x: parseFloat((startCol / gridSize).toFixed(3)),
-            y: parseFloat((startRow / gridSize).toFixed(3)),
-            width: parseFloat(((endCol - startCol) / gridSize).toFixed(3)),
-            height: parseFloat(((endRow - startRow) / gridSize).toFixed(3)),
-        };
-
-        res.json({ printArea, confidence: parseFloat((bestCell.brightness / 255).toFixed(2)) });
+        res.json({ printArea: {
+            x: printAreaResult.x, y: printAreaResult.y, width: printAreaResult.width, height: printAreaResult.height
+        }, confidence: printAreaResult.confidence / 100 });
     } catch (err) {
         console.error('[Detect Print Area]', err);
         res.status(500).json({ error: err.message });
+    }
+});
+
+router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
+    try {
+        if (!req.workspaceId) return res.status(401).json({ error: 'Unauthorized' });
+
+        // Accept multiple files
+        const upload = multer({
+            storage: multer.diskStorage({
+                destination: (req, file, cb) => cb(null, req._templateDir),
+                filename: (req, file, cb) => cb(null, `base-${Date.now()}${path.extname(file.originalname)}`)
+            }),
+            fileFilter: (req, file, cb) => {
+                if (file.mimetype.startsWith('image/')) cb(null, true);
+                else cb(new Error('Images only'));
+            },
+            limits: { fileSize: 20 * 1024 * 1024 }
+        });
+
+        await new Promise((resolve, reject) => {
+            upload.array('images', 20)(req, res, err => err ? reject(err) : resolve());
+        });
+
+        const { category = 'tshirt' } = req.body;
+        const files = req.files;
+
+        if (!files || files.length === 0) {
+            return res.status(400).json({ error: 'No images provided' });
+        }
+
+        const sharp = require('sharp');
+        const results = [];
+
+        for (const file of files) {
+            try {
+                const templateId = require('crypto').randomUUID();
+                const destDir = path.join(__dirname, `../../assets/mockups/${category}/${templateId}`);
+                fs.mkdirSync(destDir, { recursive: true });
+
+                const ext = path.extname(file.originalname);
+                const destPath = path.join(destDir, `base${ext}`);
+                fs.copyFileSync(file.path, destPath);
+
+                const printAreaResult = await detectPrintArea(file.path);
+                const printArea = {
+                    x: printAreaResult.x,
+                    y: printAreaResult.y,
+                    width: printAreaResult.width,
+                    height: printAreaResult.height
+                };
+                const confidence = printAreaResult.confidence;
+
+                // Save to DB
+                const template = await prisma.mockupTemplate.create({
+                    data: {
+                        id: templateId,
+                        workspaceId: req.workspaceId,
+                        name: path.basename(file.originalname, ext),
+                        category,
+                        baseImagePath: `assets/mockups/${category}/${templateId}/base${ext}`,
+                        configJson: {
+                            printArea,
+                            transform: { rotation: 0, opacity: 1, blendMode: 'multiply' },
+                            render: { renderMode: 'flat' },
+                            meta: { view: 'front', background: 'studio', color: 'white', hasHumanModel: false }
+                        }
+                    }
+                });
+
+                results.push({
+                    id: template.id,
+                    name: template.name,
+                    printArea,
+                    confidence,
+                    status: 'success'
+                });
+
+            } catch (err) {
+                results.push({
+                    name: file.originalname,
+                    status: 'error',
+                    error: err.message
+                });
+            }
+        }
+
+        res.json({ results, total: files.length, success: results.filter(r => r.status === 'success').length });
+
+    } catch (err) {
+        console.error('[Bulk Upload]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/mockup-templates/render-video
+router.post('/render-video', async (req, res) => {
+    try {
+        if (!req.workspaceId) return res.status(401).json({ error: 'Unauthorized' });
+
+        const { mockupImageUrl, duration = 5, motionType = 'subtle' } = req.body;
+        if (!mockupImageUrl) return res.status(400).json({ error: 'mockupImageUrl required' });
+
+        // Fal.ai can't reach localhost URLs — require a public URL
+        if (mockupImageUrl.includes('localhost') || mockupImageUrl.includes('127.0.0.1')) {
+            return res.status(400).json({ error: 'mockupImageUrl must be a public URL (Supabase/CDN). Localhost URLs are not reachable by Fal.ai.' });
+        }
+
+        const { fal } = require('@fal-ai/client');
+
+        const motionPrompts = {
+            subtle: 'gentle fabric movement, slight breeze, natural motion',
+            rotate: 'slow 360 degree rotation, product showcase',
+            wave: 'fabric waving in wind, dynamic movement',
+            zoom: 'slow zoom in on design, product focus'
+        };
+
+        const prompt = motionPrompts[motionType] || motionPrompts.subtle;
+        const falDuration = duration >= 8 ? "10" : "5";
+
+        console.log('[Video Render] Input:', { mockupImageUrl, duration, motionType, prompt });
+
+        const result = await fal.subscribe('fal-ai/kling-video/v1/standard/image-to-video', {
+            input: {
+                image_url: mockupImageUrl,
+                prompt,
+                duration: falDuration,
+            },
+            logs: true,
+            onQueueUpdate: (update) => {
+                console.log('[Video Render] Status:', update.status, update.logs?.slice(-1)?.[0]?.message || '');
+            }
+        });
+
+        console.log('[Video Render] Full result:', JSON.stringify(result, null, 2));
+
+        const videoUrl = result?.data?.video?.url
+            || result?.data?.output?.url
+            || result?.video?.url
+            || null;
+
+        if (!videoUrl) {
+            console.error('[Video Render] No videoUrl in result:', result);
+            return res.status(500).json({ error: 'No video output returned', raw: result?.data });
+        }
+
+        res.json({ videoUrl, duration: falDuration, motionType });
+
+    } catch (err) {
+        console.error('[Video Render] Full error:', JSON.stringify(err, null, 2));
+        console.error('[Video Render] Message:', err.message);
+        console.error('[Video Render] Body:', err.body);
+        res.status(500).json({
+            error: err.message,
+            detail: err.body || err.detail || {}
+        });
     }
 });
 

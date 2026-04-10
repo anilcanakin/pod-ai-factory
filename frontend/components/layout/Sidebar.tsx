@@ -21,13 +21,21 @@ import {
     X,
     Sun,
     Moon,
-    Store
+    Store,
+    Brain,
+    Bot,
+    ShoppingBag,
+    Radar
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SHORTCUT_LABELS } from '@/hooks/useKeyboardShortcuts';
 
 const navItems = [
     { href: '/dashboard/overview', label: 'Overview', icon: LayoutDashboard },
+    { href: '/dashboard/agent', label: 'AI Manager', icon: Bot },
+    { href: '/dashboard/brain', label: 'AI Brain', icon: Brain },
+    { href: '/dashboard/orders', label: 'Orders', icon: ShoppingBag },
+    { href: '/dashboard/radar', label: 'Radar', icon: Radar },
     { href: '/dashboard/factory', label: 'Factory', icon: Cpu },
     { href: '/dashboard/gallery', label: 'Gallery', icon: Images },
     { href: '/dashboard/mockups', label: 'Mockups', icon: Frame },

@@ -333,6 +333,9 @@ app.use('/api/mockups/templates', require('./routes/mockup-template.routes'));
 app.use('/api/mockups', require('./routes/mockup.routes'));
 app.use('/api/notifications', require('./routes/notification.routes'));
 app.use('/api/etsy-browser', require('./routes/etsy-browser.routes'));
+app.use('/api/brain', require('./routes/brain.routes'));
+app.use('/api/agent', require('./routes/agent.routes'));
+app.use('/api/radar', require('./routes/radar.routes'));
 
 
 app.use((err, req, res, next) => {

@@ -56,7 +56,11 @@ export function UpscaleClient() {
             const res = await apiTools.upscale(sourceImage, scale);
             setResult(res.url);
             setResultModel(res.model ?? 'aurasr-v2');
-            toast.success(`Upscaled ${res.scale} — ${res.model}`);
+            if (res.savedImageId) {
+                toast.success('Saved to gallery — ready for mockup!');
+            } else {
+                toast.success(`Upscaled ${res.scale} — ${res.model}`);
+            }
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Upscale failed');
         } finally {

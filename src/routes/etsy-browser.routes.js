@@ -30,6 +30,18 @@ router.post('/scrape', async (req, res) => {
     }
 });
 
+// POST /api/etsy-browser/dispatch
+router.post('/dispatch', async (req, res) => {
+    try {
+        const { designId, workspaceId } = req.body;
+        const assembler = require('../services/listing-assembler.service');
+        const result = await assembler.assembleAndDispatch(designId, workspaceId || 'default-workspace');
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // POST /api/etsy-browser/pin-pinterest
 router.post('/pin-pinterest', async (req, res) => {
     try {

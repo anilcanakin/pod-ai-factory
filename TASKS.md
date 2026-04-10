@@ -127,6 +127,16 @@ Completed: Added "Pin to Pinterest" button in the renderResult panel of Template
 
 ---
 
+### ~~AA. Multi Print Area Support~~ ✅ DONE
+Completed: configJson now supports `printAreas` array alongside the existing `printArea` (backward compat). Backend render service: if `printAreas.length > 1`, iteratively composites the design (contain-fit + blur) onto each area. Frontend TemplateEditor: `printAreas` + `activeAreaId` state, loaded from config on mount. "Add Area" button in Print Area section adds named areas (Person 1, 2, …) with delete buttons. Canvas draws all areas with color fills + labels. `saveConfig` and `handleRender` both persist `printAreas` to configJson.
+
+---
+
+### ~~Z. Video Mockup~~ ✅ DONE
+Completed: Added POST /api/mockup-templates/render-video backend endpoint using fal-ai/kling-video/v1.6/standard/image-to-video. Accepts mockupImageUrl, duration (default 5s), motionType (subtle/rotate/wave/zoom). Motion-type-specific prompts drive animation style. Added "Create Video Mockup" section in TemplateEditor renderResult panel (MockupsClient.tsx) — shown after a mockup is rendered. Includes motion type selector dropdown, purple gradient button, video preview with autoplay/loop, and Download Video link.
+
+---
+
 ### ~~W. Etsy Listing Scraper page~~ ✅ DONE
 Completed: Created frontend/app/dashboard/etsy-listings/page.tsx and EtsyListingsClient.tsx. "Scan My Etsy Shop" button calls POST /api/etsy-browser/scrape. Lists scraped listings (id, title, price) in expandable cards. "Optimize SEO" button per listing calls /api/seo/generate with listing title as keyword. Shows before/after comparison panel with AI title, description, and tags preview. Added "My Listings" (Store icon) to Sidebar nav.
 
@@ -216,3 +226,9 @@ Completed: Fixed image thumbnails in analytics table (resolveUrl for local paths
 - SEO Knowledge Base (auto weekly update + manual override)
 - Download buttons (direct download + descriptive filenames)
 - Etsy 2026 algorithm training in system prompt
+- Bulk Template Upload + AI Print Area Detection
+- AI Corporate Brain (Multimodal RAG): Video & Meeting digestion with Vision AI
+- Autonomous Store Manager: AI Agent for shop audits and performance optimization
+- AI Quality Control: Vision-based print-readiness inspector
+- Fulfillment Engine: Orders sync with Yuppion/POD factory
+- Competitor Radar: Automated rival shop scraping for niche ideas

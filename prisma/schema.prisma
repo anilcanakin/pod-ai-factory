@@ -31,6 +31,7 @@ model Workspace {
   packs       ProductPack[]
   mockupTemplates MockupTemplate[]
   seoKnowledge    SeoKnowledgeBase[]
+  corporateMemories CorporateMemory[]
 
   // ─── Billing (Sprint 4) ──────────────────────
   planName              String    @default("starter")
@@ -262,4 +263,21 @@ model MockupTemplate {
   configJson      Json      // { printArea, rotation, opacity, blendMode, renderMode, ... }
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+// ─── AI Corporate Brain (Multimodal RAG) ──────────────────────────────────────
+
+model CorporateMemory {
+  id               String    @id @default(uuid())
+  workspaceId      String
+  workspace        Workspace @relation(fields: [workspaceId], references: [id])
+  type             String    // "VIDEO_TUTORIAL", "MEETING", "ARTICLE", "OBSERVATION"
+  title            String
+  content          String    @db.Text
+  analysisResult   Json?     // Storing structured UI/Screen insights from Vision AI
+  vectorEmbedding  Json?     // Array of floats storing the embedding for semantic search
+  sourceUrl        String?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }

@@ -206,12 +206,19 @@ router.post('/generate-bulk', async (req, res) => {
 
         const styleOptions = VISION_SCHEMA.json_schema.schema.properties.style.enum;
 
+        const { getIdeasContext } = require('../services/knowledge-context.service');
+        const ideasContext = await getIdeasContext(req.workspaceId || 'default-workspace');
+
+        const systemPrompt = `You are a top-tier POD (Print-On-Demand) designer and Etsy market expert.${ideasContext ? `\n\nYOUR BUSINESS KNOWLEDGE:\n${ideasContext}` : ''}
+Generate product ideas based on trends and the user's specific business knowledge.`;
+
         const message = await anthropic.messages.create({
             model: 'claude-haiku-4-5-20251001',
             max_tokens: 1024,
+            system: systemPrompt,
             messages: [{
                 role: 'user',
-                content: `You are a top-tier POD (Print-On-Demand) designer. Generate exactly 5 unique design ideas for the niche: "${niche.trim()}".
+                content: `Generate exactly 5 unique design ideas for the niche: "${niche.trim()}".
 DO NOT include any trademarks or copyrighted characters.
 Output strict JSON array ONLY (no markdown, no explanation):
 [

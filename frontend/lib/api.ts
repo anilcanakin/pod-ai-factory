@@ -403,6 +403,8 @@ export interface CorporateMemory {
     type: string;
     title: string;
     content: string;
+    category: string;
+    tags: string[];
     sourceUrl?: string | null;
     analysisResult: {
         // Legacy Gemini format
@@ -471,10 +473,10 @@ export const apiBrain = {
             xhr.onerror = () => reject(new Error('Network error'));
             xhr.send(formData);
         }),
-    addText: (title: string, content: string, source: string) =>
+    addText: (title: string, content: string, source: string, category?: string) =>
         request<CorporateMemory & { seoUpdated: boolean }>('/brain/add-text', {
             method: 'POST',
-            body: JSON.stringify({ title, content, source })
+            body: JSON.stringify({ title, content, source, category })
         }),
     delete: (id: string) => request<{ success: boolean }>(`/brain/${id}`, { method: 'DELETE' }),
 };

@@ -4,12 +4,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     Brain, Upload, Video, FileText, Zap, ChevronRight, Plus, Trash2,
     Loader2, Lightbulb, Target, Layout, CheckCircle2, AlertCircle,
-    RefreshCw, BookOpen, Mic, BarChart2, ArrowUpCircle, X
+    RefreshCw, BookOpen, Mic, BarChart2, ArrowUpCircle, X, MessageSquare
 } from 'lucide-react';
 import { apiBrain, CorporateMemory, VideoAnalysis } from '@/lib/api';
 import { toast } from 'sonner';
 
-type InputTab = 'video' | 'text';
+type InputTab = 'video' | 'text' | 'test';
 type VideoType = 'training' | 'meeting' | 'etsy_update' | 'tutorial';
 type ProcessStep = 'idle' | 'uploading' | 'transcribing' | 'analyzing' | 'saving' | 'done';
 
@@ -31,6 +31,27 @@ const STEP_LABELS: Record<ProcessStep, string> = {
 
 const STEPS: ProcessStep[] = ['uploading', 'transcribing', 'analyzing', 'saving', 'done'];
 
+const CATEGORIES = [
+    { value: 'auto', label: '🤖 Auto-detect' },
+    { value: 'pod_apparel', label: '👕 POD Apparel' },
+    { value: 'seo_tips', label: '🔍 SEO Tips' },
+    { value: 'etsy_algorithm', label: '⚙️ Etsy Algorithm' },
+    { value: 'niche_research', label: '🎯 Niche Research' },
+    { value: 'digital_products', label: '💾 Digital Products' },
+    { value: 'general_etsy', label: '🛒 General Etsy' },
+] as const;
+
+type CategoryValue = typeof CATEGORIES[number]['value'];
+
+const CATEGORY_COLORS: Record<string, string> = {
+    pod_apparel:      'bg-blue-500/20 text-blue-400',
+    seo_tips:         'bg-green-500/20 text-green-400',
+    etsy_algorithm:   'bg-yellow-500/20 text-yellow-400',
+    niche_research:   'bg-purple-500/20 text-purple-400',
+    digital_products: 'bg-pink-500/20 text-pink-400',
+    general_etsy:     'bg-slate-500/20 text-slate-400',
+};
+
 export function BrainClient() {
     const [memories, setMemories] = useState<CorporateMemory[]>([]);
     const [loading, setLoading] = useState(true);
@@ -50,6 +71,13 @@ export function BrainClient() {
     const [textSource, setTextSource] = useState('');
     const [textContent, setTextContent] = useState('');
     const [addingText, setAddingText] = useState(false);
+    const [selectedCategory, setSelectedCategory] = useState<CategoryValue>('auto');
+    const [videoCategory, setVideoCategory] = useState<CategoryValue>('auto');
+
+    // Test knowledge state
+    const [testQuestion, setTestQuestion] = useState('');
+    const [testAnswer, setTestAnswer] = useState('');
+    const [testing, setTesting] = useState(false);
 
     useEffect(() => { loadMemories(); }, []);
 
@@ -84,6 +112,7 @@ export function BrainClient() {
         formData.append('video', file);
         formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
         formData.append('videoType', videoType);
+        if (videoCategory !== 'auto') formData.append('category', videoCategory);
 
         try {
             const result = await apiBrain.analyzeVideo(formData, (pct) => {
@@ -107,7 +136,7 @@ export function BrainClient() {
             setProcessStep('idle');
             toast.error('Analysis failed: ' + (err as Error).message);
         }
-    }, [videoType]);
+    }, [videoType, videoCategory]);
 
     const onDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -123,12 +152,18 @@ export function BrainClient() {
         }
         setAddingText(true);
         try {
-            const result = await apiBrain.addText(textTitle, textContent, textSource || 'manual');
+            const result = await apiBrain.addText(
+                textTitle,
+                textContent,
+                textSource || 'manual',
+                selectedCategory === 'auto' ? undefined : selectedCategory
+            );
             setMemories(prev => [result, ...prev]);
             setSelectedId(result.id);
             setTextTitle('');
             setTextSource('');
             setTextContent('');
+            setSelectedCategory('auto');
             const seoMsg = result.seoUpdated ? ' SEO knowledge base updated.' : '';
             toast.success(`Added to knowledge base!${seoMsg}`);
         } catch (err) {
@@ -152,6 +187,36 @@ export function BrainClient() {
     };
 
     const selectedMemory = memories.find(m => m.id === selectedId);
+    const handleTest = async () => {
+        if (!testQuestion.trim()) return;
+        setTesting(true);
+        setTestAnswer('');
+        try {
+            const res = await fetch('/api/brain/test-knowledge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ question: testQuestion })
+            });
+            const data = await res.json();
+            setTestAnswer(data.answer || 'No answer found. Try adding more knowledge first.');
+        } catch {
+            setTestAnswer('Error connecting to knowledge base.');
+        } finally {
+            setTesting(false);
+        }
+    };
+
+    const handleFeedback = (type: 'correct' | 'incorrect' | 'partial') => {
+        if (type === 'correct') {
+            toast.success('Great! Knowledge base is working correctly.');
+        } else if (type === 'incorrect') {
+            toast.error('Consider updating your knowledge base with more accurate information.');
+        } else {
+            toast.info('Consider adding more specific information to improve accuracy.');
+        }
+    };
+
     const isProcessing = processStep !== 'idle' && processStep !== 'done';
 
     const typeIcon = (type: string) => {
@@ -245,7 +310,10 @@ export function BrainClient() {
                                 }`}>
                                     {m.title}
                                 </p>
-                                <div className="flex items-center justify-between mt-2">
+                                <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded font-medium mt-1.5 ${CATEGORY_COLORS[m.category] || CATEGORY_COLORS.general_etsy}`}>
+                                    {(m.category || 'general_etsy').replace(/_/g, ' ')}
+                                </span>
+                                <div className="flex items-center justify-between mt-1">
                                     <span className="text-[10px] text-text-tertiary">
                                         {new Date(m.createdAt).toLocaleDateString()}
                                     </span>
@@ -394,7 +462,8 @@ export function BrainClient() {
                         <div className="flex border-b border-border-subtle px-6">
                             {([
                                 { key: 'video', label: 'Upload Video', icon: Video },
-                                { key: 'text', label: 'Paste Text', icon: FileText }
+                                { key: 'text', label: 'Paste Text', icon: FileText },
+                                { key: 'test', label: 'Test Knowledge', icon: MessageSquare }
                             ] as const).map(({ key, label, icon: Icon }) => (
                                 <button
                                     key={key}
@@ -440,6 +509,20 @@ export function BrainClient() {
                                                 </button>
                                             ))}
                                         </div>
+                                    </div>
+
+                                    {/* Category selector */}
+                                    <div>
+                                        <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Category</label>
+                                        <select
+                                            value={videoCategory}
+                                            onChange={e => setVideoCategory(e.target.value as CategoryValue)}
+                                            className="w-full bg-bg-overlay border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-accent transition-colors"
+                                        >
+                                            {CATEGORIES.map(c => (
+                                                <option key={c.value} value={c.value}>{c.label}</option>
+                                            ))}
+                                        </select>
                                     </div>
 
                                     {/* Drop zone */}
@@ -545,7 +628,7 @@ export function BrainClient() {
                                         </div>
                                     )}
                                 </div>
-                            ) : (
+                            ) : inputTab === 'text' ? (
                                 /* ── Text Input ───────────────────────── */
                                 <div className="space-y-5">
                                     <div>
@@ -560,7 +643,7 @@ export function BrainClient() {
                                             <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Title *</label>
                                             <input
                                                 type="text"
-                                                value={textTitle}
+                                                value={textTitle ?? ''}
                                                 onChange={e => setTextTitle(e.target.value)}
                                                 placeholder="e.g. Etsy Seller Handbook 2026"
                                                 className="w-full bg-bg-overlay border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent transition-colors"
@@ -571,7 +654,7 @@ export function BrainClient() {
                                             <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Source</label>
                                             <input
                                                 type="text"
-                                                value={textSource}
+                                                value={textSource ?? ''}
                                                 onChange={e => setTextSource(e.target.value)}
                                                 placeholder="e.g. Etsy Seller Handbook, YouTube, blog post"
                                                 className="w-full bg-bg-overlay border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent transition-colors"
@@ -579,9 +662,22 @@ export function BrainClient() {
                                         </div>
 
                                         <div>
+                                            <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Category</label>
+                                            <select
+                                                value={selectedCategory}
+                                                onChange={e => setSelectedCategory(e.target.value as CategoryValue)}
+                                                className="w-full bg-bg-overlay border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-accent transition-colors"
+                                            >
+                                                {CATEGORIES.map(c => (
+                                                    <option key={c.value} value={c.value}>{c.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
                                             <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Content *</label>
                                             <textarea
-                                                value={textContent}
+                                                value={textContent ?? ''}
                                                 onChange={e => setTextContent(e.target.value)}
                                                 placeholder="Paste your notes, tips, or article content here..."
                                                 rows={12}
@@ -616,6 +712,99 @@ export function BrainClient() {
                                             Claude will extract IF-THEN rules, SEO tips, and action items. If SEO insights are found, the SEO knowledge base will be automatically updated.
                                         </p>
                                     </div>
+                                </div>
+                            ) : (
+                                /* ── Test Knowledge ───────────────────── */
+                                <div className="space-y-5">
+                                    <div>
+                                        <h2 className="text-lg font-bold text-text-primary mb-1">Test Knowledge Base</h2>
+                                        <p className="text-sm text-text-tertiary">
+                                            Ask a question to verify the AI correctly understood your uploaded content.
+                                        </p>
+                                    </div>
+
+                                    {/* Quick test questions */}
+                                    <div>
+                                        <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Quick Questions</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {[
+                                                'What are the best tags for patriotic shirts?',
+                                                'What did the latest Etsy algorithm update change?',
+                                                'What niches should I focus on this month?',
+                                                'What title format works best in 2026?',
+                                                'What are the top SEO mistakes to avoid?'
+                                            ].map(q => (
+                                                <button
+                                                    key={q}
+                                                    onClick={() => setTestQuestion(q)}
+                                                    className="text-[11px] px-2.5 py-1 bg-bg-overlay hover:bg-bg-base text-text-tertiary hover:text-text-primary rounded-lg border border-border-subtle hover:border-border-default transition-colors"
+                                                >
+                                                    {q}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Question input */}
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={testQuestion ?? ''}
+                                            onChange={e => setTestQuestion(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && handleTest()}
+                                            placeholder="Ask anything about Etsy, POD, or your business..."
+                                            className="flex-1 bg-bg-overlay border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent transition-colors"
+                                        />
+                                        <button
+                                            onClick={handleTest}
+                                            disabled={testing || !testQuestion.trim()}
+                                            className="px-4 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-opacity shrink-0"
+                                        >
+                                            {testing
+                                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                : <MessageSquare className="w-4 h-4" />}
+                                            Ask
+                                        </button>
+                                    </div>
+
+                                    {/* Answer */}
+                                    {testAnswer && (
+                                        <div className="bg-bg-overlay border border-border-subtle rounded-2xl p-5 space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs font-bold text-text-tertiary uppercase tracking-widest">AI Answer</p>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => handleFeedback('correct')}
+                                                        className="flex items-center gap-1 px-2.5 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-[10px] font-medium rounded-lg border border-green-500/20 transition-colors"
+                                                    >
+                                                        ✓ Correct
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleFeedback('incorrect')}
+                                                        className="flex items-center gap-1 px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] font-medium rounded-lg border border-red-500/20 transition-colors"
+                                                    >
+                                                        ✗ Wrong
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleFeedback('partial')}
+                                                        className="flex items-center gap-1 px-2.5 py-1 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-[10px] font-medium rounded-lg border border-yellow-500/20 transition-colors"
+                                                    >
+                                                        ~ Partial
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">{testAnswer}</p>
+                                        </div>
+                                    )}
+
+                                    {memories.length === 0 && (
+                                        <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 flex items-start gap-3">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                                            <p className="text-[11px] text-text-tertiary leading-relaxed">
+                                                No knowledge in the brain yet. Upload a video or paste text first to get meaningful answers.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

@@ -25,7 +25,8 @@ import {
     Brain,
     Bot,
     ShoppingBag,
-    Radar
+    Radar,
+    TrendingUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SHORTCUT_LABELS } from '@/hooks/useKeyboardShortcuts';
@@ -40,6 +41,7 @@ const navItems = [
     { href: '/dashboard/gallery', label: 'Gallery', icon: Images },
     { href: '/dashboard/mockups', label: 'Mockups', icon: Frame },
     { href: '/dashboard/ideas', label: 'Ideas', icon: Lightbulb },
+    { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp },
     { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
     { href: '/dashboard/exports', label: 'Exports', icon: Download },
     { href: '/dashboard/remove-bg', label: 'Remove BG', icon: Scissors },

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { expandKeywords, getGoogleTrends } = require('../services/keyword-research.service');
-const { getKnowledge } = require('../services/seo-knowledge.service');
+const { getSeoContext } = require('../services/knowledge-context.service');
 const { logNotification } = require('./notification.routes');
 
 function extractSeedKeywords(description, focusKeyword) {
@@ -57,7 +57,7 @@ router.post('/generate', async (req, res) => {
         const [expandedResult, trendsResult, knowledgeBase] = await Promise.allSettled([
             expandKeywords(seedKeywords),
             getGoogleTrends(seedKeywords),
-            getKnowledge(workspaceId)
+            getSeoContext(workspaceId)
         ]);
 
         const etsyKeywords = expandedResult.status === 'fulfilled'

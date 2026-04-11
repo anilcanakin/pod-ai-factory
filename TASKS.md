@@ -159,6 +159,41 @@ Completed:
 
 ---
 
+### ~~T3. Trend Analysis Dashboard~~ ✅ DONE
+Completed:
+- src/routes/trends.routes.js: GET /api/trends/weekly (fetches 5 Etsy autocomplete seeds, Claude Haiku analyses + ranks into hotNiches/upcomingOpportunities/avoidNow/weeklyFocus, injected with brain ideasContext). GET /api/trends/seasonal (static full-year calendar). getSeasonalContext() and getFullSeasonalCalendar() helpers.
+- Registered in index.js after brain routes.
+- frontend/app/dashboard/trends/page.tsx + TrendsClient.tsx: two tabs (This Week / Seasonal Calendar). Weekly tab: Weekly Focus banner, Hot Niches grid (urgency badge, competition, keywords, Generate Design + Generate SEO action buttons), Upcoming Opportunities list (countdown days, click → factory), Avoid Now list. Calendar tab: 12-month grid with current month highlighted, urgency badges, clickable niche chips → factory. 30-min staleTime for weekly, 24h for seasonal.
+- Sidebar.tsx: TrendingUp import added, Trends nav item added after Ideas.
+
+---
+
+### ~~T2. Universal Knowledge Injection~~ ✅ DONE
+Completed:
+- Created src/services/knowledge-context.service.js: getRelevantContext() (fetches brain memories by topic-to-category map, extracts synthesis or actionableRules from analysisResult JSON), getSeoContext() (brain + seoKnowledgeBase merged), getFactoryContext(), getIdeasContext(), getKnowledgeSummary() (count + latest entry date/category).
+- seo.routes.js: replaced getKnowledge(workspaceId) with getSeoContext(workspaceId) — SEO generation now includes matching brain memories alongside the SEO knowledge base.
+- idea.routes.js (generate-bulk): added system prompt to Claude call with ideasContext injected; uses req.workspaceId.
+- factory.routes.js (get-variations): fetches factoryContext, builds augmentedPrompt = basePrompt + contextAddition; passed to both synthetic and real AI variation paths.
+- brain.routes.js: added GET /api/brain/summary endpoint (returns totalEntries, lastUpdated, lastCategory).
+- OverviewClient.tsx: added Brain lucide import; added useQuery for /api/brain/summary; added 7th StatCard "Knowledge Entries" (purple); grid layout updated to grid-cols-7.
+
+---
+
+### ~~S. Brain — Knowledge Categories~~ ✅ DONE
+Completed:
+- prisma/schema.prisma: Added category String @default("general_etsy") and tags String[] @default([]) to CorporateMemory. Applied via prisma db push.
+- multimodal-brain.service.js: Added detectCategory(synthesis) function (keyword-based: digital_products / etsy_algorithm / seo_tips / niche_research / pod_apparel / general_etsy). Both analyzeVideoFull() and addTextKnowledge() auto-detect category from synthesis; accept optional category override param.
+- brain.routes.js: /add-text accepts category from body. /analyze-video accepts category from body. /test-knowledge filters by relevantCategories (excludes digital_products unless question mentions "digital"/"printable").
+- api.ts: CorporateMemory interface extended with category and tags fields. apiBrain.addText() signature extended with optional category param.
+- BrainClient.tsx: CATEGORIES constant + CATEGORY_COLORS map. selectedCategory state (text form) and videoCategory state (video form). Category <select> dropdowns in both Video and Text input tabs. Category badge on each sidebar memory entry.
+
+---
+
+### ~~R. Brain — Test Knowledge Panel~~ ✅ DONE
+Completed: Added "Test Knowledge" as 3rd tab in BrainClient.tsx (alongside Video/Text). Tab shows 5 quick-question chips, a free-text input (Enter to submit), and an answer panel with Correct/Wrong/Partial feedback buttons. Backend POST /api/brain/test-knowledge fetches up to 10 CorporateMemory entries + seoKnowledgeBase, builds context, and queries claude-haiku-4-5. Empty-brain warning shown when no memories exist. Added MessageSquare icon import.
+
+---
+
 ### ~~Q. Enhanced Brain System~~ ✅ DONE
 Completed:
 - multimodal-brain.service.js: added analyzeVideoFull() — ffmpeg frame extraction (20 frames) + audio extraction + Whisper transcription via fal-ai + Claude Vision per-frame analysis (every 3rd frame, claude-haiku-4-5) + synthesis prompt → structured knowledge. Added addTextKnowledge() — Claude processes pasted text into structured insights. Added extractSeoKnowledge() — after any analysis, Claude extracts SEO-relevant parts and auto-merges into seoKnowledgeBase. Legacy processVideo() (Gemini) kept for /ingest-video backward compat.

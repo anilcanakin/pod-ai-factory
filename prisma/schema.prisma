@@ -274,6 +274,8 @@ model CorporateMemory {
   type             String    // "VIDEO_TUTORIAL", "MEETING", "ARTICLE", "OBSERVATION"
   title            String
   content          String    @db.Text
+  category         String    @default("general_etsy")
+  tags             String[]  @default([])
   analysisResult   Json?     // Storing structured UI/Screen insights from Vision AI
   vectorEmbedding  Json?     // Array of floats storing the embedding for semantic search
   sourceUrl        String?

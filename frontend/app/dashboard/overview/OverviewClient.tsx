@@ -10,7 +10,7 @@ import Link from 'next/link';
 import {
     Cpu, CheckCircle, DollarSign, TrendingUp, Zap, Eye, Activity,
     Clock, Image as ImageIcon, Images, ThumbsUp, ExternalLink, RefreshCw,
-    Scissors, Tag, Frame
+    Scissors, Tag, Frame, Brain
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
@@ -90,6 +90,15 @@ export function OverviewClient() {
     });
     const recentMockups = (recentGallery ?? []).filter(img => img.engine === 'mockup').slice(0, 6);
 
+    const { data: brainSummary } = useQuery({
+        queryKey: ['brain-summary'],
+        queryFn: async () => {
+            const res = await fetch('/api/brain/summary', { credentials: 'include' });
+            return res.json() as Promise<{ totalEntries: number; lastUpdated: string | null; lastCategory: string | null }>;
+        },
+        staleTime: 60000,
+    });
+
     return (
         <div className="space-y-7 animate-fade-in">
             {/* Header */}
@@ -107,13 +116,14 @@ export function OverviewClient() {
             </div>
 
             {/* KPI Cards — today's production stats */}
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
                 <StatCard label="Runs Today" value={String(dash?.runsToday ?? 0)} icon={Cpu} color="blue" loading={isLoading} />
                 <StatCard label="Images (24h)" value={String(dash?.imagesGeneratedToday ?? 0)} icon={ImageIcon} color="blue" loading={isLoading} />
                 <StatCard label="Approved Today" value={String(dash?.approvedToday ?? 0)} icon={ThumbsUp} color="green" loading={isLoading} />
                 <StatCard label="Spend Today" value={`$${(statusData?.dailySpend ?? 0).toFixed(2)} / $${dailyLimit.toFixed(2)}`} icon={DollarSign} color="yellow" loading={isLoading} />
                 <StatCard label="Success Rate" value={String(dash?.successRate ?? 0)} icon={TrendingUp} color="green" loading={isLoading} suffix="%" />
                 <StatCard label="Avg Time" value={dash?.avgGenerationTime ? `${dash.avgGenerationTime}s` : '—'} icon={Clock} color="purple" loading={isLoading} />
+                <StatCard label="Knowledge Entries" value={String(brainSummary?.totalEntries ?? 0)} icon={Brain} color="purple" loading={!brainSummary} />
             </div>
 
             {/* Weekly Chart */}

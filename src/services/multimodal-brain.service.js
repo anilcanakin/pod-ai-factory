@@ -9,6 +9,21 @@ const prisma = new PrismaClient();
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY);
 
+function detectCategory(synthesis) {
+    const text = synthesis.toLowerCase();
+    if (text.includes('digital') || text.includes('printable') || text.includes('download'))
+        return 'digital_products';
+    if (text.includes('algorithm') || text.includes('ranking') || text.includes('search'))
+        return 'etsy_algorithm';
+    if (text.includes('tag') || text.includes('title') || text.includes('seo') || text.includes('keyword'))
+        return 'seo_tips';
+    if (text.includes('niche') || text.includes('trend') || text.includes('market'))
+        return 'niche_research';
+    if (text.includes('shirt') || text.includes('hoodie') || text.includes('apparel') || text.includes('pod') || text.includes('print'))
+        return 'pod_apparel';
+    return 'general_etsy';
+}
+
 class MultimodalBrainService {
     constructor() {
         this.tempDir = path.join(process.cwd(), 'assets', 'temp_brain');
@@ -97,7 +112,7 @@ OUTPUT FORMAT (JSON only, no markdown):
 
     // ─── Enhanced Claude-based Analysis ───────────────────────────────────────
 
-    async analyzeVideoFull(workspaceId, videoPath, title, videoType = 'training') {
+    async analyzeVideoFull(workspaceId, videoPath, title, videoType = 'training', categoryOverride = null) {
         const tmpDir = path.join(os.tmpdir(), `brain-${Date.now()}`);
         fs.mkdirSync(tmpDir, { recursive: true });
 
@@ -224,12 +239,14 @@ Be specific and actionable. Focus on what can be immediately applied.`
             const synthesis = synthesisResponse.content[0].text;
 
             // 6. Save to CorporateMemory
+            const category = categoryOverride || detectCategory(synthesis);
             const memory = await prisma.corporateMemory.create({
                 data: {
                     workspaceId,
                     type: 'VIDEO_FULL',
                     title,
                     content: synthesis.slice(0, 500),
+                    category,
                     analysisResult: {
                         synthesis,
                         transcript: transcript.slice(0, 5000),
@@ -266,7 +283,7 @@ Be specific and actionable. Focus on what can be immediately applied.`
 
     // ─── Text Knowledge Ingestion ──────────────────────────────────────────────
 
-    async addTextKnowledge(workspaceId, title, textContent, source = 'manual') {
+    async addTextKnowledge(workspaceId, title, textContent, source = 'manual', category = null) {
         console.log(`[Brain] Processing text note: ${title}`);
         const client = new Anthropic();
 
@@ -295,12 +312,14 @@ Be specific and immediately actionable.`
 
         const synthesis = response.content[0].text;
 
+        const resolvedCategory = category || detectCategory(synthesis);
         const memory = await prisma.corporateMemory.create({
             data: {
                 workspaceId,
                 type: 'TEXT_NOTE',
                 title,
                 content: textContent.slice(0, 500),
+                category: resolvedCategory,
                 analysisResult: {
                     synthesis,
                     sourceType: 'text',

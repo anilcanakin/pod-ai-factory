@@ -95,6 +95,11 @@ router.post('/get-variations', usageMiddleware, async (req, res) => {
         const workspaceId = req.workspaceId;
         if (!workspaceId) return res.status(401).json({ error: 'Authentication required.' });
 
+        const { getFactoryContext } = require('../services/knowledge-context.service');
+        const factoryContext = await getFactoryContext(workspaceId).catch(() => '');
+        const contextAddition = factoryContext ? `\n\nBUSINESS CONTEXT:\n${factoryContext}` : '';
+        const augmentedPrompt = basePrompt + contextAddition;
+
         if (!isVisionEnabled()) {
             // Synthetic variations — deterministic text manipulation
             const modeSwaps = {
@@ -119,8 +124,8 @@ router.post('/get-variations', usageMiddleware, async (req, res) => {
             return res.json({ variations });
         }
 
-        // Real AI variations
-        const result = await visionService.getVariations(basePrompt, clampedCount, mode);
+        // Real AI variations — pass augmented prompt with business context
+        const result = await visionService.getVariations(augmentedPrompt, clampedCount, mode);
         res.json(result);
     } catch (err) {
         console.error('[Factory Get Variations]', err);

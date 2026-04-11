@@ -9,9 +9,9 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ConfirmModal } from '@/components/shared/ConfirmModal';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
-    CheckCircle, XCircle, RefreshCw, Loader2,
+    CheckCircle, CheckCircle2, XCircle, RefreshCw, Loader2,
     Download, Play, Maximize2, Copy, Image as ImageIcon, Images, Info,
-    History, Scissors, ZoomIn, Store, Trash2,
+    History, Scissors, ZoomIn, Store, Trash2, Zap,
     Check, X, Layers, Tag, Clock, ChevronUp, ChevronDown
 } from 'lucide-react';
 
@@ -60,6 +60,7 @@ function GalleryInner() {
     const [listingPrice, setListingPrice] = useState('19.99');
     const [showHistory, setShowHistory] = useState(false);
     const historyRef = useRef<HTMLDivElement>(null);
+    const [pipelineImage, setPipelineImage] = useState<GalleryImage | null>(null);
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -547,6 +548,7 @@ function GalleryInner() {
                                     onPublishToEtsy={() => handlePublishToEtsy(img.id)}
                                     onMockup={() => router.push(`/dashboard/mockups?designUrl=${encodeURIComponent(img.imageUrl)}&designImageId=${img.id}`)}
                                     onSeo={() => router.push(`/dashboard/seo?imageUrl=${encodeURIComponent(img.imageUrl)}`)}
+                                    onPipeline={() => setPipelineImage(img)}
                                     isProcessing={processingImage === img.id}
                                     isPublishing={publishingImage === img.id}
                                 />
@@ -587,6 +589,13 @@ function GalleryInner() {
 
             <ConfirmModal open={bulkConfirm === 'reject'} title="Reject selected images?" message={`This will reject ${selected.size} image(s).`} confirmLabel="Reject All" variant="danger" onConfirm={bulkReject} onCancel={() => setBulkConfirm(null)} />
             <ConfirmModal open={bulkConfirm === 'pipeline'} title="Run pipeline for approved images?" message={`Asset pipeline will run for ${approvedCount} approved image(s).`} confirmLabel="Run Pipeline" onConfirm={runPipelineForApproved} onCancel={() => setBulkConfirm(null)} />
+
+            {pipelineImage && (
+                <PipelineModal
+                    image={pipelineImage}
+                    onClose={() => setPipelineImage(null)}
+                />
+            )}
         </div>
     );
 }
@@ -601,11 +610,12 @@ interface GalleryCardProps {
     onPublishToEtsy: () => void;
     onMockup: () => void;
     onSeo: () => void;
+    onPipeline: () => void;
     isProcessing: boolean;
     isPublishing: boolean;
 }
 
-function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDelete, onView, onCopyPrompt, onRegenerate, onRemoveBg, onUpscale, onPublishToEtsy, onMockup, onSeo, isProcessing, isPublishing }: GalleryCardProps) {
+function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDelete, onView, onCopyPrompt, onRegenerate, onRemoveBg, onUpscale, onPublishToEtsy, onMockup, onSeo, onPipeline, isProcessing, isPublishing }: GalleryCardProps) {
     const isPending = img.imageUrl === 'PENDING' || !img.imageUrl;
     const isRejected = img.status === 'REJECTED';
 
@@ -697,10 +707,249 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                         className="flex items-center gap-1 px-2 py-1 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded-[6px] border border-white/10 transition-colors">
                         <Tag className="w-3 h-3" /> SEO
                     </button>
+                    <button onClick={e => { e.stopPropagation(); onPipeline(); }}
+                        className="flex items-center gap-1 px-2 py-1 bg-purple-600/80 hover:bg-purple-500 text-white text-[10px] font-medium rounded-[6px] transition-colors"
+                        title="Run One-Click Pipeline">
+                        <Zap className="w-3 h-3" /> Pipeline
+                    </button>
                     <button onClick={e => { e.stopPropagation(); onDelete(); }}
                         className="flex items-center gap-1 px-2 py-1 bg-danger/60 hover:bg-danger text-white text-[10px] rounded-[6px] transition-colors ml-auto">
                         <Trash2 className="w-3 h-3" />
                     </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Pipeline Modal ────────────────────────────────────────────────────────
+function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () => void }) {
+    const [running, setRunning] = useState(false);
+    const [results, setPipelineResults] = useState<Record<string, unknown> | null>(null);
+    const [templates, setTemplates] = useState<Array<{ id: string; name: string; baseImagePath: string }>>([]);
+    const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
+    const [options, setOptions] = useState({ bgRemove: true, seo: true });
+
+    useEffect(() => {
+        fetch('/api/mockups/templates', { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => setTemplates(data.templates || []))
+            .catch(() => { });
+    }, []);
+
+    const runPipeline = async () => {
+        setRunning(true);
+        setPipelineResults(null);
+        try {
+            const res = await fetch('/api/pipeline/one-click', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    imageId: image.id,
+                    imageUrl: image.imageUrl.startsWith('http') ? image.imageUrl : `${window.location.origin}/${image.imageUrl}`,
+                    templateIds: selectedTemplateIds,
+                    options
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Pipeline failed');
+            setPipelineResults(data);
+            toast.success('Pipeline completed!');
+        } catch (err) {
+            toast.error('Pipeline failed: ' + (err as Error).message);
+        } finally {
+            setRunning(false);
+        }
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const steps = results ? (results.steps as any) : null;
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+            <div
+                className="bg-[#111827] border border-slate-700/60 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className="flex items-center justify-between p-6 border-b border-slate-700/60">
+                    <div>
+                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                            <Zap className="w-5 h-5 text-purple-400" /> One-Click Pipeline
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">BG Remove → Mockup → SEO · automated in one shot</p>
+                    </div>
+                    <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="p-6 space-y-5">
+                    {/* Source image */}
+                    <div className="flex items-center gap-4 p-3 bg-slate-800/40 rounded-xl border border-slate-700/40">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={image.imageUrl.startsWith('http') ? image.imageUrl : `/${image.imageUrl}`}
+                            alt="Source"
+                            className="w-16 h-16 object-contain rounded-lg bg-slate-900 shrink-0"
+                        />
+                        <div>
+                            <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Source Design</p>
+                            <p className="text-sm text-white font-mono mt-0.5">{image.id.slice(0, 8)}…</p>
+                        </div>
+                    </div>
+
+                    {/* Pipeline steps */}
+                    <div className="space-y-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pipeline Steps</p>
+
+                        {/* BG Remove */}
+                        <label className="flex items-center gap-3 p-3 bg-slate-800/40 rounded-xl border border-slate-700/40 cursor-pointer hover:border-purple-500/30 transition-colors">
+                            <input
+                                type="checkbox"
+                                checked={options.bgRemove}
+                                onChange={e => setOptions(o => ({ ...o, bgRemove: e.target.checked }))}
+                                className="w-4 h-4 accent-purple-500"
+                            />
+                            <div>
+                                <p className="text-sm font-semibold text-white">✂ Background Removal</p>
+                                <p className="text-xs text-slate-400">Uses BiRefNet — result feeds into mockups & SEO</p>
+                            </div>
+                        </label>
+
+                        {/* Template picker */}
+                        <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/40 space-y-2">
+                            <p className="text-sm font-semibold text-white">🖼 Mockup Templates</p>
+                            <p className="text-xs text-slate-400">Select up to 5 templates to render</p>
+                            {templates.length === 0 ? (
+                                <p className="text-xs text-slate-500 italic">No templates found. Upload in the Mockups page first.</p>
+                            ) : (
+                                <div className="grid grid-cols-4 gap-2 max-h-36 overflow-y-auto custom-scrollbar">
+                                    {templates.map(t => (
+                                        <button
+                                            key={t.id}
+                                            onClick={() => setSelectedTemplateIds(prev =>
+                                                prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                                            )}
+                                            className={cn(
+                                                'relative aspect-square rounded-lg overflow-hidden border-2 transition-all',
+                                                selectedTemplateIds.includes(t.id)
+                                                    ? 'border-purple-500'
+                                                    : 'border-slate-700 hover:border-slate-500'
+                                            )}
+                                        >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                                src={t.baseImagePath?.startsWith('http') ? t.baseImagePath : `/api/mockups/templates/${t.id}/preview`}
+                                                alt={t.name}
+                                                className="w-full h-full object-cover"
+                                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                            />
+                                            {selectedTemplateIds.includes(t.id) && (
+                                                <div className="absolute inset-0 bg-purple-600/30 flex items-center justify-center">
+                                                    <CheckCircle2 className="w-5 h-5 text-purple-300" />
+                                                </div>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* SEO */}
+                        <label className="flex items-center gap-3 p-3 bg-slate-800/40 rounded-xl border border-slate-700/40 cursor-pointer hover:border-purple-500/30 transition-colors">
+                            <input
+                                type="checkbox"
+                                checked={options.seo}
+                                onChange={e => setOptions(o => ({ ...o, seo: e.target.checked }))}
+                                className="w-4 h-4 accent-purple-500"
+                            />
+                            <div>
+                                <p className="text-sm font-semibold text-white">🏷 SEO Generation</p>
+                                <p className="text-xs text-slate-400">Auto-generate title, description & 13 tags via AI</p>
+                            </div>
+                        </label>
+                    </div>
+
+                    {/* Results */}
+                    {steps && (
+                        <div className="space-y-2 border-t border-slate-700/60 pt-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Results</p>
+
+                            {steps.bgRemove && (
+                                <div className={cn('flex items-center gap-3 text-xs p-3 rounded-xl',
+                                    steps.bgRemove.status === 'success' ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'
+                                )}>
+                                    <span>{steps.bgRemove.status === 'success' ? '✓' : '✗'} BG Remove</span>
+                                    {steps.bgRemove.url && (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={steps.bgRemove.url} className="w-10 h-10 object-contain ml-auto rounded" alt="bg removed" />
+                                    )}
+                                </div>
+                            )}
+
+                            {steps.mockups?.map((m: { status: string; templateName: string; url?: string; templateId: string }, i: number) => (
+                                <div key={i} className={cn('flex items-center gap-3 text-xs p-3 rounded-xl',
+                                    m.status === 'success' ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'
+                                )}>
+                                    <span>{m.status === 'success' ? '✓' : '✗'} Mockup: {m.templateName}</span>
+                                    {m.url && (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={m.url.startsWith('http') ? m.url : `/${m.url}`} className="w-10 h-10 object-contain ml-auto rounded" alt="mockup" />
+                                    )}
+                                </div>
+                            ))}
+
+                            {steps.seo?.status === 'success' && (
+                                <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 space-y-2">
+                                    <p className="text-xs font-bold text-green-400">✓ SEO Generated</p>
+                                    <p className="text-xs text-slate-300 line-clamp-2 font-medium">{steps.seo.title}</p>
+                                    <div className="flex flex-wrap gap-1">
+                                        {steps.seo.tags?.slice(0, 7).map((tag: string, i: number) => (
+                                            <span key={i} className="text-[10px] px-2 py-0.5 bg-slate-700/80 text-slate-300 rounded-full">{tag}</span>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            const text = `TITLE:\n${steps.seo.title}\n\nDESCRIPTION:\n${steps.seo.description}\n\nTAGS:\n${steps.seo.tags.join(', ')}`;
+                                            navigator.clipboard.writeText(text);
+                                            toast.success('SEO copied to clipboard!');
+                                        }}
+                                        className="text-[10px] px-3 py-1.5 bg-green-600/20 text-green-400 rounded-lg border border-green-500/30 hover:bg-green-600/30 transition-colors font-semibold"
+                                    >
+                                        Copy All SEO
+                                    </button>
+                                </div>
+                            )}
+
+                            {steps.seo?.status === 'failed' && (
+                                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-xs text-red-400">
+                                    ✗ SEO failed: {steps.seo.error}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="flex gap-3 p-6 pt-0">
+                    <button onClick={onClose} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold rounded-xl transition-colors">
+                        {results ? 'Close' : 'Cancel'}
+                    </button>
+                    {!results && (
+                        <button
+                            onClick={runPipeline}
+                            disabled={running}
+                            className="flex-1 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-40 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
+                        >
+                            {running ? (
+                                <><Loader2 className="w-4 h-4 animate-spin" /> Running Pipeline…</>
+                            ) : (
+                                <><Zap className="w-4 h-4" /> Run Pipeline</>
+                            )}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

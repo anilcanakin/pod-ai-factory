@@ -39,3 +39,5 @@ frontend/package-lock.json
 
 # Assets (generated data)
 assets/
+
+dump.rdb

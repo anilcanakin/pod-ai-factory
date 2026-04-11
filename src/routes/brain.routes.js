@@ -5,7 +5,10 @@ const prisma = new PrismaClient();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { OpenAI } = require('openai');
 const brainService = require('../services/multimodal-brain.service');
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Multer — video uploads up to 500MB
 const storage = multer.diskStorage({
@@ -147,18 +150,35 @@ router.post('/test-knowledge', async (req, res) => {
         const Anthropic = require('@anthropic-ai/sdk');
         const { getKnowledge } = require('../services/seo-knowledge.service');
 
-        const relevantCategories = ['pod_apparel', 'seo_tips', 'etsy_algorithm', 'niche_research', 'general_etsy'];
-        const isDigitalQuestion = question.toLowerCase().includes('digital') || question.toLowerCase().includes('printable');
-
-        const memories = await prisma.corporateMemory.findMany({
-            where: {
-                workspaceId,
-                isActive: true,
-                ...(isDigitalQuestion ? {} : { category: { in: relevantCategories } })
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 10
+        // 1. Generate embedding for the query using OpenAI text-embedding-3-small
+        const embeddingResponse = await openai.embeddings.create({
+            model: 'text-embedding-3-small',
+            input: question
         });
+        const embedding = embeddingResponse.data[0].embedding;
+
+        // 2. Semantic search via pgvector cosine similarity
+        let memories;
+        try {
+            memories = await prisma.$queryRaw`
+                SELECT id, type, title, content, category, "analysisResult",
+                       1 - ("vectorEmbedding"::text::vector <=> ${JSON.stringify(embedding)}::vector) AS similarity
+                FROM "CorporateMemory"
+                WHERE "workspaceId" = ${workspaceId}
+                  AND "isActive" = true
+                  AND "vectorEmbedding" IS NOT NULL
+                ORDER BY "vectorEmbedding"::text::vector <=> ${JSON.stringify(embedding)}::vector
+                LIMIT 5
+            `;
+        } catch (pgErr) {
+            // Fallback to recency-based search if pgvector is unavailable
+            console.warn('[Brain] pgvector search failed, falling back to recency search:', pgErr.message);
+            memories = await prisma.corporateMemory.findMany({
+                where: { workspaceId, isActive: true },
+                orderBy: { createdAt: 'desc' },
+                take: 5
+            });
+        }
 
         const seoKnowledge = await getKnowledge(workspaceId);
 
@@ -191,7 +211,13 @@ ${seoKnowledge.slice(0, 2000)}`,
         res.json({
             answer: response.content[0].text,
             sourcesUsed: memories.length,
-            question
+            question,
+            memories: memories.map(m => ({
+                id: m.id,
+                title: m.title,
+                category: m.category,
+                similarity: m.similarity != null ? Number(m.similarity) : null
+            }))
         });
     } catch (err) {
         console.error('[Brain Test]', err);

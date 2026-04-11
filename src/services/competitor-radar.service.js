@@ -1,4 +1,5 @@
 const { launchBrowser } = require('./etsy-browser.service');
+const brainService = require('./multimodal-brain.service');
 
 /**
  * CompetitorRadarService
@@ -6,10 +7,52 @@ const { launchBrowser } = require('./etsy-browser.service');
  */
 class CompetitorRadarService {
   /**
-   * scanCompetitor
-   * Scrapes the 'Sales' or 'Listings' of a rival shop
+   * Builds a human-readable text summary from scraped designs
+   * so the Brain / RAG system can index and retrieve it later.
    */
-  async scanCompetitor(shopUrl) {
+  _buildMemoryText(shopUrl, designs) {
+    const shopName = shopUrl.split('/shop/')[1]?.split('?')[0] || shopUrl;
+
+    const listingLines = designs
+      .filter(d => d.title)
+      .map((d, i) => `${i + 1}. "${d.title}"${d.price ? ` — ${d.price}` : ''}`)
+      .join('\n');
+
+    // Extract recurring words from titles as rough keyword signals
+    const wordFreq = {};
+    designs.forEach(d => {
+      d.title.toLowerCase().split(/\W+/).filter(w => w.length > 3).forEach(w => {
+        wordFreq[w] = (wordFreq[w] || 0) + 1;
+      });
+    });
+    const topKeywords = Object.entries(wordFreq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([w]) => w)
+      .join(', ');
+
+    return `Competitor Shop: ${shopName}
+Shop URL: ${shopUrl}
+Scan Date: ${new Date().toISOString().split('T')[0]}
+Total Listings Scanned: ${designs.length}
+
+TOP LISTINGS:
+${listingLines}
+
+RECURRING KEYWORDS / NICHE SIGNALS:
+${topKeywords || '(none detected)'}
+
+STRATEGIC NOTES:
+- These are the most visible products from ${shopName}'s storefront.
+- Use recurring keywords for tag/title optimization.
+- Identify price anchors and niche opportunities from the listing data above.`;
+  }
+
+  /**
+   * scanCompetitor
+   * Scrapes the listings of a rival shop and saves findings to Corporate Memory (fire-and-forget).
+   */
+  async scanCompetitor(shopUrl, workspaceId = 'default-workspace') {
     console.log(`[Radar] Scanning competitor: ${shopUrl}`);
     const browser = await launchBrowser();
     const page = browser.pages()[0] || await browser.newPage();
@@ -28,6 +71,24 @@ class CompetitorRadarService {
           url: item.querySelector('a')?.href || ''
         }));
       });
+
+      // Fire-and-forget: save scan results to Corporate Memory / Brain
+      if (designs.length > 0) {
+        const shopName = shopUrl.split('/shop/')[1]?.split('?')[0] || 'Unknown Shop';
+        const memoryText = this._buildMemoryText(shopUrl, designs);
+
+        brainService.addTextKnowledge(
+          workspaceId,
+          `Competitor Scan: ${shopName} (${new Date().toLocaleDateString()})`,
+          memoryText,
+          shopUrl,
+          'niche_research'
+        ).then(() => {
+          console.log(`[Radar] Intelligence from "${shopName}" saved to Corporate Memory`);
+        }).catch(err => {
+          console.warn('[Radar] Failed to save intelligence to brain:', err.message);
+        });
+      }
 
       return { success: true, designs };
     } catch (error) {

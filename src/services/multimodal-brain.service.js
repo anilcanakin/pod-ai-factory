@@ -4,10 +4,25 @@ const fs = require('fs');
 const os = require('os');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Anthropic = require('@anthropic-ai/sdk');
+const { OpenAI } = require('openai');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY);
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+async function generateEmbedding(text) {
+    try {
+        const response = await openai.embeddings.create({
+            model: 'text-embedding-3-small',
+            input: text.slice(0, 8191) // token limit guard
+        });
+        return response.data[0].embedding;
+    } catch (err) {
+        console.warn('[Brain] Embedding generation failed:', err.message);
+        return null;
+    }
+}
 
 function detectCategory(synthesis) {
     const text = synthesis.toLowerCase();
@@ -91,6 +106,9 @@ OUTPUT FORMAT (JSON only, no markdown):
             let text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
             const analysis = JSON.parse(text);
 
+            const embeddingText = `${title} ${analysis.summary}`;
+            const vectorEmbedding = await generateEmbedding(embeddingText);
+
             const memory = await prisma.corporateMemory.create({
                 data: {
                     workspaceId,
@@ -98,7 +116,8 @@ OUTPUT FORMAT (JSON only, no markdown):
                     title,
                     content: analysis.summary,
                     analysisResult: { ...analysis, sourceType: 'gemini_video' },
-                    sourceUrl: videoPath
+                    sourceUrl: videoPath,
+                    ...(vectorEmbedding && { vectorEmbedding })
                 }
             });
 
@@ -240,6 +259,9 @@ Be specific and actionable. Focus on what can be immediately applied.`
 
             // 6. Save to CorporateMemory
             const category = categoryOverride || detectCategory(synthesis);
+            const embeddingText = `${title} ${synthesis.slice(0, 2000)}`;
+            const vectorEmbedding = await generateEmbedding(embeddingText);
+
             const memory = await prisma.corporateMemory.create({
                 data: {
                     workspaceId,
@@ -255,7 +277,8 @@ Be specific and actionable. Focus on what can be immediately applied.`
                         sourceType: 'claude_video',
                         seoUpdated: false
                     },
-                    sourceUrl: videoPath
+                    sourceUrl: videoPath,
+                    ...(vectorEmbedding && { vectorEmbedding })
                 }
             });
 
@@ -313,6 +336,9 @@ Be specific and immediately actionable.`
         const synthesis = response.content[0].text;
 
         const resolvedCategory = category || detectCategory(synthesis);
+        const embeddingText = `${title} ${synthesis.slice(0, 2000)}`;
+        const vectorEmbedding = await generateEmbedding(embeddingText);
+
         const memory = await prisma.corporateMemory.create({
             data: {
                 workspaceId,
@@ -326,7 +352,8 @@ Be specific and immediately actionable.`
                     source,
                     seoUpdated: false
                 },
-                sourceUrl: source
+                sourceUrl: source,
+                ...(vectorEmbedding && { vectorEmbedding })
             }
         });
 

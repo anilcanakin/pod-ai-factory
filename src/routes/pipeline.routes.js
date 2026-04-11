@@ -106,7 +106,7 @@ router.get('/status/:jobId', async (req, res) => {
 // POST /api/pipeline/one-click — BG Remove → Mockup → SEO in one request
 router.post('/one-click', async (req, res) => {
     try {
-        const { imageId, imageUrl, templateIds = [], options = {} } = req.body;
+        const { imageId, imageUrl, templateIds = [], bgModel = 'birefnet', options = {} } = req.body;
         const workspaceId = req.workspaceId;
 
         if (!workspaceId) return res.status(401).json({ error: 'Unauthorized' });
@@ -125,8 +125,14 @@ router.post('/one-click', async (req, res) => {
         // ── Step 1: BG Remove ──────────────────────────────────────
         if (options.bgRemove !== false) {
             try {
-                console.log('[Pipeline:OneClick] Step 1: BG Remove');
-                const bgResult = await fal.subscribe('fal-ai/birefnet', {
+                const falModelMap = {
+                    birefnet: 'fal-ai/birefnet',
+                    bria: 'fal-ai/bria/background/remove',
+                    pixelcut: 'pixelcut/background-removal'
+                };
+                const falModel = falModelMap[bgModel] || 'fal-ai/birefnet';
+                console.log(`[Pipeline:OneClick] Step 1: BG Remove (${falModel})`);
+                const bgResult = await fal.subscribe(falModel, {
                     input: { image_url: imageUrl }
                 });
                 const bgUrl = bgResult?.data?.image?.url || bgResult?.image?.url || null;

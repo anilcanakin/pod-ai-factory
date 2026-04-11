@@ -118,9 +118,9 @@ class BillingService {
     async createCheckoutSession(workspaceId, planName) {
         const stripe = this.getStripe();
         if (!stripe) {
-            // Return mock checkout URL when Stripe is not configured
+            const base = process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
             return {
-                url: `http://localhost:3001/dashboard/billing?mock_checkout=true&plan=${planName}`,
+                url: `${base}/dashboard/billing?mock_checkout=true&plan=${planName}`,
                 mock: true
             };
         }
@@ -195,7 +195,8 @@ class BillingService {
         const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
 
         if (!workspace?.stripeCustomerId || !stripe) {
-            return { url: `http://localhost:3001/dashboard/billing?portal=mock`, mock: true };
+            const base = process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+            return { url: `${base}/dashboard/billing?portal=mock`, mock: true };
         }
 
         const session = await stripe.billingPortal.sessions.create({
@@ -208,10 +209,14 @@ class BillingService {
 
     getStripe() {
         const key = process.env.STRIPE_SECRET_KEY;
-        if (!key || key === 'your_stripe_secret_key' || key.length < 10) return null;
+        if (!key || key === 'your_stripe_secret_key' || key.length < 10) {
+            console.warn('[Billing] Stripe is not configured, using mock URLs. Set STRIPE_SECRET_KEY to enable real payments.');
+            return null;
+        }
         try {
             return require('stripe')(key);
         } catch {
+            console.warn('[Billing] Failed to load Stripe SDK, using mock URLs.');
             return null;
         }
     }

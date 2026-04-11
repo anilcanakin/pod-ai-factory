@@ -212,220 +212,128 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
         console.log(`[Render] Video mode blend: ${sharpBlend}`);
     }
 
-    // 8. Build composites
-    const composites = [{
-        input: designLayer,
-        left: 0,
-        top: 0,
-        blend: sharpBlend,
-    }];
+    // 8. Prepare all designs to be composited
+    const designComposites = [];
+    const tmpFiles = [];
 
-    // 9. Shadow overlay
+    // Unified logic: if multi-area config exists, use it. Otherwise, use primary printArea.
+    const allAreas = (config.printAreas && config.printAreas.length > 0)
+        ? [{ id: '__primary__', label: 'Primary', ...printArea }, ...config.printAreas]
+        : [{ id: '__primary__', label: 'Primary', ...printArea }];
+
+    console.log(`[Render] Processing ${allAreas.length} area(s).`);
+
+    for (let i = 0; i < allAreas.length; i++) {
+        const area = allAreas[i];
+        const aX = Math.round(area.x * baseW);
+        const aY = Math.round(area.y * baseH);
+        const aW = Math.max(1, Math.round(area.width * baseW));
+        const aH = Math.max(1, Math.round(area.height * baseH));
+
+        // Determine which design image to use for this area
+        const areaDesign = areaDesigns ? (areaDesigns[area.id] || areaDesigns[String(i)] || areaDesigns[i]) : null;
+        let designBuffer;
+
+        if (areaDesign?.imageUrl) {
+            console.log(`[Render] Area ${i} ("${area.label || area.id}"): using custom design`);
+            try {
+                const tmpPath = await downloadToTemp(areaDesign.imageUrl);
+                tmpFiles.push(tmpPath);
+                designBuffer = await sharp(tmpPath).toBuffer();
+            } catch (err) {
+                console.error(`[Render] Area ${i} download failed: ${err.message}. Fallback to primary.`);
+                designBuffer = designSource;
+            }
+        } else {
+            designBuffer = designSource;
+        }
+
+        // Process design buffer (resize, rotate, blur)
+        const dMeta = await sharp(designBuffer).metadata();
+        const dAspect = dMeta.height / dMeta.width;
+        const dW = Math.round(aW * scale);
+        const dH = Math.round(dW * dAspect);
+
+        let dSharp = sharp(designBuffer)
+            .resize(dW, dH, { fit: 'fill', background: { r: 0, g: 0, b: 0, alpha: 0 } });
+
+        if (innerRotation !== 0) dSharp = dSharp.rotate(innerRotation, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
+        if (rotation !== 0) dSharp = dSharp.rotate(rotation, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
+
+        let processedDesign = await dSharp.blur(0.4).png().toBuffer();
+        const pMeta = await sharp(processedDesign).metadata();
+
+        // Position: center within area + offsets
+        const pX = Math.round(aX + (aW - pMeta.width) / 2 + (offsetX * aW));
+        const pY = Math.round(aY + (aH - pMeta.height) / 2 + (offsetY * aH));
+
+        // Opacity/Blend handling
+        let areaOpacity = opacity;
+        if (sharpBlend === 'over' || sharpBlend === 'overlay') {
+            areaOpacity = Math.min(areaOpacity, 0.92);
+        }
+
+        if (areaOpacity < 1.0) {
+            processedDesign = await sharp(processedDesign)
+                .composite([{
+                    input: await sharp({
+                        create: { width: pMeta.width, height: pMeta.height, channels: 4, background: { r: 255, g: 255, b: 255, alpha: areaOpacity } }
+                    }).png().toBuffer(),
+                    blend: 'dest-in'
+                }])
+                .png()
+                .toBuffer();
+        }
+
+        designComposites.push({
+            input: processedDesign,
+            left: Math.max(0, Math.min(pX, baseW - 1)),
+            top: Math.max(0, Math.min(pY, baseH - 1)),
+            blend: sharpBlend
+        });
+    }
+
+    // 9. Prepare Shadow Overlay
     if (template.shadowImagePath) {
-        const shadowFullPath = path.isAbsolute(template.shadowImagePath)
-            ? template.shadowImagePath
-            : path.join(ASSETS_ROOT, '..', template.shadowImagePath);
-
+        const shadowFullPath = path.isAbsolute(template.shadowImagePath) ? template.shadowImagePath : path.join(ASSETS_ROOT, '..', template.shadowImagePath);
         if (fs.existsSync(shadowFullPath)) {
             const shadowBuffer = await sharp(shadowFullPath)
                 .resize(baseW, baseH, { fit: 'fill' })
                 .png()
                 .toBuffer();
-
-            composites.push({
+            
+            designComposites.push({
                 input: shadowBuffer,
-                left: 0,
-                top: 0,
-                blend: 'multiply',
+                left: 0, top: 0,
+                blend: 'multiply'
             });
         }
     }
 
-    // 10. Final composite and save
-    const printAreas = config.printAreas;
-
-    if (printAreas && printAreas.length > 0) {
-        // Multi-area mode: apply design to the PRIMARY printArea + all extra printAreas.
-        // The primary printArea is always included as the first entry so no shirt is missed.
-
-        // Build the full list: primary first, then extra areas
-        const allAreas = [
-            { id: '__primary__', label: 'Primary', ...printArea },
-            ...printAreas,
-        ];
-
-        console.log(`[Render] Multi-area mode: ${allAreas.length} area(s) (1 primary + ${printAreas.length} extra)`);
-        console.log(`[Render] All areas:`, allAreas.map(a => `${a.id}[${a.label}]`));
-        console.log(`[Render] areaDesigns keys:`, areaDesigns ? Object.keys(areaDesigns) : 'none (will use primary design for all)');
-
-        // Start from a transparent overlay canvas
-        let overlayBuffer = await sharp({ create: { width: baseW, height: baseH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    // 10. Final Render
+    if (isVideo) {
+        console.log('[Render] Video Mode Render...');
+        const overlay = await sharp({ create: { width: baseW, height: baseH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+            .composite(designComposites)
             .png().toBuffer();
 
-        const tmpFiles = [];
+        const tempOverlay = path.join(os.tmpdir(), `ovl-${Date.now()}.png`);
+        fs.writeFileSync(tempOverlay, overlay);
 
-        for (let i = 0; i < allAreas.length; i++) {
-            const area = allAreas[i];
-
-            const aX = Math.max(0, Math.round(area.x * baseW));
-            const aY = Math.max(0, Math.round(area.y * baseH));
-            const aW = Math.max(1, Math.min(Math.round(area.width * baseW), baseW - aX));
-            const aH = Math.max(1, Math.min(Math.round(area.height * baseH), baseH - aY));
-
-            // Try per-area custom design first, fallback to primary design
-            const areaDesign = areaDesigns
-                ? (areaDesigns[area.id] || areaDesigns[String(i)] || areaDesigns[i])
-                : null;
-
-            let aDesign;
-            if (areaDesign?.imageUrl) {
-                // Per-area custom design
-                console.log(`[Render] Area ${i} ("${area.label || area.id}"): using custom design`);
-                try {
-                    const tmpPath = await downloadToTemp(areaDesign.imageUrl);
-                    tmpFiles.push(tmpPath);
-                    const aDesignW = Math.round(aW * scale);
-                    const aDesignH = Math.round(aDesignW * (await sharp(tmpPath).metadata().then(m => m.height / m.width)));
-                    aDesign = await sharp(tmpPath)
-                        .resize(Math.min(aDesignW, aW), null, { fit: 'inside', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-                        .blur(0.4)
-                        .png()
-                        .toBuffer();
-                } catch (err) {
-                    console.error(`[Render] Area ${i}: failed to download custom design — ${err.message}. Falling back to primary.`);
-                    aDesign = null;
-                }
-            }
-
-            if (!aDesign) {
-                // Fallback: scale primary design to fit this area with placement applied
-                console.log(`[Render] Area ${i} ("${area.label || area.id}"): using primary design`);
-                const aDesignW = Math.round(aW * scale);
-                const primaryAspect = designMeta.height / designMeta.width;
-                const aDesignH = Math.round(aDesignW * primaryAspect);
-
-                let resized = sharp(designSource)
-                    .resize(aDesignW, aDesignH, { fit: 'fill', background: { r: 0, g: 0, b: 0, alpha: 0 } });
-
-                if (innerRotation !== 0) {
-                    resized = resized.rotate(innerRotation, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
-                }
-                if (rotation !== 0) {
-                    resized = resized.rotate(rotation, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
-                }
-                aDesign = await resized.blur(0.4).png().toBuffer();
-            }
-
-            // Get actual dimensions after possible rotation
-            const aDesignMeta = await sharp(aDesign).metadata();
-            const aFinalW = aDesignMeta.width;
-            const aFinalH = aDesignMeta.height;
-
-            // Center within area, apply offsets
-            const aPlacedX = Math.round(aX + (aW - aFinalW) / 2 + (offsetX * aW));
-            const aPlacedY = Math.round(aY + (aH - aFinalH) / 2 + (offsetY * aH));
-            const aClampedX = Math.max(0, Math.min(aPlacedX, baseW - 1));
-            const aClampedY = Math.max(0, Math.min(aPlacedY, baseH - 1));
-
-            // Apply opacity
-            let finalAreaDesign = aDesign;
-            if (opacity < 1.0) {
-                const alphaLayer = await sharp({
-                    create: { width: aFinalW, height: aFinalH, channels: 4, background: { r: 255, g: 255, b: 255, alpha: opacity } }
-                }).png().toBuffer();
-                finalAreaDesign = await sharp(aDesign)
-                    .composite([{ input: alphaLayer, blend: 'dest-in' }])
-                    .png()
-                    .toBuffer();
-            }
-
-            overlayBuffer = await sharp(overlayBuffer)
-                .composite([{ input: finalAreaDesign, left: aClampedX, top: aClampedY, blend: sharpBlend }])
-                .png()
-                .toBuffer();
-
-            console.log(`[Render] Area ${i} done — composited at (${aClampedX},${aClampedY}) size ${aFinalW}x${aFinalH} within area (${aX},${aY}) ${aW}x${aH}`);
-        }
-
-        // Apply shadow overlay on top of all areas
-        if (template.shadowImagePath) {
-            const shadowFullPath = path.isAbsolute(template.shadowImagePath)
-                ? template.shadowImagePath
-                : path.join(ASSETS_ROOT, '..', template.shadowImagePath);
-
-            if (fs.existsSync(shadowFullPath)) {
-                const shadowBuffer = await sharp(shadowFullPath)
-                    .resize(baseW, baseH, { fit: 'fill' })
-                    .png()
-                    .toBuffer();
-                overlayBuffer = await sharp(overlayBuffer)
-                    .composite([{ input: shadowBuffer, left: 0, top: 0, blend: 'multiply' }])
-                    .png()
-                    .toBuffer();
-            }
-        }
-
-        if (isVideo) {
-            console.log('[Render] Using FFmpeg for video multi-area composition...');
-            const tempOverlay = path.join(os.tmpdir(), `overlay-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
-            fs.writeFileSync(tempOverlay, overlayBuffer);
-            await new Promise((resolve, reject) => {
-                ffmpeg()
-                    .input(basePath)
-                    .input(tempOverlay)
-                    .complexFilter('[0:v][1:v]overlay=0:0[out]')
-                    .map('[out]')
-                    .map('0:a?') // Keep audio if present
-                    .videoCodec('libx264')
-                    .outputOptions(['-pix_fmt yuv420p'])
-                    .save(outputPath)
-                    .on('end', resolve)
-                    .on('error', reject);
-            });
-            fs.unlinkSync(tempOverlay);
-        } else {
-            // Apply the final overlay to the base image
-            await sharp(basePath)
-                .composite([{ input: overlayBuffer, left: 0, top: 0 }])
-                .png()
-                .toFile(outputPath);
-        }
-
-        // Clean up temp files
-        tmpFiles.forEach(f => { try { fs.unlinkSync(f); } catch {} });
-
+        await new Promise((resolve, reject) => {
+            ffmpeg().input(basePath).input(tempOverlay)
+                .complexFilter('[0:v][1:v]overlay=0:0[out]').map('[out]').map('0:a?')
+                .videoCodec('libx264').outputOptions(['-pix_fmt yuv420p'])
+                .save(outputPath).on('end', resolve).on('error', reject);
+        });
+        fs.unlinkSync(tempOverlay);
     } else {
-        // Single-area mode
-        let overlayBuffer = await sharp({ create: { width: baseW, height: baseH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-            .composite(composites)
-            .png()
-            .toBuffer();
-
-        if (isVideo) {
-            console.log('[Render] Using FFmpeg for video single-area composition...');
-            const tempOverlay = path.join(os.tmpdir(), `overlay-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
-            fs.writeFileSync(tempOverlay, overlayBuffer);
-            await new Promise((resolve, reject) => {
-                ffmpeg()
-                    .input(basePath)
-                    .input(tempOverlay)
-                    .complexFilter('[0:v][1:v]overlay=0:0[out]')
-                    .map('[out]')
-                    .map('0:a?')
-                    .videoCodec('libx264')
-                    .outputOptions(['-pix_fmt yuv420p'])
-                    .save(outputPath)
-                    .on('end', resolve)
-                    .on('error', reject);
-            });
-            fs.unlinkSync(tempOverlay);
-        } else {
-            await sharp(basePath)
-                .composite([{ input: overlayBuffer, left: 0, top: 0 }])
-                .png()
-                .toFile(outputPath);
-        }
+        console.log(`[Render] Image Mode Render: ${designComposites.length} layers.`);
+        await sharp(basePath).composite(designComposites).png().toFile(outputPath);
     }
+
+    // Clean up
+    tmpFiles.forEach(f => { try { fs.unlinkSync(f); } catch {} });
 
     // 10.5. Validate output file before upload
     const outputStats = fs.statSync(outputPath);

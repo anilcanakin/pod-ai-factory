@@ -23,10 +23,9 @@ class ListingAssemblerService {
 
       if (!image) throw new Error('Image not found');
 
-      // 2. Fetch SEO content for this job if available
-      const seoContent = await prisma.sEOContent.findFirst({
-        where: { jobId: image.jobId },
-        orderBy: { createdAt: 'desc' }
+      // 2. Fetch SEO content for this image
+      const seoContent = await prisma.sEOData.findFirst({
+        where: { imageId: image.id }
       });
 
       if (!seoContent) throw new Error('SEO not generated for this design — run SEO first');

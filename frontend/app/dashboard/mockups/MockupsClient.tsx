@@ -127,9 +127,22 @@ export function MockupsClient() {
         staleTime: 10000,
     });
 
-    // Pre-select design from URL param (e.g. coming from Factory "Send to Mockup")
+    // Multi-area design selection state (Shared across editor sessions)
+    const [areaDesigns, setAreaDesigns] = useState<Record<string, any>>({});
+    const [activeAreaId, setActiveAreaId] = useState<string | null>(null);
+
+    // Get initial design from URL param
     const initialDesignUrl = searchParams.get('designUrl');
     const initialDesignImageId = searchParams.get('designImageId');
+
+    // Sync initial design from URL to the state
+    useEffect(() => {
+        if (initialDesignUrl && initialDesignImageId && !activeAreaId) {
+            // If no active area yet, we'll wait for the first area to be auto-selected
+            // or just set it to a default if we want it pre-filled.
+            // For now, let's just make sure the state is ready.
+        }
+    }, [initialDesignUrl, initialDesignImageId]);
 
     // Bulk Render state
     const [bulkMode, setBulkMode] = useState(false);
@@ -463,8 +476,8 @@ export function MockupsClient() {
                         setSelectedTemplate(updated);
                     }}
                     addToast={addToast}
-                    initialDesignUrl={initialDesignUrl}
-                    initialDesignImageId={initialDesignImageId}
+                    designUrl={activeAreaId && areaDesigns[activeAreaId] ? areaDesigns[activeAreaId].imageUrl : (initialDesignUrl || null)}
+                    designImageId={activeAreaId && areaDesigns[activeAreaId] ? areaDesigns[activeAreaId].id : (initialDesignImageId || null)}
                 />
             )}
 
@@ -662,13 +675,13 @@ function FileDropZone({ label, accept, file, preview, onChange }: {
 }
 
 // ─── Template Editor with Konva Canvas ───────────────────────────────────────
-function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignUrl, initialDesignImageId }: {
+function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, designImageId }: {
     template: MockupTemplate;
     onClose: () => void;
     onUpdated: (t: MockupTemplate) => void;
     addToast: (type: ToastType, msg: string) => void;
-    initialDesignUrl?: string | null;
-    initialDesignImageId?: string | null;
+    designUrl?: string | null;
+    designImageId?: string | null;
 }) {
     // Standard v1: config.transform holds rotation/opacity/blendMode
     const config = template.configJson || {
@@ -688,9 +701,9 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
     const [designOffsetY, setDesignOffsetY] = useState(0);
     const [designRotation, setDesignRotation] = useState(0);
 
-    // Design
-    const [designUrl, setDesignUrl] = useState<string | null>(initialDesignUrl ?? null);
-    const [designImageId, setDesignImageId] = useState<string | null>(initialDesignImageId ?? null);
+    // Per-area designs
+    const [areaDesigns, setAreaDesigns] = useState<Record<string, any>>({});
+    const [activeAreaId, setActiveAreaId] = useState<string | null>(null);
     const [showDesignPicker, setShowDesignPicker] = useState(false);
 
     // Rendering
@@ -709,21 +722,18 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
     const [printAreas, setPrintAreas] = useState<Array<{
         id: string; label: string; x: number; y: number; width: number; height: number;
     }>>(template.configJson?.printAreas || []);
-    const [activeAreaId, setActiveAreaId] = useState<string | null>(null);
 
-    // Per-area designs
-    const [areaDesigns, setAreaDesigns] = useState<Record<string, { imageId: string; imageUrl: string }>>({});
     const [pickingDesignForAreaId, setPickingDesignForAreaId] = useState<string | null>(null);
     const areaDesignImgsRef = useRef<Record<string, HTMLImageElement>>({});
 
     // Dark/Light variant toggle
     const [useDark, setUseDark] = useState(false);
+    const designImgRef = useRef<HTMLImageElement | null>(null); // Kept for legacy block if needed, but we'll try to unify
 
     // Canvas state
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const baseImgRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
-    const designImgRef = useRef<HTMLImageElement | null>(null);
     const [baseLoaded, setBaseLoaded] = useState(false);
     const [canvasSize, setCanvasSize] = useState({ w: 800, h: 800 });
 
@@ -767,19 +777,48 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
         }
     }, [activePath]);
 
-    // Load design image
+    // Handle initial design from props
     useEffect(() => {
-        if (!designUrl) { designImgRef.current = null; return; }
-        const img = new window.Image();
-        img.crossOrigin = 'anonymous';
-        img.src = designUrl.startsWith('http') ? designUrl : `${API_BASE}/${designUrl}`;
-        img.onload = () => { designImgRef.current = img; };
-    }, [designUrl]);
+        if (designUrl && designImageId && activeAreaId && !areaDesigns[activeAreaId]) {
+            setAreaDesigns(prev => ({
+                ...prev,
+                [activeAreaId]: { id: designImageId, imageUrl: designUrl }
+            }));
+        }
+    }, [designUrl, designImageId, activeAreaId]);
 
-    // Sync printAreas from template config when template changes
+    // Sync printAreas from template config when template changes (normalized for backward compatibility)
     useEffect(() => {
-        if (template.configJson?.printAreas) {
-            setPrintAreas(template.configJson.printAreas);
+        if (!template?.configJson) return;
+        
+        const normalizedAreas: any[] = [];
+        
+        // Legacy single printArea handling
+        if (template.configJson.printArea) {
+            normalizedAreas.push({
+                id: 'main',
+                label: 'Ana Baskı', // Standard label used in the UI
+                ...template.configJson.printArea
+            });
+        }
+        
+        // New multi-print areas array handling
+        if (Array.isArray(template.configJson.printAreas)) {
+            template.configJson.printAreas.forEach((area: any) => {
+                // Prevent duplication if 'main' was already added or ID already exists
+                if (!normalizedAreas.find(a => a.id === area.id)) {
+                    normalizedAreas.push(area);
+                }
+            });
+        }
+        
+        setPrintAreas(normalizedAreas);
+        
+        // Auto-select the first available area or fall back to 'main'
+        if (normalizedAreas.length > 0) {
+            setActiveAreaId(normalizedAreas[0].id);
+        } else if (!activeAreaId) {
+            setActiveAreaId('main');
         }
     }, [template]);
 
@@ -908,7 +947,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
         }
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [printArea, printAreas, activeAreaId, areaDesigns, opacity, blendMode, rotation, baseLoaded, canvasSize, designUrl, designScale, designOffsetX, designOffsetY, designRotation]);
+    }, [printArea, printAreas, activeAreaId, areaDesigns, opacity, blendMode, rotation, baseLoaded, canvasSize, designScale, designOffsetX, designOffsetY, designRotation]);
 
     useEffect(() => {
         let rafId: number;
@@ -1088,9 +1127,10 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
 
     const handleSaveToGallery = async () => {
         if (!renderResult) return;
+        const primaryId = Object.values(areaDesigns)[0]?.id;
         setSavingToGallery(true);
         try {
-            await apiGallery.saveMockup(renderResult, designImageId ?? undefined);
+            await apiGallery.saveMockup(renderResult, primaryId);
             addToast('success', 'Saved to gallery!');
         } catch (err: any) {
             addToast('error', err.message);
@@ -1100,16 +1140,15 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
     };
 
     const handleRender = async () => {
-        if (!designImageId || !template) return;
+        if (!template || Object.keys(areaDesigns).length === 0) return;
         setRendering(true);
         try {
-            // Save config first — always include printAreas so multi-area mode is preserved in DB
+            // Save config first
             const configPayload = {
                 printArea,
-                printAreas,          // always send — empty array clears, non-empty sets multi-area
+                printAreas,
                 transform: { rotation, opacity, blendMode },
             };
-            console.log('[handleRender] Saving configPayload:', JSON.stringify(configPayload));
             await apiMockups.updateTemplate(template.id, { configJson: configPayload });
             
             const renderPayload = {
@@ -1118,20 +1157,25 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
                 offsetY: designOffsetY / 100,
                 rotation: designRotation,
                 blendMode,
+                areaDesigns: Object.entries(areaDesigns).map(([areaId, image]) => ({ 
+                    areaId, 
+                    imageId: image.id 
+                }))
             };
-            const hasAreaDesigns = Object.keys(areaDesigns).length > 0;
+
+            // Use the first image as the primary design ID for legacy backend compatibility if needed
+            const primaryId = Object.values(areaDesigns)[0].id;
 
             const result = await apiMockups.render(
-                designImageId,
+                primaryId,
                 template.id,
-                renderPayload,
-                hasAreaDesigns ? areaDesigns : undefined
+                renderPayload
             );
             const renderedUrl = resolveUrl(result.mockupUrl);
             setRenderResult(renderedUrl);
-            // Auto-save to gallery
+            
             try {
-                await apiGallery.saveMockup(renderedUrl, designImageId ?? undefined);
+                await apiGallery.saveMockup(renderedUrl, primaryId);
                 addToast('success', 'Mockup rendered and saved to gallery!');
             } catch {
                 addToast('info', 'Mockup rendered. Click "Save to Gallery" to save.');
@@ -1352,28 +1396,108 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
                             {/* Design Picker */}
                             <section>
                                 <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Apply Design</h3>
-                                {!designUrl ? (
-                                    <button onClick={() => setShowDesignPicker(true)}
-                                        className="w-full px-3 py-3 bg-slate-800/50 border-2 border-dashed border-slate-600 rounded-xl text-sm text-slate-400 hover:border-blue-500/50 hover:text-blue-400 transition-all flex flex-col items-center gap-1.5">
-                                        <Search className="w-5 h-5" />
-                                        Select an approved design
-                                    </button>
-                                ) : (
-                                    <div className="space-y-2">
-                                        <div className="p-2 bg-slate-800/50 border border-slate-600/50 rounded-xl">
-                                            <img src={designUrl.startsWith('http') ? designUrl : `${API_BASE}/${designUrl}`}
-                                                alt="Design" className="w-full h-24 object-contain rounded-lg" />
-                                        </div>
-                                        <button onClick={() => setShowDesignPicker(true)}
-                                            className="w-full py-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors">
-                                            Change design
-                                        </button>
+
+                                {/* ── Print Area Pill Selector (multi-area mode) ── */}
+                                {printAreas.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mb-3">
+                                        {printAreas.map(area => {
+                                            const hasDesign = !!areaDesigns[area.id];
+                                            const isActive = activeAreaId === area.id;
+                                            return (
+                                                <button
+                                                    key={area.id}
+                                                    onClick={() => setActiveAreaId(area.id)}
+                                                    className={cn(
+                                                        'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all',
+                                                        isActive
+                                                            ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white border-purple-500/50 shadow shadow-purple-600/20'
+                                                            : 'bg-slate-800/40 text-gray-400 border-slate-700 hover:border-slate-500 hover:text-slate-300'
+                                                    )}
+                                                >
+                                                    {hasDesign && <span className="text-emerald-400 text-[10px]">✓</span>}
+                                                    {area.label}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
+                                )}
+
+                                {/* ── Global design picker (single-area mode) ── */}
+                                {printAreas.length === 0 && (
+                                    !areaDesigns['main'] ? (
+                                        <button onClick={() => setShowDesignPicker(true)}
+                                            className="w-full px-3 py-3 bg-slate-800/50 border-2 border-dashed border-slate-600 rounded-xl text-sm text-slate-400 hover:border-blue-500/50 hover:text-blue-400 transition-all flex flex-col items-center gap-1.5">
+                                            <Search className="w-5 h-5" />
+                                            Select an approved design
+                                        </button>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <div className="p-2 bg-slate-800/50 border border-slate-600/50 rounded-xl">
+                                                <img src={areaDesigns['main'].imageUrl.startsWith('http') ? areaDesigns['main'].imageUrl : `${API_BASE}/${areaDesigns['main'].imageUrl}`}
+                                                    alt="Design" className="w-full h-24 object-contain rounded-lg" />
+                                            </div>
+                                            <button onClick={() => setShowDesignPicker(true)}
+                                                className="w-full py-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors">
+                                                Change design
+                                            </button>
+                                        </div>
+                                    )
+                                )}
+
+                                {/* ── Multi-area: seçili alan için tasarım göster/seç ── */}
+                                {activeAreaId && (
+                                    <div className="space-y-2">
+                                        {areaDesigns[activeAreaId] ? (
+                                            <>
+                                                <div className="p-2 bg-slate-800/50 border border-slate-600/50 rounded-xl">
+                                                    <img
+                                                        src={areaDesigns[activeAreaId].imageUrl.startsWith('http')
+                                                            ? areaDesigns[activeAreaId].imageUrl
+                                                            : `${API_BASE}/${areaDesigns[activeAreaId].imageUrl}`}
+                                                        alt="Design"
+                                                        className="w-full h-20 object-contain rounded-lg"
+                                                    />
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => setShowDesignPicker(true)}
+                                                        className="flex-1 py-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                                                    >
+                                                        Change
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setAreaDesigns(prev => {
+                                                            const next = { ...prev };
+                                                            delete next[activeAreaId];
+                                                            return next;
+                                                        })}
+                                                        className="flex-1 py-1.5 text-xs text-slate-500 hover:text-red-400 transition-colors"
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <button
+                                                onClick={() => setShowDesignPicker(true)}
+                                                className="w-full px-3 py-3 bg-slate-800/50 border-2 border-dashed border-slate-600 rounded-xl text-xs text-slate-400 hover:border-purple-500/50 hover:text-purple-400 transition-all flex flex-col items-center gap-1.5"
+                                            >
+                                                <Search className="w-4 h-4" />
+                                                Assign design to <strong>{printAreas.find(a => a.id === activeAreaId)?.label || 'selected area'}</strong>
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
+                                {printAreas.length > 0 && !activeAreaId && (
+                                    <p className="text-[11px] text-slate-500 text-center py-3">
+                                        Select a print area above to assign a design
+                                    </p>
                                 )}
                             </section>
 
                             {/* Design Transform Controls */}
-                            {designImageId && (
+                            {Object.keys(areaDesigns).length > 0 && (
                                 <section>
                                     <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
                                         Design Position
@@ -1445,10 +1569,17 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
 
                         {/* Action Buttons */}
                         <div className="p-4 border-t border-slate-700/60 space-y-2">
-                            <button onClick={handleRender} disabled={rendering || !designImageId}
-                                className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20">
+                            <button
+                                onClick={handleRender}
+                                disabled={rendering || Object.keys(areaDesigns).length === 0}
+                                className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
+                            >
                                 {rendering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
-                                {rendering ? 'Rendering...' : 'Place Design & Render'}
+                                {rendering ? 'Rendering...' : `Place Design & Render${
+                                    printAreas.length > 0
+                                        ? ` (${Object.keys(areaDesigns).length}/${printAreas.length} areas)`
+                                        : ''
+                                }`}
                             </button>
                             {renderResult && (
                                 <div className="p-3 bg-emerald-600/10 border border-emerald-500/30 rounded-xl space-y-2">
@@ -1593,8 +1724,12 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
                 <DesignPickerModal
                     onClose={() => setShowDesignPicker(false)}
                     onSelect={(img) => {
-                        setDesignUrl(img.imageUrl);
-                        setDesignImageId(img.id);
+                        if (activeAreaId) {
+                            setAreaDesigns(prev => ({
+                                ...prev,
+                                [activeAreaId]: img,
+                            }));
+                        }
                         setShowDesignPicker(false);
                     }}
                 />
@@ -1606,7 +1741,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, initialDesignU
                     onSelect={(img) => {
                         setAreaDesigns(prev => ({
                             ...prev,
-                            [pickingDesignForAreaId]: { imageId: img.id, imageUrl: img.imageUrl }
+                            [pickingDesignForAreaId]: { id: img.id, imageUrl: img.imageUrl }
                         }));
                         setPickingDesignForAreaId(null);
                     }}

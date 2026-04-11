@@ -1,288 +1,388 @@
-# POD AI Factory — Task Queue
+# POD AI Factory — Task Board & Project Status
 
-## 🔴 HIGH PRIORITY
-
-### ~~1. Mockup Template Upload Tool~~ ✅ DONE
-Completed: TemplateUploader.tsx with visual print area selector, integrated into MockupsClient.tsx showUpload modal.
+Last updated: April 11, 2026
 
 ---
 
-### ~~2. Mockup Design Picker — Job History~~ ✅ DONE
-Completed: DesignPickerModal rewritten — auto-loads job history on open (GET /api/jobs), shows jobs as a clickable sidebar list, clicking a job loads its approved designs. No more manual Job ID entry.
+## ✅ COMPLETED FEATURES
+
+### Core Infrastructure
+- Multi-tenant workspace system (User, Workspace, WorkspaceMember, WorkspaceApiKey)
+- Cookie-based auth: POST /api/auth/login, /logout, GET /me
+- Workspace middleware: extracts workspaceId from cookie, attaches to req.workspaceId
+- Per-workspace API key overrides via secrets.service.js (DB first → env fallback)
+- BullMQ + Redis job queue for background asset processing (src/queues/asset.worker.js)
+- Supabase storage bucket auto-created on startup (mockup-outputs, 50MB limit)
+- Per-image cost tracking (Image.cost field, daily/monthly aggregation in /api/status)
+- Daily image cap + concurrent job cap per workspace (stored in Workspace model)
+- Global error handler + health check (GET /health)
+
+### Factory Pipeline (src/routes/factory.routes.js)
+- POST /api/factory/analyze — multi-provider vision (Anthropic → Gemini → OpenAI fallback)
+- POST /api/factory/get-variations — prompt variations with knowledge context injection
+- POST /api/factory/generate — image generation via FAL.ai
+- POST /api/factory/retry/:jobId — retry failed jobs
+- POST /api/factory/etsy-mode — keyword → niche → style → generation workflow
+- GET /api/factory/models — supported model list
+- Bulk upload: up to 8 images, each analyzed separately → variations
+- Prompt history (localStorage, last 10, dropdown UI)
+- "To Mockup" and "To Remove BG" buttons on each generated image
+
+### Image Generation (src/services/generation.service.js)
+- Flux Dev (quality), Flux Schnell (speed), Ideogram (typography), Recraft (vector)
+- All via FAL.ai provider (src/services/providers/fal.provider.js)
+- Retry logic with exponential backoff for 429 rate limits
+- Daily budget cap enforcement (FAL_COST_PER_IMAGE env var)
+
+### Gallery (src/routes/gallery.routes.js + GalleryClient.tsx)
+- GET /api/gallery/:jobId — images for a specific job
+- GET /api/gallery/recent — latest 100 images across all workspace jobs
+- POST /:imageId/approve, /reject — approval workflow
+- DELETE /:imageId — delete with workspace auth guard
+- POST /:imageId/regenerate — regenerate from same prompt
+- POST /save-mockup — save mockup render result to gallery
+- Bulk approve/reject/delete/pipeline from toolbar
+- URL state persistence (jobId in URL params)
+- Grid layout: grid-cols-2 md:grid-cols-3 aspect-square cards
+
+### One-Click Pipeline (src/routes/pipeline.routes.js + PipelineModal)
+- POST /api/pipeline/one-click — BG Remove → Mockup → SEO in a single synchronous request
+  - BG model selector: birefnet (free), bria pro, pixelcut (added Apr 11)
+  - Renders up to 5 selected templates via Sharp
+  - Vision analysis → keyword expansion → Claude Haiku → SEO output
+  - Results saved to DB (processed job for BG, mockup_gallery job for mockups)
+- POST /api/pipeline/run — enqueue single image to BullMQ (async)
+- POST /api/pipeline/run-job/:jobId — enqueue all approved images, idempotent
+- GET /api/pipeline/status/:jobId — progress check
+- PipelineModal in GalleryClient.tsx: template grid (4 cols), model selector, step toggles
+
+### Tools (src/routes/tool.routes.js)
+- POST /api/tools/remove-bg — BiRefNet / Bria / Pixelcut
+- POST /api/tools/upscale — ESRGAN / AuraSR / Ideogram (1x–8x)
+- POST /api/tools/vectorize — vector conversion via fal-ai/recraft-v3
+- Dedicated frontend pages: Remove BG (batch up to 5), Upscale, Vector
+
+### Mockup System
+- src/routes/mockup-template.routes.js: POST / (upload), GET /, GET /presets, GET /:id, PATCH /:id, DELETE /:id, POST /detect-print-area (AI), POST /bulk-upload, POST /render-video
+- src/routes/mockup.routes.js: POST /render, POST /render-batch
+- src/services/mockup-render.service.js: Sharp-based compositing engine
+- Multi print area support (configJson.printAreas array, backward compat with single printArea)
+- areaDesigns parameter accepted in render (different designs per area — backend ready)
+- Konva-based DesignPlacementEditor.tsx in frontend
+- Design picker from gallery job history
+- Dark/light template variant toggle (darkImagePath field)
+- Video mockup via fal-ai/kling-video (POST /render-video)
+- Bulk render mode with per-template status display
+- "Save to Gallery" and "Pin to Pinterest" buttons on render result
+- Download with descriptive filename (mockup-{templateName}-{timestamp}.png)
+
+### SEO (src/routes/seo.routes.js + seo-knowledge.routes.js)
+- POST /api/seo/generate — Etsy SEO (title ≤140 chars, description, 13 tags)
+- GET /api/seo-knowledge — active knowledge base for workspace
+- POST /api/seo-knowledge/auto-update — Claude-powered KB refresh
+- POST /api/seo-knowledge/manual — manual content override
+- POST /api/seo-knowledge/activate/:id — activate specific version
+- Weekly auto-update cron (src/jobs/seo-knowledge-updater.js)
+- Etsy 2026 algorithm knowledge in default KB
+- SEO copy helper: Etsy-paste format, checklist (title length, tag count, description words)
+- "Publish to Etsy (Draft)" button in SEO page (via Playwright browser agent)
+
+### Ideas (src/routes/idea.routes.js)
+- POST /api/ideas/generate — AI ideas from niche/keyword/persona
+- GET / — list workspace ideas
+- POST /:id/status — update status
+- POST /:id/factory — send to factory
+- POST /generate-bulk — bulk generate via Claude Haiku with brain context injection
+- Trending niche chips, sort toggle, bulk send, pending/approved counters
+
+### Analytics & Exports
+- POST /api/analytics/import — CSV import with ProductPerformance upsert
+- GET /api/analytics/performance — analytics table data
+- POST /api/export/etsy — Etsy-formatted CSV export
+- GET /api/export/job/:jobId/bundle — ZIP bundle
+- Best Listing card, Cost per Approved, week-over-week comparison
+
+### Overview Dashboard (inline in src/index.js)
+- GET /api/dashboard — runs, images, approved, spend, success rate, recent jobs, top approved, weeklyStats[]
+- GET /api/status — FAL health (30s cache), daily/monthly spend, budget cap
+- Quick actions grid (Factory, Remove BG, SEO, Upload Mockup)
+- Recent mockups section, knowledge entries stat card
+- Weekly bar chart (images vs approved per day)
+
+### Competitor Intelligence
+- POST /api/radar/scan — Playwright rival Etsy shop scraping (competitor-radar.service.js)
+- GET /api/trends/weekly — weekly keyword trends via Etsy autocomplete + Claude analysis
+- GET /api/trends/seasonal — full-year seasonal calendar
+- Trends page: Hot Niches grid, Upcoming Opportunities, Avoid Now, monthly calendar
+
+### AI Brain / Corporate Memory (src/routes/brain.routes.js)
+- GET / — list memories, GET /knowledge — grouped by type
+- POST /ingest-video — Gemini Vision (legacy), POST /analyze-video — Claude Vision + Whisper
+- POST /add-text — text/article ingestion with structured insights
+- POST /test-knowledge — query RAG with quick question chips
+- GET /summary — entry count + last updated, DELETE /:id
+- Categories: digital_products, etsy_algorithm, seo_tips, niche_research, pod_apparel, general_etsy
+- Auto-merges SEO knowledge after analysis (extractSeoKnowledge)
+- Universal knowledge injection: brain context piped into SEO, Factory, Ideas generators
+
+### Autonomous Agent (src/routes/agent.routes.js)
+- POST /api/agent/audit — shop audit → AI action plan (autonomous-manager.service.js, Gemini)
+- POST /api/agent/execute-action — UPDATE_PRICE or UPDATE_SEO via Playwright
+
+### Etsy Browser Automation (src/routes/etsy-browser.routes.js)
+- POST /create-draft — Playwright fills Etsy listing form (title/desc/tags/price/images)
+- POST /dispatch — listing-assembler.service.js assembles SEO+mockups → create-draft
+- POST /scrape — scrape seller dashboard listings
+- POST /pin-pinterest — auto-pin to Pinterest via Playwright
+- Etsy Listings page: scan shop, per-listing "Optimize SEO" with before/after comparison
+
+### Other Completed
+- Notification system: in-memory per-workspace, bell icon + unread badge in Topbar
+- Product Packs: CRUD + POST /api/packs/:packId/run
+- Settings: workspace config, API key management
+- Billing routes: GET /plans, /usage, POST /checkout, /webhook, /portal, /update-plan
+- Dark/Light mode toggle (localStorage + CSS variable overrides in globals.css)
+- Global keyboard shortcuts: Ctrl+Shift+F/G/S/M (Factory/Gallery/SEO/Mockups)
+- Remove BG: batch processing up to 5 images, gallery picker, URL param preload
 
 ---
 
-### ~~3. Download Button Fix in Mockups~~ ✅ DONE
-Completed: "Open full size" replaced with a "Download" button that fetches the blob and triggers download with filename `mockup-{templateName}-{timestamp}.png`. Falls back to new tab on fetch error.
+## 🔴 HIGH PRIORITY — Pending
+
+### 1. BUG FIX: listing-assembler.service.js — Wrong Prisma Model
+**File:** `src/services/listing-assembler.service.js` line 27
+**Bug:** `prisma.sEOContent.findFirst(...)` — model `SEOContent` does not exist in schema. The correct model is `SEOData`.
+**Impact:** Every call to `POST /api/etsy-browser/dispatch` will throw a runtime error.
+**Fix:**
+```js
+// Current (broken):
+const seoContent = await prisma.sEOContent.findFirst({
+  where: { jobId: image.jobId }, orderBy: { createdAt: 'desc' }
+});
+// Correct:
+const seoContent = await prisma.sEOData.findFirst({
+  where: { imageId: image.id }
+});
+```
+Also change `seoContent.title/description/tags` references below to match SEOData field names (they're the same, but verify).
+
+### 2. Etsy Official API Integration
+**Status:** Waiting for Etsy API key approval.
+**Current workaround:** Playwright browser automation fills Etsy forms directly — fragile, breaks on UI changes.
+**When key arrives, build:**
+- Create `src/routes/etsy.routes.js` (NOT etsy-browser — separate file for official API)
+- `GET /api/etsy/auth` — redirect to Etsy OAuth2 URL
+- `GET /api/etsy/callback` — exchange code for access+refresh tokens, store in WorkspaceApiKey (provider='etsy')
+- `POST /api/etsy/listings` — create listing via official Etsy v3 API
+- Token refresh logic (Etsy tokens expire in 1 hour)
+- Replace "Publish to Etsy" buttons in SEO + Gallery to use official API instead of Playwright
+- Register route in src/index.js
+
+### 3. Yuppion Fulfillment — Real API Integration
+**Status:** Mock implementation, waiting for Yuppion API access.
+**File:** `src/services/fulfillment.service.js`
+**Current:** `createOrder()` returns fake `YUP-XXXXX` IDs when API key missing. `syncEtsyOrders()` returns 1 hardcoded mock order.
+**When API access arrives:**
+- Set `YUPPION_API_KEY` in .env
+- Verify/update `this.apiUrl` base URL
+- Replace `syncEtsyOrders()` mock with real Etsy Orders API (needs OAuth from Task #2)
+- Wire OrdersClient.tsx to display real order data from GET /api/fulfillment/orders
+- Add order status tracking (polling or webhooks)
 
 ---
 
-### ~~10. Factory → Send to Mockup~~ ✅ DONE
-Completed: Added "To Mockup" button on each generated image in FactoryClient.tsx using router.push(). Navigates to /dashboard/mockups?designUrl=...&designImageId=... with the current display URL and gallery image ID. MockupsClient reads both params via useSearchParams and seeds TemplateEditor's designUrl/designImageId state on open.
+## 🟡 MEDIUM PRIORITY — Pending
+
+### 4. Stripe Billing — Real Price IDs
+**File:** `src/services/billing.service.js` lines 13, 20, 27
+**Current:** `process.env.STRIPE_PRICE_STARTER || 'price_starter_placeholder'`
+**To do:**
+- Create Starter/Pro/Unlimited products in Stripe Dashboard
+- Set STRIPE_PRICE_STARTER, STRIPE_PRICE_PRO, STRIPE_PRICE_UNLIMITED in .env
+- Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET
+- Test end-to-end: checkout → webhook → plan update
+- Currently returns mock checkout URLs in dev (safe for UI testing)
+
+### 5. CORS Origin — Hardcoded localhost
+**File:** `src/index.js` line 45
+**Current:** `cors({ origin: 'http://localhost:3001', credentials: true })`
+**Fix:** `cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3001', credentials: true })`
+**Severity:** Will block all production traffic. Must fix before deployment.
+
+### 6. Dashboard — Average Generation Time
+**File:** `src/index.js` line 305
+**Current:** `avgGenerationTime: null // placeholder`
+**Fix:** Add timestamp tracking — either `generationStartedAt` on DesignJob, or `durationMs` in JobLog when eventType='GENERATION_DONE'. Compute average in dashboard query.
+
+### 7. areaDesigns — Multi-Area Mockup UI
+**Backend:** Already works — `src/services/mockup-render.service.js` accepts `areaDesigns` map (area ID → design image) and composites each differently.
+**Missing:** Frontend UI to assign different designs to different template print areas. Needed for multi-panel templates (front/back/sleeve on hoodies). Currently same design used for all areas.
+
+### 8. Per-Model Cost Tracking
+**File:** `src/services/generation.service.js`
+**Current:** `FAL_COST_PER_IMAGE` is flat rate for all models. Flux Dev costs ~$0.03, Schnell ~$0.003, Ideogram ~$0.08.
+**Fix:** Add model-to-cost map and use actual cost per generation for accurate spend tracking.
 
 ---
 
-### ~~11. Bulk Render~~ ✅ DONE
-Completed: Added "Bulk Render" toggle button in MockupsClient header. Bulk panel shows design picker + template count + Render button. Template cards show checkboxes when in bulk mode. Uses existing renderBatch API. Results grid shows per-template status and individual download buttons.
+## 🔵 LOW PRIORITY / Future
+
+### 9. Production Deployment
+- Fix CORS (Task #5), configure NEXT_PUBLIC_API_BASE_URL for domain
+- Set up production Redis (currently hardcoded localhost:6379)
+- Add DIRECT_URL for Prisma (Supabase pooler vs direct connection)
+- Process manager (PM2) for Node backend
+- SSL/HTTPS setup
+
+### 10. API Key Encryption
+WorkspaceApiKey.keyValue stored as plain text. Schema comment: "replace with KMS in production." Encrypt with AES-256 or cloud KMS before handling real customer API keys.
+
+### 11. Rate Limiting
+No rate limiting middleware on routes. Add express-rate-limit on /api/factory, /api/generate, /api/tools endpoints. Also enforce workspace.concurrentJobCap in BullMQ queue (field exists in DB but not checked before enqueue).
+
+### 12. Semantic Search on Corporate Memory
+CorporateMemory.vectorEmbedding field exists (Json) but cosine similarity not implemented. /api/brain/test-knowledge does text matching only. Add OpenAI text-embedding-3-small + cosine search for better RAG quality.
+
+### 13. Pinterest — Official API
+`pinToPinterest()` uses Playwright automation — fragile. Pinterest has an OAuth API. Replace if pinning becomes a regular workflow step.
+
+### 14. Auto Etsy Performance Sync
+ProductPerformance populated via CSV import only. When Etsy OAuth is live, add scheduled polling to auto-update impressions/visits/favorites/orders.
+
+### 15. Vector Page — Verify E2E
+frontend/app/dashboard/vector/ + POST /api/tools/vectorize exist. Verify the endpoint works end-to-end and check which FAL model is called.
 
 ---
 
-### ~~12. Render → Save to Gallery~~ ✅ DONE
-Completed: Added POST /api/gallery/save-mockup backend endpoint (finds-or-creates a "Mockup Gallery" DesignJob, creates Image record with isApproved=true). Added apiGallery.saveMockup() in api.ts. Added "Save to Gallery" button next to Download in TemplateEditor renderResult panel.
+## 🐛 KNOWN BUGS
+
+| # | Location | Bug | Severity |
+|---|----------|-----|----------|
+| 1 | `src/services/listing-assembler.service.js:27` | `prisma.sEOContent` — wrong model, should be `prisma.sEOData`. Crashes on every dispatch call. | **Critical** |
+| 2 | `src/index.js:45` | CORS origin hardcoded to `http://localhost:3001` — blocks all prod traffic | **Deploy blocker** |
+| 3 | `src/index.js:305` | `avgGenerationTime: null` hardcoded placeholder | Minor |
+| 4 | `src/services/fulfillment.service.js:60` | `syncEtsyOrders()` returns 1 hardcoded mock order regardless of workspace | Minor (expected) |
+| 5 | `src/services/billing.service.js:121,198` | Checkout + portal return mock localhost URLs when Stripe not configured | Minor (dev only) |
 
 ---
 
-### ~~13. Dark/Light Template Support~~ ✅ DONE
-Completed: Added darkImagePath String? to prisma/schema.prisma MockupTemplate model. Added darkImagePath?: string | null to MockupTemplate TypeScript interface. Backend PATCH endpoint now accepts darkImagePath. TemplateEditor shows ☀ Light / ☾ Dark toggle when darkImagePath is set; canvas reloads base image on toggle.
-
----
-
-### ~~14. Vector Conversion (PNG → SVG)~~ ✅ DONE
-Completed: Added POST /api/tools/vectorize backend endpoint using fal-ai/recraft-v3 with style="vector_illustration". Added apiTools.vectorize() in api.ts. Created /dashboard/vector page (VectorClient.tsx) with drag-and-drop upload, before/after display, and download button. Added Vector nav item to Sidebar.
-
----
-
-### ~~A. Factory → To Mockup (router.push)~~ ✅ DONE
-Completed: Updated FactoryClient.tsx — replaced <Link> with router.push() via useRouter. Button relabeled "To Mockup". Added useRouter import from next/navigation.
-
----
-
-### ~~B. Settings — Daily Spend Limit~~ ✅ DONE
-Completed: Added "Daily Spend Limit" card to SettingsClient.tsx. Value stored in localStorage as 'fal_daily_limit'. OverviewClient reads it on mount and shows "$X.XX / $Y.YY" in the Spend Today stat card.
-
----
-
-### ~~C. Overview — Recent Mockups~~ ✅ DONE
-Completed: Added "Recent Mockups" section in OverviewClient.tsx. Calls apiGallery.getRecent(), filters engine === 'mockup', shows last 6 as thumbnail grid with links to /dashboard/mockups. Section only renders when mockups exist.
-
----
-
-### ~~E. SEO Copy Helper~~ ✅ DONE
-Completed: copyAll now outputs Etsy-paste format (title\n\ndescription\n\ntags, no labels). Added "Etsy Checklist" section after Tags card — checks title ≤140 chars, 13 tags used, description 150–300 words, no keyword stuffing (word appearing >5× in title+description).
-
----
-
-### ~~F. Gallery Bulk Approve improvements~~ ✅ DONE
-Completed: bulkApprove now shows a progress toast "Approving X of Y…" via toast.loading with a stable ID. Approve button in toolbar now shows "Approve (X)" with the selected count.
-
----
-
-### ~~G. Ideas — Trending Niches + Generate Bulk~~ ✅ DONE
-Completed: Added "Generate from Niche" card in IdeasClient.tsx with 10 trending niche chips, custom niche text input, and "Generate 5 Ideas" button. Added POST /api/ideas/generate-bulk backend endpoint using Claude Haiku (claude-haiku-4-5-20251001). Added apiIdeas.generateBulk(niche) in api.ts.
-
----
-
-### ~~H. Exports Page Improvements~~ ✅ DONE
-Completed: Added date range filter (7d / 30d / all), status filter (all / approved only), mockups-only toggle. Stats bar shows file count + estimated ZIP size. "Export Mockups Only" panel at top shows mockup thumbnails across all jobs with individual download links. Assets table now shows createdAt column and respects all active filters.
-
----
-
-### ~~I. Analytics Page Improvements~~ ✅ DONE
-Completed: Added "Best Listing" card (top score SKU), "Cost per Approved" card (weekly spend / weekly approved from dashboard stats), "This Week vs Last Week" comparison with % diff arrow. Export CSV button downloads current sorted performance data as analytics-YYYY-MM-DD.csv. Imported apiDashboard for weekly stats.
-
----
-
-### ~~J. Overview — Quick Actions~~ ✅ DONE
-Completed: Added "Quick Actions" 2x2 grid section in OverviewClient.tsx between Recent Mockups and Projects Grid. 4 color-coded buttons: New Generation → /dashboard/factory, Remove BG → /dashboard/remove-bg, Generate SEO → /dashboard/seo, Upload Mockup → /dashboard/mockups.
-
----
-
-### ~~K. Global Keyboard Shortcuts~~ ✅ DONE
-Completed: Created frontend/hooks/useKeyboardShortcuts.ts with Ctrl+Shift+F (Factory), Ctrl+Shift+G (Gallery), Ctrl+Shift+S (SEO), Ctrl+Shift+M (Mockups). Created frontend/components/ShortcutsInit.tsx (client wrapper). Imported in dashboard layout.tsx. Added "Keyboard shortcuts" button in Sidebar footer that opens a popover listing all shortcuts.
-
----
-
-### ~~L. Factory — Prompt History~~ ✅ DONE
-Completed: Added promptHistory state (localStorage 'prompt_history', last 10). saveToHistory() called on every Generate. "History (N)" button next to Templates in the prompt header opens a dropdown of clickable past prompts. "Clear history" link at bottom removes all entries.
-
----
-
-### ~~M. Remove BG — Batch Processing~~ ✅ DONE
-Completed: Rewrote RemoveBgClient.tsx. Accepts up to 5 images via drag-drop or file picker. Each image is shown as a card with Before/After display, individual "Remove BG" button, and download button after processing. "Process All (N)" button runs BiRefNet on all idle/errored images simultaneously via Promise.all. Model selector (BiRefNet / Bria Pro / Pixelcut) applies to all operations.
-
----
-
-### ~~N. Dark/Light Mode Toggle~~ ✅ DONE
-Completed: Added `html.light` CSS variable overrides in globals.css (bg-base #f8fafc, text-primary #0f172a, etc.). Added theme toggle button in Sidebar footer (Sun/Moon icon, "Light mode"/"Dark mode" label). Stores preference in localStorage 'theme'. Applies/removes 'light' class on html element via useEffect on mount + on toggle.
-
----
-
-### ~~O. Notification System~~ ✅ DONE
-Completed: Created src/routes/notification.routes.js — in-memory per-workspace log (Map), POST /api/notifications/log, GET /api/notifications (last 20), POST /api/notifications/read-all. Registered in index.js. Added logNotification() calls in seo.routes.js (SEO generated) and tool.routes.js (BG removed, vector converted). Added apiNotifications interface + client to api.ts. Added Bell icon to Topbar with unread badge, dropdown with activity feed (color-coded by type, timestamps, mark-all-read button). Auto-marks read after 1.5s when opened.
-
----
-
-### ~~T. Playwright — Etsy Browser Automation~~ ✅ DONE
-Completed: Installed Playwright + Chromium. Created src/services/etsy-browser.service.js with launchBrowser() (persistent Chrome profile), createEtsyDraft() (fills title/description/tags/price/images, saves as draft), scrapeListings() (paginates seller dashboard), pinToPinterest() (pin builder flow). Created src/routes/etsy-browser.routes.js with POST /api/etsy-browser/create-draft, /scrape, /pin-pinterest. Registered in index.js. Added BROWSER_USER_DATA and BROWSER_EXE to .env.example.
-
----
-
-### ~~U. SEO Client — "Publish to Etsy" button~~ ✅ DONE
-Completed: Added publishing/publishResult state to SEOClient.tsx. Added handlePublishToEtsy() — POSTs to /api/etsy-browser/create-draft with title/description/tags/imageUrls. Added "Publish to Etsy (Draft)" button (orange, with Loader2 spinner) below "Copy All" button, only visible when result is ready.
-
----
-
-### ~~V. Pinterest Auto-Pin after Mockup Render~~ ✅ DONE
-Completed: Added "Pin to Pinterest" button in the renderResult panel of TemplateEditor (MockupsClient.tsx). POSTs to /api/etsy-browser/pin-pinterest with imageUrl, template name, description, and shop link. Shows success/error via addToast.
-
----
-
-### ~~AA. Multi Print Area Support~~ ✅ DONE
-Completed: configJson now supports `printAreas` array alongside the existing `printArea` (backward compat). Backend render service: if `printAreas.length > 1`, iteratively composites the design (contain-fit + blur) onto each area. Frontend TemplateEditor: `printAreas` + `activeAreaId` state, loaded from config on mount. "Add Area" button in Print Area section adds named areas (Person 1, 2, …) with delete buttons. Canvas draws all areas with color fills + labels. `saveConfig` and `handleRender` both persist `printAreas` to configJson.
-
----
-
-### ~~Z. Video Mockup~~ ✅ DONE
-Completed: Added POST /api/mockup-templates/render-video backend endpoint using fal-ai/kling-video/v1.6/standard/image-to-video. Accepts mockupImageUrl, duration (default 5s), motionType (subtle/rotate/wave/zoom). Motion-type-specific prompts drive animation style. Added "Create Video Mockup" section in TemplateEditor renderResult panel (MockupsClient.tsx) — shown after a mockup is rendered. Includes motion type selector dropdown, purple gradient button, video preview with autoplay/loop, and Download Video link.
-
----
-
-### ~~W. Etsy Listing Scraper page~~ ✅ DONE
-Completed: Created frontend/app/dashboard/etsy-listings/page.tsx and EtsyListingsClient.tsx. "Scan My Etsy Shop" button calls POST /api/etsy-browser/scrape. Lists scraped listings (id, title, price) in expandable cards. "Optimize SEO" button per listing calls /api/seo/generate with listing title as keyword. Shows before/after comparison panel with AI title, description, and tags preview. Added "My Listings" (Store icon) to Sidebar nav.
-
----
-
-### ~~X. Mockup System Fixes~~ ✅ DONE
-Completed:
-- Design Picker rebuilt: 4-col grid, filters by ID via search input, loads apiGallery.getRecent() filtered by engine !== 'mockup', max-w-4xl. Used for both single editor and bulk render.
-- Rendered Mockups section: date-grouped accordion with Download + Delete (X) buttons per card. DELETE /api/gallery/:imageId backend endpoint added with workspace auth guard.
-- saveMockup() accepts optional designImageId stored in image.seed for future grouping.
-- Auto Detect Print Area: POST /api/mockups/templates/detect-print-area (sharp greyscale grid analysis). Button appears in TemplateUploader after template is uploaded. Updates printArea state on success.
-
----
-
-### ~~Y. Remove BG + Gallery + Factory improvements~~ ✅ DONE
-Completed:
-- Remove BG — "Load from Gallery" button opens a 4-col gallery picker (apiGallery.getRecent filtered by engine !== 'mockup'), selected image added as a card. URL param `?imageUrl=` pre-loads image on mount (read via useSearchParams, Suspense wrapper added).
-- Gallery — grid changed from masonry to grid-cols-2 md:grid-cols-3 aspect-square cards. Delete button (dark red) added to hover overlay per card. "Delete (N)" bulk button in toolbar. Backend DELETE /api/gallery/:imageId already existed.
-- Factory — "To Remove BG" button added next to "To Mockup", navigates to /dashboard/remove-bg?imageUrl=... so the image pre-loads.
-
----
-
-### ~~T3. Trend Analysis Dashboard~~ ✅ DONE
-Completed:
-- src/routes/trends.routes.js: GET /api/trends/weekly (fetches 5 Etsy autocomplete seeds, Claude Haiku analyses + ranks into hotNiches/upcomingOpportunities/avoidNow/weeklyFocus, injected with brain ideasContext). GET /api/trends/seasonal (static full-year calendar). getSeasonalContext() and getFullSeasonalCalendar() helpers.
-- Registered in index.js after brain routes.
-- frontend/app/dashboard/trends/page.tsx + TrendsClient.tsx: two tabs (This Week / Seasonal Calendar). Weekly tab: Weekly Focus banner, Hot Niches grid (urgency badge, competition, keywords, Generate Design + Generate SEO action buttons), Upcoming Opportunities list (countdown days, click → factory), Avoid Now list. Calendar tab: 12-month grid with current month highlighted, urgency badges, clickable niche chips → factory. 30-min staleTime for weekly, 24h for seasonal.
-- Sidebar.tsx: TrendingUp import added, Trends nav item added after Ideas.
-
----
-
-### ~~T2. Universal Knowledge Injection~~ ✅ DONE
-Completed:
-- Created src/services/knowledge-context.service.js: getRelevantContext() (fetches brain memories by topic-to-category map, extracts synthesis or actionableRules from analysisResult JSON), getSeoContext() (brain + seoKnowledgeBase merged), getFactoryContext(), getIdeasContext(), getKnowledgeSummary() (count + latest entry date/category).
-- seo.routes.js: replaced getKnowledge(workspaceId) with getSeoContext(workspaceId) — SEO generation now includes matching brain memories alongside the SEO knowledge base.
-- idea.routes.js (generate-bulk): added system prompt to Claude call with ideasContext injected; uses req.workspaceId.
-- factory.routes.js (get-variations): fetches factoryContext, builds augmentedPrompt = basePrompt + contextAddition; passed to both synthetic and real AI variation paths.
-- brain.routes.js: added GET /api/brain/summary endpoint (returns totalEntries, lastUpdated, lastCategory).
-- OverviewClient.tsx: added Brain lucide import; added useQuery for /api/brain/summary; added 7th StatCard "Knowledge Entries" (purple); grid layout updated to grid-cols-7.
-
----
-
-### ~~S. Brain — Knowledge Categories~~ ✅ DONE
-Completed:
-- prisma/schema.prisma: Added category String @default("general_etsy") and tags String[] @default([]) to CorporateMemory. Applied via prisma db push.
-- multimodal-brain.service.js: Added detectCategory(synthesis) function (keyword-based: digital_products / etsy_algorithm / seo_tips / niche_research / pod_apparel / general_etsy). Both analyzeVideoFull() and addTextKnowledge() auto-detect category from synthesis; accept optional category override param.
-- brain.routes.js: /add-text accepts category from body. /analyze-video accepts category from body. /test-knowledge filters by relevantCategories (excludes digital_products unless question mentions "digital"/"printable").
-- api.ts: CorporateMemory interface extended with category and tags fields. apiBrain.addText() signature extended with optional category param.
-- BrainClient.tsx: CATEGORIES constant + CATEGORY_COLORS map. selectedCategory state (text form) and videoCategory state (video form). Category <select> dropdowns in both Video and Text input tabs. Category badge on each sidebar memory entry.
-
----
-
-### ~~R. Brain — Test Knowledge Panel~~ ✅ DONE
-Completed: Added "Test Knowledge" as 3rd tab in BrainClient.tsx (alongside Video/Text). Tab shows 5 quick-question chips, a free-text input (Enter to submit), and an answer panel with Correct/Wrong/Partial feedback buttons. Backend POST /api/brain/test-knowledge fetches up to 10 CorporateMemory entries + seoKnowledgeBase, builds context, and queries claude-haiku-4-5. Empty-brain warning shown when no memories exist. Added MessageSquare icon import.
-
----
-
-### ~~Q. Enhanced Brain System~~ ✅ DONE
-Completed:
-- multimodal-brain.service.js: added analyzeVideoFull() — ffmpeg frame extraction (20 frames) + audio extraction + Whisper transcription via fal-ai + Claude Vision per-frame analysis (every 3rd frame, claude-haiku-4-5) + synthesis prompt → structured knowledge. Added addTextKnowledge() — Claude processes pasted text into structured insights. Added extractSeoKnowledge() — after any analysis, Claude extracts SEO-relevant parts and auto-merges into seoKnowledgeBase. Legacy processVideo() (Gemini) kept for /ingest-video backward compat.
-- brain.routes.js: added POST /analyze-video (multer 500MB, calls analyzeVideoFull), POST /add-text (calls addTextKnowledge), GET /knowledge (returns grouped entries by type: video/text/auto). /ingest-video preserved.
-- api.ts: CorporateMemory interface extended with optional synthesis/transcript/frameCount/videoType/seoUpdated fields (both Gemini and Claude format supported). Added VideoAnalysis, KnowledgeGroup interfaces. apiBrain extended: analyzeVideo() with XHR upload progress callback, addText(), getKnowledge().
-- BrainClient.tsx: full rebuild — tabbed input panel (Video/Text), drag-drop video zone with video type selector (training/meeting/etsy_update/tutorial), 4-step processing indicator (Upload→Whisper→Claude Vision→Save) with progress bar, text paste form with title/source/content fields. Memory detail view supports both old Gemini IF-THEN format and new Claude synthesis text format. Transcript accordion, SEO-updated badge.
-
----
-
-### ~~P. Critical Bug Fixes~~ ✅ DONE
-Completed:
-- fulfillment.routes.js created (GET /api/fulfillment/orders, POST /api/fulfillment/create) and registered in index.js
-- listing-assembler.service.js rewritten — correct Prisma models (image, sEOContent, designJob) replacing non-existent design/generation/ListingSEO references
-- autonomous-manager.service.js: env var fallback GOOGLE_API_KEY || GEMINI_API_KEY; removed prisma.jobLog.create (FK mismatch) replaced with console.log
-- competitor-radar.service.js: CSS selectors updated to [data-listing-id] / [data-currency-value]; browser.close() replaced with page.close() to preserve persistent session
-- .env.example: added YUPPION_API_KEY and GEMINI_API_KEY entries
-
----
-
-### 15. Etsy Draft Assembly (waiting for API approval)
-When Etsy API is approved:
-Combine mockup image + SEO content + pricing template
-Push as draft listing to Etsy via POST /api/etsy/listings
-
----
-
-### 16. Yuppion Integration (waiting for first order)
-When first order arrives and API access is granted:
-Add order fulfillment flow: Gallery approved image → Yuppion API → production order
-
----
-
-## 🟡 MEDIUM PRIORITY
-
-### 4. Etsy API Integration (waiting for approval)
-When Etsy API key is approved:
-- OAuth2 flow: GET /api/etsy/auth → redirect, GET /api/etsy/callback → save token
-- POST /api/etsy/listings — create listing with title, description, tags, images
-- Frontend: "Publish to Etsy" button in SEO Generator and Factory results
-
-### ~~5. Bulk Upload in Factory~~ ✅ DONE
-Completed: Raised image cap from 3 → 8. When >1 image uploaded, "Get AI Prompt" analyzes each image separately and adds all prompts as pre-selected variations ready to generate. Label updated.
-
-### ~~6. Gallery — All Jobs View~~ ✅ DONE
-Completed: Added GET /api/gallery/recent backend endpoint (latest 100 images across all workspace jobs). Added apiGallery.getRecent(). Added "All Images" shortcut at the top of the Gallery job history sidebar — loads all recent images when selected.
-
----
-
-## 🟢 LOW PRIORITY
-
-### ~~7. Overview Dashboard improvements~~ ✅ DONE
-Completed:
-- Thumbnail fix: removed `startsWith('http')` filter so local asset paths (assets/outputs/…) show as thumbnails. Frontend resolveUrl() handles local-path prefixing.
-- Weekly chart: new WeeklyChart component showing last 7 days of images generated vs approved as a bar chart. Backend /api/dashboard now returns weeklyStats[].
-
-### ~~8. Ideas Page~~ ✅ DONE
-Completed: Fixed DesignJob created from ideas to include workspaceId (so jobs appear in job history). Added sort direction toggle (↑/↓). Added "Send All Approved" button for bulk factory dispatch. Added pending/approved counts in header.
-
-### ~~9. Analytics Page~~ ✅ DONE
-Completed: Fixed image thumbnails in analytics table (resolveUrl for local paths). "Scale Winner" button now links to Factory. Sort direction already present and working.
-
----
-
-## ✅ COMPLETED
-- Mockup Template Upload Tool (TemplateUploader.tsx with visual print area selector)
-- Mockup Design Picker — Job History (auto-loads jobs, no manual ID entry)
-- Download Button Fix in Mockups (blob download with descriptive filename)
-- Bulk Upload in Factory (8 images, each analyzed separately → variations)
-- Gallery All Jobs View (GET /api/gallery/recent + "All Images" sidebar entry)
-- Overview Dashboard improvements (thumbnail fix + weekly bar chart)
-- Ideas Page improvements (workspaceId fix, sort direction, bulk send, counters)
-- Analytics Page improvements (image URL fix, Scale Winner links to Factory)
-- Multi-provider Vision (Anthropic/Gemini/OpenAI)
-- New Factory pipeline (Get AI Prompt + Variations)
-- Multi-model generation (Flux, Ideogram, Recraft, Schnell)
-- Style presets + prompt templates + negative prompt
-- Factory results panel (BG remove + Upscale + SEO inline)
-- Remove BG page (BiRefNet + Bria + Pixelcut)
-- Upscale page (ESRGAN + Ideogram + AuraSR, 1x-8x)
-- Gallery history + URL state persistence
-- Overview thumbnails fixed
-- Supabase migration
-- SEO Generator with Live Etsy Data
-- SEO Knowledge Base (auto weekly update + manual override)
-- Download buttons (direct download + descriptive filenames)
-- Etsy 2026 algorithm training in system prompt
-- Bulk Template Upload + AI Print Area Detection
-- AI Corporate Brain (Multimodal RAG): Video & Meeting digestion with Vision AI
-- Autonomous Store Manager: AI Agent for shop audits and performance optimization
-- AI Quality Control: Vision-based print-readiness inspector
-- Fulfillment Engine: Orders sync with Yuppion/POD factory
-- Competitor Radar: Automated rival shop scraping for niche ideas
+## 📝 DEVELOPMENT NOTES
+
+### Tech Stack
+| Component | Technology | Version |
+|-----------|-----------|---------|
+| Backend | Node.js + Express | Express 5 |
+| Frontend | Next.js App Router + React | Next 14, React 19 |
+| Database | PostgreSQL + Prisma ORM | Prisma 5.15 |
+| Job Queue | BullMQ + Redis | BullMQ 5.70 |
+| Storage | Supabase Storage + local assets/ | |
+| Vision AI | Anthropic Claude, Gemini, OpenAI | Multi-provider fallback |
+| Image Gen | FAL.ai (Flux Dev/Schnell, Ideogram, Recraft) | |
+| BG Remove | BiRefNet, Bria, Pixelcut | via FAL.ai |
+| Upscale | ESRGAN, AuraSR, Ideogram | via FAL.ai |
+| Browser | Playwright + Chromium | Etsy/Pinterest automation |
+| UI | Tailwind v4, Radix UI, Lucide, Konva, Recharts | |
+
+### Ports
+- **Backend:** http://localhost:3001 (PORT in .env — note: index.js defaults to 3000 but .env overrides to 3001)
+- **Frontend:** http://localhost:3000
+- **Redis:** localhost:6379 (hardcoded, no env config)
+- **PostgreSQL:** via DATABASE_URL in .env
+
+### Running the Project
+```bash
+npm run dev            # Kills ports 3000+3001, starts both servers
+npm run dev:backend    # Backend with nodemon (ignores assets/)
+npm run dev:frontend   # Frontend Next.js dev server
+npm start              # Production mode (both)
+```
+
+### Environment Variables
+```env
+# Database
+DATABASE_URL=postgresql://...
+DIRECT_URL=postgresql://...          # For Prisma migrations via Supabase pooler
+
+# Server
+PORT=3001
+
+# AI Providers
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+GOOGLE_GEMINI_API_KEY=...            # Also accepts GOOGLE_API_KEY
+FAL_API_KEY=...                      # Flux, Schnell, Ideogram, Recraft, BiRefNet, Bria, upscalers
+PIXELCUT_API_KEY=...
+
+# Storage
+SUPABASE_URL=...
+SUPABASE_SERVICE_KEY=...
+
+# Billing (optional — falls back to mock URLs)
+STRIPE_SECRET_KEY=...
+STRIPE_WEBHOOK_SECRET=...
+STRIPE_PRICE_STARTER=price_...
+STRIPE_PRICE_PRO=price_...
+STRIPE_PRICE_UNLIMITED=price_...
+
+# Cost Control
+DAILY_BUDGET_CAP=5.00
+FAL_COST_PER_IMAGE=0.003
+
+# Frontend
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+
+# Fulfillment (mock until key received)
+YUPPION_API_KEY=...
+DEFAULT_LISTING_PRICE=19.99
+
+# Etsy (pending approval)
+ETSY_API_KEY=...
+ETSY_API_SECRET=...
+ETSY_REDIRECT_URI=...
+
+# Browser Automation
+BROWSER_USER_DATA=...                # Persistent Chrome profile path
+BROWSER_EXE=...                      # Chrome executable path
+```
+
+### Key Architectural Decisions
+
+**Multi-tenant isolation:** Every DB query filters by `req.workspaceId` (set by workspace middleware from session cookie). New routes MUST include workspace scoping.
+
+**Provider fallback:** Vision: Anthropic → Gemini → OpenAI (auto-fallback). Generation: user-selected model, no auto-fallback.
+
+**API key resolution (secrets.service.js):** WorkspaceApiKey DB → process.env → throw. Each workspace can override global keys.
+
+**Etsy integration (current):** Playwright browser automation as workaround. Logs into Etsy with a persistent Chrome session and fills forms. Fragile — Etsy UI changes break it silently. Official API integration is Task #2.
+
+**Pipeline modes:** `/api/pipeline/one-click` = synchronous (blocks request). `/api/pipeline/run` and `/run-job/:jobId` = async via BullMQ.
+
+**Knowledge injection:** Brain memories are injected as context into SEO, Factory, and Ideas generators via knowledge-context.service.js. SEO Knowledge Base is auto-refreshed weekly via cron.
+
+**Adding a backend route:**
+1. Create `src/routes/feature.routes.js`
+2. Register in `src/index.js`: `app.use('/api/feature', require('./routes/feature.routes'))`
+3. All queries MUST filter by `req.workspaceId`
+
+**Adding a frontend page:**
+1. `frontend/app/dashboard/page-name/page.tsx` (thin server component)
+2. `frontend/app/dashboard/page-name/PageNameClient.tsx` ('use client', all logic)
+3. Add nav entry to `frontend/components/layout/Sidebar.tsx`
+4. Add API functions to `frontend/lib/api.ts`
+
+**DB migrations:**
+```bash
+npx prisma migrate dev --name descriptive_name
+npx prisma generate
+```
+
+### Prisma Schema — 17 Models
+User, Workspace, WorkspaceMember, WorkspaceApiKey, DesignJob, Image, Mockup, SEOData, VisionAnalysis, JobLog, Idea, ProductPerformance, ProductPack, ProductPackItem, SeoKnowledgeBase, MockupTemplate, CorporateMemory
+
+### Design System
+- Accent: Electric Violet `#7c3aed` → `var(--accent)`
+- Background: `#08090a`, Cards: `bg-[#111827]`
+- Primary CTA: `bg-gradient-to-r from-purple-600 to-blue-600`
+- Font: Geist sans + Geist Mono
+- Sidebar: 220px fixed, left border active highlight
+- Tokens in `frontend/app/globals.css` — use existing tokens only

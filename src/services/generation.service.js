@@ -10,7 +10,7 @@ const SUPPORTED_MODELS = {
         strength: 'general'
     },
     'fal-ai/flux/schnell': {
-        name: 'Flux Schnell', 
+        name: 'Flux Schnell',
         description: 'Same quality, 4x faster',
         speed: 'fast',
         strength: 'speed'
@@ -18,7 +18,7 @@ const SUPPORTED_MODELS = {
     'fal-ai/ideogram/v3': {
         name: 'Ideogram 3.0',
         description: 'Best text & typography in images',
-        speed: 'medium', 
+        speed: 'medium',
         strength: 'typography'
     },
     'fal-ai/recraft-v3': {
@@ -28,6 +28,23 @@ const SUPPORTED_MODELS = {
         strength: 'vector'
     }
 };
+
+// Per-model cost map (USD per image) — based on FAL.ai pricing as of 2026
+// FAL_COST_PER_IMAGE env var acts as a global override when set
+const MODEL_COSTS = {
+    'fal-ai/flux/dev':     0.030,  // Flux Dev  — high quality, ~$0.03/img
+    'fal-ai/flux/schnell': 0.003,  // Flux Schnell — fast & cheap, ~$0.003/img
+    'fal-ai/ideogram/v3':  0.080,  // Ideogram 3.0 — typography specialist, ~$0.08/img
+    'fal-ai/recraft-v3':   0.040,  // Recraft V3 — vector/screen print, ~$0.04/img
+};
+const FALLBACK_COST = 0.020; // used for unknown/new models
+
+function getModelCost(modelId) {
+    if (process.env.FAL_COST_PER_IMAGE) {
+        return parseFloat(process.env.FAL_COST_PER_IMAGE);
+    }
+    return MODEL_COSTS[modelId] ?? FALLBACK_COST;
+}
 
 function imageSizeToAspectRatio(imageSize) {
     const map = {
@@ -107,8 +124,6 @@ class GenerationService {
         const job = await prisma.designJob.findUnique({ where: { id: jobId } });
         await this.checkDailyCap(job.workspaceId, imagesToGenerate.length);
 
-        const costPerImage = parseFloat(process.env.FAL_COST_PER_IMAGE || '0.02');
-
         const results = [];
         const falProvider = require('./providers/fal.provider');
         const logService = require('./log.service');
@@ -116,8 +131,9 @@ class GenerationService {
         const processImageWithRetries = async (img, attempts = 0) => {
             try {
                 const modelId = SUPPORTED_MODELS[img.engine] ? img.engine : 'fal-ai/flux/dev';
+                const modelCost = getModelCost(modelId);
                 const payload = buildModelInput(modelId, img.promptUsed.substring(0, 1000), imageSize, negativePrompt);
-                
+
                 const falResponse = await falProvider.generateImage(
                     modelId,
                     payload,
@@ -132,10 +148,10 @@ class GenerationService {
                         rawResponse: falResponse.raw_response,
                         engine: modelId,
                         status: 'COMPLETED',
-                        cost: costPerImage
+                        cost: modelCost
                     }
                 });
-                return { success: true, img: updated };
+                return { success: true, img: updated, cost: modelCost };
             } catch (err) {
                 // FalProvider handles its own momentary 429s, but let's keep the upper block 
                 // just in case we hit absolute timeout or generic 500s.
@@ -165,12 +181,13 @@ class GenerationService {
             chunkResults.forEach(res => {
                 if (res.success) successCount++;
                 else failCount++;
-                results.push(res.img);
+                results.push({ ...res.img, _cost: res.cost || 0 });
             });
         }
 
-        // Emit Observability Log
-        await logService.logEvent(jobId, 'GENERATION_DONE', failCount === 0 ? 'SUCCESS' : 'PARTIAL_SUCCESS', `Generated ${successCount}, Failed ${failCount}`, { successCount, failCount, costEstimate: successCount * costPerImage });
+        // Emit Observability Log — sum actual per-model costs from results
+        const totalCost = results.reduce((sum, r) => sum + (r?._cost || 0), 0);
+        await logService.logEvent(jobId, 'GENERATION_DONE', failCount === 0 ? 'SUCCESS' : 'PARTIAL_SUCCESS', `Generated ${successCount}, Failed ${failCount}`, { successCount, failCount, costEstimate: parseFloat(totalCost.toFixed(4)) });
 
         await prisma.designJob.update({
             where: { id: jobId },

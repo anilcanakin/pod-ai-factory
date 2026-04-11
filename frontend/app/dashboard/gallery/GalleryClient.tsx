@@ -729,6 +729,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
     const [templates, setTemplates] = useState<Array<{ id: string; name: string; baseImagePath: string }>>([]);
     const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
     const [options, setOptions] = useState({ bgRemove: true, seo: true });
+    const [bgModel, setBgModel] = useState<'birefnet' | 'bria' | 'pixelcut'>('birefnet');
 
     useEffect(() => {
         fetch('/api/mockups/templates', { credentials: 'include' })
@@ -749,6 +750,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                     imageId: image.id,
                     imageUrl: image.imageUrl.startsWith('http') ? image.imageUrl : `${window.location.origin}/${image.imageUrl}`,
                     templateIds: selectedTemplateIds,
+                    bgModel,
                     options
                 })
             });
@@ -763,13 +765,17 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
         }
     };
 
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+    const resolveUrl = (p: string) =>
+        p?.startsWith('http') ? p : `${API_BASE}/${p?.startsWith('/') ? p.slice(1) : p}`;
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const steps = results ? (results.steps as any) : null;
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
             <div
-                className="bg-[#111827] border border-slate-700/60 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
+                className="bg-[#111827] border border-slate-700/60 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-y-auto"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
@@ -805,18 +811,38 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pipeline Steps</p>
 
                         {/* BG Remove */}
-                        <label className="flex items-center gap-3 p-3 bg-slate-800/40 rounded-xl border border-slate-700/40 cursor-pointer hover:border-purple-500/30 transition-colors">
-                            <input
-                                type="checkbox"
-                                checked={options.bgRemove}
-                                onChange={e => setOptions(o => ({ ...o, bgRemove: e.target.checked }))}
-                                className="w-4 h-4 accent-purple-500"
-                            />
-                            <div>
-                                <p className="text-sm font-semibold text-white">✂ Background Removal</p>
-                                <p className="text-xs text-slate-400">Uses BiRefNet — result feeds into mockups & SEO</p>
-                            </div>
-                        </label>
+                        <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/40 space-y-2">
+                            <label className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
+                                <input
+                                    type="checkbox"
+                                    checked={options.bgRemove}
+                                    onChange={e => setOptions(o => ({ ...o, bgRemove: e.target.checked }))}
+                                    className="w-4 h-4 accent-purple-500"
+                                />
+                                <div>
+                                    <p className="text-sm font-semibold text-white">✂ Background Removal</p>
+                                    <p className="text-xs text-slate-400">Result feeds into mockups & SEO</p>
+                                </div>
+                            </label>
+                            {options.bgRemove && (
+                                <div className="ml-7 flex gap-2">
+                                    {(['birefnet', 'bria', 'pixelcut'] as const).map(m => (
+                                        <button
+                                            key={m}
+                                            onClick={() => setBgModel(m)}
+                                            className={cn(
+                                                'text-[10px] px-2 py-1 rounded border transition-colors',
+                                                bgModel === m
+                                                    ? 'bg-purple-600/20 border-purple-500/40 text-purple-400'
+                                                    : 'bg-slate-800 border-slate-700 text-slate-500 hover:border-slate-500'
+                                            )}
+                                        >
+                                            {m === 'birefnet' ? 'BiRefNet (Free)' : m === 'bria' ? 'Bria Pro' : 'Pixelcut'}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
 
                         {/* Template picker */}
                         <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/40 space-y-2">
@@ -825,7 +851,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                             {templates.length === 0 ? (
                                 <p className="text-xs text-slate-500 italic">No templates found. Upload in the Mockups page first.</p>
                             ) : (
-                                <div className="grid grid-cols-4 gap-2 max-h-36 overflow-y-auto custom-scrollbar">
+                                <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
                                     {templates.map(t => (
                                         <button
                                             key={t.id}
@@ -841,10 +867,10 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                                         >
                                             {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img
-                                                src={t.baseImagePath?.startsWith('http') ? t.baseImagePath : `/api/mockups/templates/${t.id}/preview`}
+                                                src={resolveUrl(t.baseImagePath)}
                                                 alt={t.name}
                                                 className="w-full h-full object-cover"
-                                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                                             />
                                             {selectedTemplateIds.includes(t.id) && (
                                                 <div className="absolute inset-0 bg-purple-600/30 flex items-center justify-center">

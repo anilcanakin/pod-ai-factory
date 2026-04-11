@@ -45,7 +45,7 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
 }
 
 // Middleware
-app.use(cors({ origin: 'http://localhost:3001', credentials: true }));
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3001', credentials: true }));
 app.use(cookieParser());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -242,10 +242,10 @@ app.get('/api/dashboard', async (req, res) => {
         select: { id: true, imageUrl: true, performanceScore: true, jobId: true }
       }),
 
-      // Average generation time (from logs)
-      prisma.jobLog.findMany({
-        where: { eventType: 'GENERATION_DONE', createdAt: { gte: startOf24h } },
-        select: { data: true }
+      // Average generation time — COMPLETED jobs in last 24h (updatedAt - createdAt)
+      prisma.designJob.findMany({
+        where: { status: 'COMPLETED', updatedAt: { gte: startOf24h } },
+        select: { createdAt: true, updatedAt: true }
       }),
 
       // Weekly images per day (last 7 days)
@@ -302,7 +302,12 @@ app.get('/api/dashboard', async (req, res) => {
       }),
       topApproved,
       weeklyStats,
-      avgGenerationTime: null // placeholder — needs timestamp tracking to compute
+      avgGenerationTime: avgTimeLogs.length > 0
+        ? Math.round(
+            avgTimeLogs.reduce((sum, j) => sum + (new Date(j.updatedAt) - new Date(j.createdAt)), 0)
+            / avgTimeLogs.length / 1000
+          )
+        : null, // seconds; null when no completed jobs in last 24h
     });
   } catch (err) {
     console.error('Dashboard error:', err);

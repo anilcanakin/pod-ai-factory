@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
-const { processAsset } = require('../queues/asset.worker');
 const { assetQueue } = require('../queues/index');
 
 const prisma = new PrismaClient();
@@ -18,7 +17,7 @@ router.post('/run', async (req, res) => {
             return res.status(400).json({ error: 'Only APPROVED images can enter the pipeline.' });
         }
 
-        console.log(`[Pipeline] Starting for image: ${imageId} via BullMQ`);
+        console.log('[API] İşi Redis kuyruğuna fırlatıyor. Kuyruk:', assetQueue.name, 'Job: processAsset | imageId:', imageId);
         await assetQueue.add('processAsset', { imageId }, {
             attempts: 3,
             backoff: { type: 'exponential', delay: 2000 }
@@ -67,6 +66,7 @@ router.post('/run-job/:jobId', async (req, res) => {
 
             try {
                 // Enqueue to BullMQ instead of processing synchronously
+                console.log('[API] İşi Redis kuyruğuna fırlatıyor. Kuyruk:', assetQueue.name, 'Job: processAsset | imageId:', image.id);
                 await assetQueue.add('processAsset', { imageId: image.id }, {
                     attempts: 3,
                     backoff: { type: 'exponential', delay: 2000 }

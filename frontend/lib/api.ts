@@ -1,7 +1,7 @@
-// Central API client - all calls proxy to Express :3000 via Next.js rewrites
-
-// If running locally, we want to hit the Next.js API route (/api) which is rewritten to the backend on :3000.
-// This avoids CORS issues. In production it can pointing to a different API origin.
+// Central API client
+// NEXT_PUBLIC_API_BASE_URL=http://localhost:3001 ise tüm istekler doğrudan backend'e gider (cross-origin).
+// Backend'deki CORS ayarı http://localhost:3000'e izin vermelidir.
+// NEXT_PUBLIC_API_BASE_URL tanımsız ise relative '/api' kullanılır (Next.js proxy gerektirir).
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL !== undefined
     ? process.env.NEXT_PUBLIC_API_BASE_URL
     : '';

@@ -72,6 +72,7 @@ async function generateMockup(masterFileUrl, imageId, templateId) {
 }
 
 async function processMockups(job) {
+    console.log('[MockupWorker] İş kuyruktan yakalandı! JobID:', job.id, '| imageId:', job.data.imageId);
     const { imageId } = job.data;
 
     try {
@@ -107,10 +108,32 @@ async function processMockups(job) {
     }
 }
 
-const mockupWorker = new Worker('mockup_render', processMockups, { connection: redisConnection });
+const mockupWorker = new Worker('mockup-generation', processMockups, {
+    connection: redisConnection,
+    concurrency: 2,
+});
+
+mockupWorker.on('active', (job) => {
+    console.log(`[MockupWorker] ▶  İş başladı  | jobId=${job.id} | imageId=${job.data.imageId}`);
+});
+
+mockupWorker.on('completed', (job, result) => {
+    const count = Array.isArray(result) ? result.length : 0;
+    console.log(`[MockupWorker] ✓  İş tamamlandı | jobId=${job.id} | imageId=${job.data.imageId} | mockupCount=${count}`);
+});
 
 mockupWorker.on('failed', (job, err) => {
-    console.error(`Job ${job.id} failed with error ${err.message}`);
+    console.error(`[MockupWorker] ✗  İş başarısız | jobId=${job?.id} | imageId=${job?.data?.imageId} | hata=${err.message}`);
 });
+
+mockupWorker.on('stalled', (jobId) => {
+    console.warn(`[MockupWorker] ⚠  İş takıldı (stalled) | jobId=${jobId}`);
+});
+
+mockupWorker.on('error', (err) => {
+    console.error('[MockupWorker] Worker hatası:', err.message);
+});
+
+console.log('[MockupWorker] ✔  Kuyruk dinleniyor → mockup-generation');
 
 module.exports = { mockupWorker, processMockups };

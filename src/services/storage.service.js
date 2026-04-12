@@ -40,17 +40,24 @@ async function uploadToStorage(localFilePath, storagePath) {
 }
 
 /**
- * Upload from URL (download then upload)
+ * Upload from URL (download then upload to Supabase for permanent hosting)
  */
 async function uploadUrlToStorage(imageUrl, storagePath) {
     const fetch = require('node-fetch');
     const response = await fetch(imageUrl);
+
+    if (!response.ok) {
+        throw new Error(`[Storage] Failed to fetch image from URL (${response.status}): ${imageUrl}`);
+    }
+
+    // Detect real content type from response headers instead of hardcoding 'image/png'
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
     const buffer = await response.buffer();
 
     const { data, error } = await supabase.storage
         .from(BUCKET)
         .upload(storagePath, buffer, {
-            contentType: 'image/png',
+            contentType,
             upsert: true
         });
 

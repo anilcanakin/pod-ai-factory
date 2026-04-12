@@ -4,6 +4,7 @@ const { fal } = require('@fal-ai/client');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { logNotification } = require('./notification.routes');
+const { uploadUrlToStorage } = require('../services/storage.service');
 
 fal.config({ 
     credentials: process.env.FAL_API_KEY || process.env.FAL_KEY 
@@ -57,6 +58,15 @@ router.post('/remove-bg', async (req, res) => {
             : model === 'pixelcut' ? 'Pixelcut'
             : 'BiRefNet';
 
+        // Upload to Supabase for permanent hosting (FAL CDN URLs expire)
+        let permanentUrl = outputUrl;
+        try {
+            const storagePath = `bg-removed/${Date.now()}_${Math.random().toString(36).slice(2)}.png`;
+            permanentUrl = await uploadUrlToStorage(outputUrl, storagePath);
+        } catch (uploadErr) {
+            console.warn('[Remove BG] Supabase upload failed, using FAL CDN URL:', uploadErr.message);
+        }
+
         logNotification(workspaceId, 'success', `Background removed — ${modelLabel}`, { model: modelLabel });
 
         // Find or create a "Processed Images" job for this workspace
@@ -81,7 +91,7 @@ router.post('/remove-bg', async (req, res) => {
                 variantType: 'bg_removed',
                 promptUsed: `BG Remove - ${modelLabel}`,
                 engine: 'bg_remove',
-                imageUrl: outputUrl,
+                imageUrl: permanentUrl,
                 status: 'COMPLETED',
                 isApproved: true,
                 cost: model === 'bria' ? 0.018 : 0,
@@ -89,7 +99,7 @@ router.post('/remove-bg', async (req, res) => {
         });
 
         res.json({
-            url: outputUrl,
+            url: permanentUrl,
             model: modelLabel,
             savedImageId: savedImage.id
         });
@@ -132,6 +142,15 @@ router.post('/upscale', async (req, res) => {
             return res.status(500).json({ error: 'No output image returned from model' });
         }
 
+        // Upload to Supabase for permanent hosting (FAL CDN URLs expire)
+        let permanentUrl = outputUrl;
+        try {
+            const storagePath = `upscaled/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+            permanentUrl = await uploadUrlToStorage(outputUrl, storagePath);
+        } catch (uploadErr) {
+            console.warn('[Upscale] Supabase upload failed, using FAL CDN URL:', uploadErr.message);
+        }
+
         // Find or create a "Processed Images" job for this workspace
         let processedJob = await prisma.designJob.findFirst({
             where: { workspaceId: req.workspaceId, mode: 'processed' }
@@ -154,7 +173,7 @@ router.post('/upscale', async (req, res) => {
                 variantType: 'upscaled',
                 promptUsed: `Upscale - AuraSR v2 (${scaleFactor}x)`,
                 engine: 'upscale',
-                imageUrl: outputUrl,
+                imageUrl: permanentUrl,
                 status: 'COMPLETED',
                 isApproved: true,
                 cost: 0,
@@ -162,7 +181,7 @@ router.post('/upscale', async (req, res) => {
         });
 
         res.json({
-            url: outputUrl,
+            url: permanentUrl,
             scale: `${scaleFactor}x`,
             model: 'AuraSR v2',
             savedImageId: savedImage.id

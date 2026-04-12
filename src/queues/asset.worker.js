@@ -53,6 +53,7 @@ async function createNormalizedMaster(imageUrl, imageId) {
 }
 
 async function processAsset(job) {
+    console.log('[AssetWorker] İş kuyruktan yakalandı! JobID:', job.id, '| imageId:', job.data.imageId);
     const { imageId } = job.data;
     if (!imageId) {
         console.warn('[AssetWorker] Job data missing imageId, skipping.');
@@ -144,10 +145,32 @@ async function processAsset(job) {
     }
 }
 
-const worker = new Worker('asset-processing', processAsset, { connection: redisConnection });
+const worker = new Worker('asset-processing', processAsset, {
+    connection: redisConnection,
+    concurrency: 2,
+});
+
+worker.on('active', (job) => {
+    console.log(`[AssetWorker] ▶  İş başladı  | jobId=${job.id} | imageId=${job.data.imageId}`);
+});
+
+worker.on('completed', (job, result) => {
+    const mockupCount = result?.mockups ?? 0;
+    console.log(`[AssetWorker] ✓  İş tamamlandı | jobId=${job.id} | imageId=${job.data.imageId} | mockups=${mockupCount}`);
+});
 
 worker.on('failed', (job, err) => {
-    console.error(`Job ${job.id} failed with error ${err.message}`);
+    console.error(`[AssetWorker] ✗  İş başarısız | jobId=${job?.id} | imageId=${job?.data?.imageId} | hata=${err.message}`);
 });
+
+worker.on('stalled', (jobId) => {
+    console.warn(`[AssetWorker] ⚠  İş takıldı (stalled) | jobId=${jobId}`);
+});
+
+worker.on('error', (err) => {
+    console.error('[AssetWorker] Worker hatası:', err.message);
+});
+
+console.log('[AssetWorker] ✔  Kuyruk dinleniyor → asset-processing');
 
 module.exports = { worker, processAsset };

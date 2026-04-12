@@ -45,7 +45,13 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
 }
 
 // Middleware
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3001', credentials: true }));
+// CORS_ORIGIN env'de set edilmemişse frontend'in çalıştığı :3000'e izin ver.
+// PRODUCTION: CORS_ORIGIN env değişkenine gerçek frontend URL'ini set et.
+// Frontend :3000'de, backend :3001'de çalışır.
+// CORS_ORIGIN set edilmemişse frontend'in varsayılan portuna izin ver.
+const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3001';
+app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
+console.log(`[CORS] İzin verilen origin: ${ALLOWED_ORIGIN}`);
 app.use(cookieParser());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -76,12 +82,12 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'POD AI Factory is running' });
 });
 
-// ─── Fal health check cache (30s TTL) ─────────────────────────
+// ─── Fal health check cache (60s TTL) ─────────────────────────
 let falStatusCache = { result: null, ts: 0 };
 
 async function checkFalHealth() {
   const now = Date.now();
-  if (falStatusCache.result && (now - falStatusCache.ts) < 30000) {
+  if (falStatusCache.result && (now - falStatusCache.ts) < 60000) {
     return falStatusCache.result;
   }
 
@@ -93,46 +99,48 @@ async function checkFalHealth() {
   }
 
   try {
-    // Lightweight probe: send a minimal prompt with num_images=1 but tiny payload
-    // This validates auth + connectivity without generating a real image cost
-    // We use a 5s timeout to avoid blocking the response
+    // Lightweight auth probe: GET a non-existent request from the queue endpoint.
+    // → 404 means key is valid (request not found but auth passed) → online
+    // → 401/403 means key is invalid → auth_error
+    // → network error → offline
+    // Bu yöntem hiç görüntü üretmez, para harcamaz, ~200ms sürer.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
-    const resp = await fetch('https://fal.run/fal-ai/flux/dev', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${falKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ prompt: 'test', image_size: 'square_hd', num_images: 1 }),
-      signal: controller.signal
-    });
+    const resp = await fetch(
+      'https://queue.fal.run/fal-ai/flux/dev/requests/health-probe-' + Date.now(),
+      {
+        method: 'GET',
+        headers: { 'Authorization': `Key ${falKey}` },
+        signal: controller.signal
+      }
+    );
     clearTimeout(timeout);
 
-    if (resp.status === 200) {
-      const r = { status: 'online', message: null };
-      falStatusCache = { result: r, ts: now };
-      return r;
-    } else if (resp.status === 401 || resp.status === 403) {
+    if (resp.status === 401 || resp.status === 403) {
+      // Açık auth hatası — key geçersiz
       const body = await resp.json().catch(() => ({}));
       const r = { status: 'auth_error', message: body.message || body.error || `HTTP ${resp.status}` };
       falStatusCache = { result: r, ts: now };
       return r;
-    } else if (resp.status === 422) {
-      // 422 means auth passed but payload issue — key works
+    } else if (resp.status < 500) {
+      // 200, 404, 405, 422 vb. — FAL sunucusu yanıt verdi, key geçti → online
       const r = { status: 'online', message: null };
       falStatusCache = { result: r, ts: now };
       return r;
     } else {
+      // 5xx — FAL sunucu hatası
       const body = await resp.json().catch(() => ({}));
-      const r = { status: 'payload_error', message: body.message || body.error || `HTTP ${resp.status}` };
+      const r = { status: 'offline', message: body.message || body.error || `HTTP ${resp.status}` };
       falStatusCache = { result: r, ts: now };
       return r;
     }
   } catch (err) {
     const isTimeout = err.name === 'AbortError';
-    const r = { status: 'offline', message: isTimeout ? 'Connection timeout (5s)' : err.message };
+    const r = {
+      status: 'offline',
+      message: isTimeout ? 'FAL bağlantısı zaman aşımına uğradı (8s)' : err.message
+    };
     falStatusCache = { result: r, ts: now };
     return r;
   }
@@ -149,16 +157,20 @@ app.get('/api/status', async (req, res) => {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
+    // workspaceId null ise spend sorgularını atla
+    const spendWhere = workspaceId
+      ? { job: { workspaceId }, createdAt: { gte: startOfDay } }
+      : { createdAt: { gte: startOfDay } };
+    const monthSpendWhere = workspaceId
+      ? { job: { workspaceId }, createdAt: { gte: startOfMonth } }
+      : { createdAt: { gte: startOfMonth } };
+
     const [falHealth, spendResult, monthSpendResult] = await Promise.all([
       checkFalHealth(),
-      prisma.image.aggregate({
-        where: { job: { workspaceId }, createdAt: { gte: startOfDay } },
-        _sum: { cost: true }
-      }).catch(() => ({ _sum: { cost: 0 } })),
-      prisma.image.aggregate({
-        where: { job: { workspaceId }, createdAt: { gte: startOfMonth } },
-        _sum: { cost: true }
-      }).catch(() => ({ _sum: { cost: 0 } }))
+      prisma.image.aggregate({ where: spendWhere, _sum: { cost: true } })
+        .catch(() => ({ _sum: { cost: 0 } })),
+      prisma.image.aggregate({ where: monthSpendWhere, _sum: { cost: true } })
+        .catch(() => ({ _sum: { cost: 0 } }))
     ]);
 
     const dailySpend = parseFloat(spendResult._sum.cost || 0);
@@ -174,10 +186,23 @@ app.get('/api/status', async (req, res) => {
       dailyCap: parseFloat(process.env.DAILY_BUDGET_CAP || '5.00'),
       useVision: process.env.USE_VISION === 'true',
       hasOpenAIKey: !!process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 5 && process.env.OPENAI_API_KEY !== 'your_openai_api_key',
-      currentJob: null
+      currentJob: null,
+      workspaceId: workspaceId || null
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[/api/status] Hata:', err.message);
+    // 500 yerine degraded response dön — frontend çökmez
+    res.json({
+      fal: 'offline',
+      falMessage: `Status endpoint hatası: ${err.message}`,
+      dailySpend: 0,
+      estimatedMonthlyCost: 0,
+      dailyCap: parseFloat(process.env.DAILY_BUDGET_CAP || '5.00'),
+      useVision: false,
+      hasOpenAIKey: false,
+      currentJob: null,
+      workspaceId: null
+    });
   }
 });
 
@@ -352,5 +377,16 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+
+  // BullMQ Worker'larını backend ile birlikte başlat.
+  // Bu require() çağrıları Worker nesnelerini instantiate eder ve
+  // Redis kuyruklarını dinlemeye başlar.
+  try {
+    require('./queues/asset.worker');
+    require('./queues/mockup.worker');
+    console.log('[Workers] AssetWorker + MockupWorker başlatıldı.');
+  } catch (err) {
+    console.error('[Workers] Worker başlatma hatası:', err.message);
+  }
 });
 

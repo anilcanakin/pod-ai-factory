@@ -7,6 +7,7 @@ const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
+const { assetQueue } = require('../queues/index');
 
 const riskService = require('../services/risk.service');
 const { VISION_SCHEMA } = require('../services/vision.service');
@@ -14,6 +15,17 @@ const { VISION_SCHEMA } = require('../services/vision.service');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const prisma = new PrismaClient();
+
+// Canonical POD style list — fallback when VISION_SCHEMA.style has no .enum
+const FALLBACK_STYLE_OPTIONS = [
+    'vintage distressed', 'minimalist line art', 'neon cyberpunk',
+    'watercolor soft', 'bold retro', 'grunge punk', 'kawaii cute',
+    'art deco', 'other_pod_style'
+];
+
+function getStyleOptions() {
+    return VISION_SCHEMA.json_schema?.schema?.properties?.style?.enum ?? FALLBACK_STYLE_OPTIONS;
+}
 
 // POST /api/ideas/generate
 // Accepts a CSV of top EverBee/eRank keywords and generates exactly 20 ideas
@@ -39,8 +51,8 @@ router.post('/generate', upload.single('file'), async (req, res) => {
         });
 
         // Limit keyword input sample to OpenAI to save tokens
-        const sampleKeywords = keywords.slice(0, 50).join(', ');
-        const styleOptions = VISION_SCHEMA.json_schema.schema.properties.style.enum;
+        const sampleKeywords = (keywords || []).slice(0, 50).join(', ');
+        const styleOptions = getStyleOptions();
 
         // Let's ask OpenAI to generate exactly 20 Ideas
         const prompt = `You are a top-tier POD (Print-On-Demand) designer. Using these trendy keywords: [${sampleKeywords}], generate exactly 20 unique design ideas. 
@@ -137,6 +149,7 @@ router.post('/:id/status', async (req, res) => {
 
 // POST /api/ideas/:id/factory
 router.post('/:id/factory', async (req, res) => {
+    console.log('[Ideas/Factory] İstek alındı. ideaId:', req.params.id, '| workspaceId:', req.workspaceId);
     try {
         const { id } = req.params;
 
@@ -159,9 +172,9 @@ router.post('/:id/factory', async (req, res) => {
                 keyword: idea.mainKeyword,
             }
         });
+        console.log('[Ideas/Factory] DesignJob oluşturuldu:', job.id);
 
         // 2. Synthesize Vision Data
-        // Skipping physical OCR / Google Vision and mocking perfect interpretation.
         const synthesizedVision = {
             style: idea.styleEnum,
             niche_guess: idea.niche,
@@ -181,16 +194,40 @@ router.post('/:id/factory', async (req, res) => {
             }
         });
 
-        // 3. Mark Idea as factory sent
+        // 3. Image kaydı oluştur (APPROVED) ve AssetWorker kuyruğuna ekle
+        //    Worker bu image'ı yakalar, BG remove + mockup + SEO işlemlerini yapar.
+        const prompt = `${idea.styleEnum} style POD design: ${idea.hook} — niche: ${idea.niche}, keyword: ${idea.mainKeyword}`;
+        const image = await prisma.image.create({
+            data: {
+                jobId: job.id,
+                variantType: 'idea_generated',
+                promptUsed: prompt,
+                engine: 'idea_pipeline',
+                imageUrl: '',           // FAL entegrasyonu eklendiğinde doldurulacak
+                status: 'APPROVED',
+                isApproved: true,
+                cost: 0,
+            }
+        });
+        console.log('[Ideas/Factory] Image kaydı oluşturuldu:', image.id);
+
+        console.log('[API] İşi Redis kuyruğuna fırlatıyor. Kuyruk:', assetQueue.name, '| imageId:', image.id);
+        await assetQueue.add('processAsset', { imageId: image.id }, {
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 2000 }
+        });
+        console.log('[Ideas/Factory] AssetWorker kuyruğuna eklendi.');
+
+        // 4. Mark Idea as factory sent
         await prisma.idea.update({
             where: { id },
             data: { status: 'FACTORY_SENT' }
         });
 
-        res.json({ message: "Idea forwarded to Factory successfully.", jobId: job.id, visionData: synthesizedVision });
+        res.json({ message: "Idea forwarded to Factory successfully.", jobId: job.id, imageId: image.id, visionData: synthesizedVision });
 
     } catch (err) {
-        console.error('Send to factory error:', err);
+        console.error('[Ideas/Factory] HATA:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -204,7 +241,7 @@ router.post('/generate-bulk', async (req, res) => {
             return res.status(400).json({ error: 'niche is required' });
         }
 
-        const styleOptions = VISION_SCHEMA.json_schema.schema.properties.style.enum;
+        const styleOptions = getStyleOptions();
 
         const { getIdeasContext } = require('../services/knowledge-context.service');
         const ideasContext = await getIdeasContext(req.workspaceId || 'default-workspace');

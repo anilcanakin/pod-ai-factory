@@ -140,10 +140,23 @@ class GenerationService {
                     job.workspaceId
                 );
 
+                // Upload FAL CDN URL to Supabase for permanent hosting.
+                // FAL CDN URLs are temporary; storing them directly causes broken/unviewable images.
+                let permanentUrl = falResponse.image_url;
+                try {
+                    const { uploadUrlToStorage } = require('./storage.service');
+                    const storagePath = `generated/${img.id}_${Date.now()}.jpg`;
+                    permanentUrl = await uploadUrlToStorage(falResponse.image_url, storagePath);
+                    console.log(`[Generation] Uploaded to Supabase: ${permanentUrl}`);
+                } catch (uploadErr) {
+                    // Non-fatal: fall back to FAL CDN URL — image will still display until URL expires
+                    console.warn(`[Generation] Supabase upload failed for image ${img.id}, using FAL CDN URL: ${uploadErr.message}`);
+                }
+
                 const updated = await prisma.image.update({
                     where: { id: img.id },
                     data: {
-                        imageUrl: falResponse.image_url,
+                        imageUrl: permanentUrl,
                         seed: falResponse.seed,
                         rawResponse: falResponse.raw_response,
                         engine: modelId,

@@ -24,7 +24,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage,
-    limits: { fileSize: 500 * 1024 * 1024 } // 500MB
+    limits: { fileSize: 1000 * 1024 * 1024 } // 1GB (Ağır strateji videoları için)
 });
 
 // ─── GET /api/brain — List all corporate memories ─────────────────────────────
@@ -136,6 +136,58 @@ router.post('/add-text', async (req, res) => {
 
         res.json(result);
     } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ─── POST /api/brain/ingest-social — Social Media Intelligence ───────────
+router.post('/ingest-social', upload.single('image'), async (req, res) => {
+    try {
+        const { title, workspaceId } = req.body;
+        const imageFile = req.file;
+
+        if (!imageFile) return res.status(400).json({ error: 'No image file provided' });
+
+        const localBrainService = require('../services/brain.service');
+        const memory = await localBrainService.ingestSocialProof(
+            workspaceId || req.workspaceId || 'default-workspace',
+            imageFile.path,
+            title || `Social Proof - ${path.basename(imageFile.path)}`
+        );
+
+        res.json({
+            message: 'Social intelligence captured successfully',
+            memoryId: memory.id,
+            analysis: memory.analysisResult
+        });
+    } catch (error) {
+        console.error('[Brain Routes] Social Ingestion Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ─── POST /api/brain/ingest-expert — Expert Subscription Signals ──────────
+router.post('/ingest-expert', upload.single('image'), async (req, res) => {
+    try {
+        const { title, workspaceId } = req.body;
+        const imageFile = req.file;
+
+        if (!imageFile) return res.status(400).json({ error: 'No image file provided' });
+
+        const localBrainService = require('../services/brain.service');
+        const memory = await localBrainService.ingestExpertInsight(
+            workspaceId || req.workspaceId || 'default-workspace',
+            imageFile.path,
+            title || `Expert Insight - ${path.basename(imageFile.path)}`
+        );
+
+        res.json({
+            message: 'Expert insight captured successfully',
+            memoryId: memory.id,
+            analysis: memory.analysisResult
+        });
+    } catch (error) {
+        console.error('[Brain Routes] Expert Ingestion Error:', error);
         res.status(500).json({ error: error.message });
     }
 });

@@ -7,6 +7,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { OpenAI } = require('openai');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const billingService = require('./billing.service');
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -103,6 +104,9 @@ OUTPUT FORMAT (JSON only, no markdown):
 }`;
 
             const result = await model.generateContent([prompt, ...imageParts]);
+            if (result.response.usageMetadata) {
+                billingService.logUsage('gemini', 'gemini-1.5-flash', result.response.usageMetadata, workspaceId, { feature: 'brain_video_legacy' }).catch(() => {});
+            }
             let text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
             const analysis = JSON.parse(text);
 
@@ -223,6 +227,9 @@ Be concise and focus on actionable Etsy/POD business insights.`
                             ]
                         }]
                     });
+                    if (response.usage) {
+                        billingService.logUsage('anthropic', 'claude-haiku-4-5', response.usage, workspaceId, { feature: 'brain_frame_analysis' }).catch(() => {});
+                    }
                     frameAnalyses.push(`[Frame ${i + 1}]: ${response.content[0].text}`);
                 } catch (err) {
                     console.warn(`[Brain] Frame ${i + 1} analysis failed:`, err.message);
@@ -256,6 +263,9 @@ Be specific and actionable. Focus on what can be immediately applied.`
             });
 
             const synthesis = synthesisResponse.content[0].text;
+            if (synthesisResponse.usage) {
+                billingService.logUsage('anthropic', 'claude-haiku-4-5', synthesisResponse.usage, workspaceId, { feature: 'brain_video_synthesis' }).catch(() => {});
+            }
 
             // 6. Save to CorporateMemory
             const category = categoryOverride || detectCategory(synthesis);
@@ -334,6 +344,9 @@ Be specific and immediately actionable.`
         });
 
         const synthesis = response.content[0].text;
+        if (response.usage) {
+            billingService.logUsage('anthropic', 'claude-haiku-4-5', response.usage, workspaceId, { feature: 'brain_text_analysis' }).catch(() => {});
+        }
 
         const resolvedCategory = category || detectCategory(synthesis);
         const embeddingText = `${title} ${synthesis.slice(0, 2000)}`;
@@ -387,6 +400,9 @@ ${synthesis.slice(0, 3000)}`
             });
 
             const seoExtract = checkResponse.content[0].text.trim();
+            if (checkResponse.usage) {
+                billingService.logUsage('anthropic', 'claude-haiku-4-5', checkResponse.usage, workspaceId, { feature: 'brain_seo_extract' }).catch(() => {});
+            }
             if (seoExtract === 'NONE' || seoExtract.length < 80) return false;
 
             const existing = await getKnowledge(workspaceId);

@@ -140,7 +140,7 @@ router.post('/get-variations', usageMiddleware, async (req, res) => {
 router.post('/generate', usageMiddleware, async (req, res) => {
     let jobId = null;
     try {
-        const { prompts, model = 'fal-ai/flux/dev', imageSize = 'square_hd', negativePrompt = '' } = req.body;
+        const { prompts, model, modelTier, imageSize = 'square_hd', negativePrompt = '' } = req.body;
 
         if (!prompts || !Array.isArray(prompts) || prompts.length === 0) {
             return res.status(400).json({ error: 'prompts must be a non-empty array of strings.' });
@@ -148,6 +148,10 @@ router.post('/generate', usageMiddleware, async (req, res) => {
 
         const workspaceId = req.workspaceId;
         if (!workspaceId) return res.status(401).json({ error: 'Authentication required.' });
+
+        // Resolve tier alias ("fast", "quality", "text", "vector") OR full model ID → canonical FAL endpoint
+        const { resolveModelId } = require('../services/generation.service');
+        const resolvedModel = resolveModelId(modelTier || model || 'quality');
 
         // Check concurrent job cap
         const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
@@ -173,14 +177,14 @@ router.post('/generate', usageMiddleware, async (req, res) => {
         jobId = job.id;
         await logService.logEvent(jobId, 'FACTORY_GENERATION_START', 'SUCCESS', `Starting generation of ${prompts.length} images.`);
 
-        // 2. Create Image records (PENDING)
+        // 2. Create Image records (PENDING) — engine stores the resolved FAL model ID
         for (const prompt of prompts) {
             await prisma.image.create({
                 data: {
                     jobId,
                     variantType: 'prompt_based',
                     promptUsed: prompt,
-                    engine: model,
+                    engine: resolvedModel,
                     imageUrl: 'PENDING',
                     status: 'GENERATED'
                 }

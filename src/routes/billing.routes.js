@@ -67,6 +67,18 @@ router.get('/portal', async (req, res) => {
     }
 });
 
+// GET /api/billing/ai-spend — daily + monthly AI token spend (widget endpoint)
+router.get('/ai-spend', async (req, res) => {
+    try {
+        const workspaceId = req.workspaceId || null;
+        const stats = await billingService.getDetailedStats(workspaceId);
+        res.json(stats);
+    } catch (err) {
+        console.error('[Billing AI Spend]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // POST /api/billing/update-plan — manual plan update (dev/admin)
 router.post('/update-plan', async (req, res) => {
     try {

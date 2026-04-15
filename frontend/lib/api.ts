@@ -193,6 +193,33 @@ export const apiExport = {
 };
 
 // ─── Ideas ────────────────────────────────────────────────────
+export interface MarketScoring {
+    score: number;
+    scoreLabel: 'Excellent' | 'Good' | 'Moderate' | 'Challenging' | 'Poor';
+    strengths: string[];
+    risks: string[];
+    recommendation: string;
+}
+
+export interface MarketIntel {
+    keyword: string;
+    resultCount: number | null;
+    averagePrice: number | null;
+    competitionLevel: string;
+    estimatedMonthly: number | null;
+    trendTerms: string[];
+    pinterestTrends: string[];
+    strategy: string;
+    isFallback: boolean;
+}
+
+export interface IdeaMarketData {
+    intel: MarketIntel;
+    scoring: MarketScoring;
+    validatedAt: string;
+    keyword: string;
+}
+
 export interface Idea {
     id: string;
     niche: string;
@@ -201,6 +228,8 @@ export interface Idea {
     styleEnum: string;
     status: string;
     trademarkRisk?: boolean;
+    marketScore?: number | null;
+    marketData?: IdeaMarketData | null;
 }
 
 export const apiIdeas = {
@@ -218,12 +247,19 @@ export const apiIdeas = {
             method: 'POST',
             body: JSON.stringify({ status }),
         }),
-    sendToFactory: (id: string) =>
-        request<{ jobId: string }>(`/ideas/${id}/factory`, { method: 'POST' }),
+    sendToFactory: (id: string, modelTier?: 'fast' | 'quality' | 'text' | 'vector') =>
+        request<{ jobId: string }>(`/ideas/${id}/factory`, {
+            method: 'POST',
+            body: JSON.stringify({ modelTier }),
+        }),
     generateBulk: (niche: string) =>
         request<{ message: string; ideas: Idea[] }>('/ideas/generate-bulk', {
             method: 'POST',
             body: JSON.stringify({ niche }),
+        }),
+    validate: (id: string) =>
+        request<{ idea: Idea; scoring: MarketScoring; intel: MarketIntel }>(`/ideas/${id}/validate`, {
+            method: 'POST',
         }),
 };
 
@@ -340,6 +376,15 @@ export const apiMockups = {
 };
 
 // ─── SEO Generator ────────────────────────────────────────────
+export interface MarketData {
+    resultCount: number | null;
+    averagePrice: number | null;
+    competitionLevel: 'Düşük' | 'Orta' | 'Yüksek' | 'Çok Yüksek' | 'Bilinmiyor';
+    estimatedMonthly: number | null;
+    trendTerms?: string[];
+    pinterestTrends?: string[];
+}
+
 export interface EtsySEO {
     title: string;
     description: string;
@@ -348,6 +393,7 @@ export interface EtsySEO {
     topKeywords?: string[];
     etsySuggestions?: string[];
     dataSource?: string;
+    marketData?: MarketData | null;
 }
 
 export const apiSeo = {

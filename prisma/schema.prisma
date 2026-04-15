@@ -191,6 +191,11 @@ model Idea {
   iconFamily  Json
   styleEnum   String
   status      String    @default("PENDING")
+
+  // ─── Market Validation (Sprint 6) ────────────────
+  marketScore Int?      // 1-100 Profitability Score
+  marketData  Json?     // { intel: {...}, scoring: {...}, validatedAt: ... }
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -272,6 +277,7 @@ model CorporateMemory {
   workspaceId      String
   workspace        Workspace @relation(fields: [workspaceId], references: [id])
   type             String    // "VIDEO_TUTORIAL", "MEETING", "ARTICLE", "OBSERVATION"
+  sourceType       String?   @default("Market") // "Expert", "Market", "Social"
   title            String
   content          String    @db.Text
   category         String    @default("general_etsy")
@@ -282,4 +288,16 @@ model CorporateMemory {
   isActive         Boolean   @default(true)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+}
+
+model ApiUsage {
+  id          String   @id @default(uuid())
+  workspaceId String?
+  provider    String   // "gemini", "openai", "fal", "remove_bg"
+  modelName   String?
+  inputTokens Int      @default(0)
+  outputTokens Int     @default(0)
+  cost        Decimal  @default(0.000000) @db.Decimal(12, 6)
+  metadata    Json?    // { jobId, imageId, feature }
+  createdAt   DateTime @default(now())
 }

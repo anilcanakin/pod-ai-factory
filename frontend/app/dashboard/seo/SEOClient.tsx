@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { apiSeo, type EtsySEO } from '@/lib/api';
+import { apiSeo, type EtsySEO, type MarketData } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
-    Upload, X, Sparkles, Loader2, Copy, Check, Tag, AlertTriangle
+    Upload, X, Sparkles, Loader2, Copy, Check, Tag, AlertTriangle,
+    TrendingUp, DollarSign, BarChart2, ShoppingCart, RefreshCw
 } from 'lucide-react';
 
 export function SEOClient() {
@@ -17,6 +18,7 @@ export function SEOClient() {
     const [copied, setCopied] = useState<string | null>(null);
     const [publishing, setPublishing] = useState(false);
     const [publishResult, setPublishResult] = useState<string | null>(null);
+    const [variationHint, setVariationHint] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const processFile = (file: File) => {
@@ -55,19 +57,35 @@ export function SEOClient() {
         if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
     };
 
-    const generate = async () => {
+    const generate = async (hint?: string) => {
         if (!sourceImage) return toast.error('Please upload an image first.');
         setIsGenerating(true);
         setResult(null);
         try {
-            const data = await apiSeo.generate(sourceImage, keyword || undefined);
+            const kw = hint ? `${keyword} ${hint}`.trim() : keyword || undefined;
+            const data = await apiSeo.generate(sourceImage, kw);
             setResult(data);
+            setVariationHint(null);
             toast.success('SEO content generated!');
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Generation failed');
         } finally {
             setIsGenerating(false);
         }
+    };
+
+    const VARIATION_HINTS = [
+        'focus on gift angle',
+        'emphasize vintage/retro style',
+        'highlight unisex appeal',
+        'use humorous tone',
+        'target premium buyer',
+    ];
+
+    const regenerateWithAngle = () => {
+        const hint = VARIATION_HINTS[Math.floor(Math.random() * VARIATION_HINTS.length)];
+        setVariationHint(hint);
+        generate(hint);
     };
 
     const copyField = async (text: string, field: string) => {
@@ -185,7 +203,7 @@ export function SEOClient() {
                     </div>
 
                     <button
-                        onClick={generate}
+                        onClick={() => generate()}
                         disabled={!sourceImage || isGenerating}
                         className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-white px-4 py-3 rounded-[10px] font-medium text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
@@ -207,6 +225,25 @@ export function SEOClient() {
                                     : <><Copy className="w-4 h-4" /> Copy All (Etsy format)</>
                                 }
                             </button>
+
+                            {/* Farklı Açıyla Yeniden Üret */}
+                            <button
+                                onClick={regenerateWithAngle}
+                                disabled={isGenerating}
+                                className="w-full flex items-center justify-center gap-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 border border-purple-500/30 px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all disabled:opacity-40"
+                                title="Farklı bir strateji açısıyla yeniden üret"
+                            >
+                                {isGenerating
+                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Üretiliyor…</>
+                                    : <><RefreshCw className="w-4 h-4" /> Farklı Açıyla Yeniden Üret</>
+                                }
+                            </button>
+                            {variationHint && (
+                                <p className="text-[10px] text-purple-400/70 text-center -mt-1">
+                                    Uygulanan strateji: <em>{variationHint}</em>
+                                </p>
+                            )}
+
                             <button
                                 onClick={handlePublishToEtsy}
                                 disabled={publishing || !result}
@@ -228,6 +265,49 @@ export function SEOClient() {
             {/* Results */}
             {result && (
                 <div className="space-y-4">
+
+                    {/* ── Market Intelligence Card ─────────────── */}
+                    {result.marketData && (
+                        <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 rounded-[12px] border border-indigo-500/20 overflow-hidden">
+                            <div className="px-4 py-3 border-b border-indigo-500/20 flex items-center gap-2">
+                                <TrendingUp className="w-4 h-4 text-indigo-400" />
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-300">Pazar İstihbaratı</span>
+                                <span className="text-[10px] text-indigo-400/60 ml-auto">Etsy canlı veri</span>
+                            </div>
+                            <div className="grid grid-cols-3 divide-x divide-indigo-500/20">
+                                {/* Rekabet */}
+                                <div className="p-4 text-center">
+                                    <BarChart2 className="w-5 h-5 text-indigo-400 mx-auto mb-1.5" />
+                                    <p className="text-xs text-indigo-300/70 mb-0.5">Rekabet</p>
+                                    <p className={cn(
+                                        'text-sm font-bold',
+                                        result.marketData.competitionLevel === 'Düşük'   ? 'text-emerald-400' :
+                                        result.marketData.competitionLevel === 'Orta'    ? 'text-yellow-400' :
+                                        result.marketData.competitionLevel === 'Yüksek'  ? 'text-orange-400' : 'text-red-400'
+                                    )}>{result.marketData.competitionLevel}</p>
+                                    {result.marketData.resultCount !== null && (
+                                        <p className="text-[9px] text-indigo-400/50 mt-0.5">{result.marketData.resultCount.toLocaleString()} listeleme</p>
+                                    )}
+                                </div>
+                                {/* Avg Fiyat */}
+                                <div className="p-4 text-center">
+                                    <DollarSign className="w-5 h-5 text-indigo-400 mx-auto mb-1.5" />
+                                    <p className="text-xs text-indigo-300/70 mb-0.5">Ort. Fiyat</p>
+                                    <p className="text-sm font-bold text-indigo-100">
+                                        {result.marketData.averagePrice !== null ? `$${result.marketData.averagePrice}` : '—'}
+                                    </p>
+                                </div>
+                                {/* Tahmini Satış */}
+                                <div className="p-4 text-center">
+                                    <ShoppingCart className="w-5 h-5 text-indigo-400 mx-auto mb-1.5" />
+                                    <p className="text-xs text-indigo-300/70 mb-0.5">Tahmini/Ay</p>
+                                    <p className="text-sm font-bold text-indigo-100">
+                                        {result.marketData.estimatedMonthly !== null ? `~${result.marketData.estimatedMonthly} adet` : '—'}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Live Etsy Data */}
                     {result.etsySuggestions && result.etsySuggestions.length > 0 && (

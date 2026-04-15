@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
 const { PrismaClient } = require('@prisma/client');
+const billingService = require('./billing.service');
 
 const prisma = new PrismaClient();
 
@@ -65,6 +66,9 @@ async function analyzeImage(base64Image, mimeType = 'image/jpeg') {
 
             const prompt = response.content[0].text.trim();
             console.log('[Vision] Provider: Anthropic Claude');
+            if (response.usage) {
+                billingService.logUsage('anthropic', 'claude-haiku-4-5', response.usage, null, { feature: 'vision_analyze' }).catch(() => {});
+            }
             return { prompt, isSynthetic: false, provider: 'anthropic' };
 
         } catch (err) {
@@ -93,6 +97,9 @@ async function analyzeImage(base64Image, mimeType = 'image/jpeg') {
 
             const prompt = result.response.text().trim();
             console.log('[Vision] Provider: Google Gemini');
+            if (result.response.usageMetadata) {
+                billingService.logUsage('gemini', 'gemini-2.0-flash', result.response.usageMetadata, null, { feature: 'vision_analyze' }).catch(() => {});
+            }
             return { prompt, isSynthetic: false, provider: 'gemini' };
 
         } catch (err) {

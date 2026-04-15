@@ -4,6 +4,7 @@ const redisConnection = require('../config/redis');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const safetyService = require('../services/safety.service');
 
 const prisma = new PrismaClient();
 
@@ -120,19 +121,49 @@ async function processAsset(job) {
         await prisma.mockup.deleteMany({ where: { imageId } });
         await prisma.sEOData.deleteMany({ where: { imageId } });
 
-        // 7. Update DB with all pipeline assets
+        // 7. LEGAL GUARD KONTROLÜ
+        const safety = await safetyService.validateLegalSafety(seoData);
+
+        if (!safety.isSafe) {
+            console.error(`[AssetWorker] 🚔 LEGAL GUARD UYARISI: Image ${imageId} ban riski taşıyor!`);
+            
+            // Eğer ihlal varsa: durumu 'FLAGGED' yap ve gerekçeyi yazarak iptal et
+            await prisma.image.update({
+                where: { id: imageId },
+                data: {
+                    masterFileUrl,
+                    status: 'FLAGGED',
+                    flagReason: safety.reason,
+                    seoData: { create: seoData },
+                    mockups: { create: mockupsData }
+                }
+            });
+
+            const taskService = require('../services/task.service');
+            await taskService.incrementTask('GENERATION');
+            
+            return { masterFileUrl, mockups: mockupsData.length, hasSeo: true, flagged: true, reason: safety.reason };
+        }
+
+        // 8. Update DB with all pipeline assets (PENDING_APPROVAL)
         await prisma.image.update({
             where: { id: imageId },
             data: {
                 masterFileUrl,
-                status: 'PROCESSED',
+                status: 'PENDING_APPROVAL',
+                flagReason: null,
                 seoData: { create: seoData },
                 mockups: { create: mockupsData }
             }
         });
 
-        console.log(`[AssetWorker] Successfully processed image ${imageId}`);
-        return { masterFileUrl, mockups: mockupsData.length, hasSeo: true };
+        console.log(`[AssetWorker] Successfully processed image ${imageId} -> PENDING_APPROVAL (Kalite Kontrol bekleniyor)`);
+        
+        // Increment Generation task progress
+        const taskService = require('../services/task.service');
+        await taskService.incrementTask('GENERATION');
+
+        return { masterFileUrl, mockups: mockupsData.length, hasSeo: true, drafted: false, pendingApproval: true };
 
     } catch (err) {
         console.error(`[AssetWorker] Error processing image ${imageId}:`, err);

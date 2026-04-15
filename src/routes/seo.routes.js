@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { expandKeywords, getGoogleTrends } = require('../services/keyword-research.service');
-const { getSeoContext } = require('../services/knowledge-context.service');
+const { getSeoContext, getVectorContext } = require('../services/knowledge-context.service');
+const { getMarketData, formatMarketContext } = require('../services/market.service');
 const { logNotification } = require('./notification.routes');
 
 function extractSeedKeywords(description, focusKeyword) {
@@ -51,24 +52,23 @@ router.post('/generate', async (req, res) => {
             console.warn('[SEO] Vision failed, using keyword only:', e.message);
         }
 
-        // Step 2: Keyword research + knowledge base (parallel, graceful fallback)
+        // Step 2: Keyword research + knowledge base + RAG vector context + Market Intel (paralel)
         const seedKeywords = extractSeedKeywords(imageDescription, keyword);
+        const ragQuery = keyword || seedKeywords[0] || imageDescription.slice(0, 120);
 
-        const [expandedResult, trendsResult, knowledgeBase] = await Promise.allSettled([
+        const [expandedResult, trendsResult, knowledgeBase, vectorResult, marketResult] = await Promise.allSettled([
             expandKeywords(seedKeywords),
             getGoogleTrends(seedKeywords),
-            getSeoContext(workspaceId)
+            getSeoContext(workspaceId),
+            getVectorContext(ragQuery, 5, 0.7),
+            getMarketData(ragQuery)          // ← Pazar İstihbaratı
         ]);
 
-        const etsyKeywords = expandedResult.status === 'fulfilled'
-            ? expandedResult.value
-            : seedKeywords;
-        const trendData = trendsResult.status === 'fulfilled'
-            ? trendsResult.value
-            : { trending: [] };
-        const knowledge = knowledgeBase.status === 'fulfilled'
-            ? knowledgeBase.value
-            : '';
+        const etsyKeywords = expandedResult.status === 'fulfilled' ? expandedResult.value : seedKeywords;
+        const trendData    = trendsResult.status   === 'fulfilled' ? trendsResult.value   : { trending: [] };
+        const knowledge    = knowledgeBase.status  === 'fulfilled' ? knowledgeBase.value  : '';
+        const vectorContext = vectorResult.status  === 'fulfilled' ? vectorResult.value   : '';
+        const market       = marketResult.status   === 'fulfilled' ? marketResult.value   : null;
 
         const keywordContext = `
 Real Etsy search suggestions (what buyers actually type):
@@ -77,13 +77,21 @@ ${etsyKeywords.slice(0, 20).map((k, i) => `${i + 1}. "${k}"`).join('\n')}
 ${trendData.trending.length > 0 ? `Trending related topics: ${trendData.trending.join(', ')}` : ''}
 
 ${keyword ? `Seller's focus keyword: "${keyword}"` : ''}
+
+${market ? formatMarketContext(market) : ''}
 `.trim();
 
         // Step 3: Generate SEO with Claude + knowledge base
         const client = new Anthropic();
 
         const systemPrompt = `${knowledge}
+${vectorContext ? `
+## UZMAN ETY STRATEJİLERİ (AI Brain Bilgi Tabanından):
+Aşağıdaki bilgiler, sistemin PDF ve video eğitimlerinden öğrendiği gerçek Etsy uzman stratejileridir.
+Bu kurallara harfiyen uy ve başlık/etiketleri bu bağlama göre optimize et:
 
+${vectorContext}
+` : ''}
 ## YOUR TASK
 Generate optimized Etsy listing content using the algorithm knowledge above.
 Return ONLY valid JSON, no markdown, no explanation:
@@ -121,15 +129,32 @@ The tags MUST include keywords from the "Real Etsy search suggestions" list.`;
         parsed.title = parsed.title.slice(0, 140);
         parsed.tags = parsed.tags.slice(0, 13);
 
-        logNotification(req.workspaceId, 'success', `SEO generated: "${parsed.title.slice(0, 60)}…"`, { tagCount: parsed.tags.length });
+        logNotification(req.workspaceId, 'success', `SEO generated: "${parsed.title.slice(0, 60)}\u2026"`, { tagCount: parsed.tags.length });
         res.json({
             title: parsed.title,
             description: parsed.description,
             tags: parsed.tags,
             charCount: parsed.title.length,
             topKeywords: parsed.topKeywords || [],
-            etsySuggestions: etsyKeywords.slice(0, 10),
-            dataSource: 'etsy-autocomplete + google-trends'
+            etsySuggestions: [
+                ...etsyKeywords.slice(0, 10),
+                ...(market?.trendTerms ?? []).slice(0, 5),
+            ].filter((v, i, a) => a.indexOf(v) === i).slice(0, 15), // deduplicate
+            dataSource: [
+                'etsy-autocomplete',
+                'google-trends',
+                vectorContext ? 'AI Brain (RAG)' : null,
+                market && !market.isFallback ? `Apify (${market.dataSource})` : null,
+            ].filter(Boolean).join(' + '),
+            // Pazar İstihbaratı
+            marketData: market && !market.isFallback ? {
+                resultCount:       market.resultCount,
+                averagePrice:      market.averagePrice,
+                competitionLevel:  market.competitionLevel,
+                estimatedMonthly:  market.estimatedMonthly,
+                trendTerms:        market.trendTerms?.slice(0, 8)       ?? [],
+                pinterestTrends:   market.pinterestTrends?.slice(0, 5)  ?? [],
+            } : null,
         });
 
     } catch (err) {

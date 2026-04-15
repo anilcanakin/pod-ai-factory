@@ -616,8 +616,12 @@ interface GalleryCardProps {
 }
 
 function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDelete, onView, onCopyPrompt, onRegenerate, onRemoveBg, onUpscale, onPublishToEtsy, onMockup, onSeo, onPipeline, isProcessing, isPublishing }: GalleryCardProps) {
-    const isPending = img.imageUrl === 'PENDING' || !img.imageUrl;
+    const isPending = img.imageUrl === 'PENDING' || (img.status === 'GENERATED' && !img.imageUrl);
+    const isFailed = img.status === 'REJECTED' || img.status === 'FAILED';
     const isRejected = img.status === 'REJECTED';
+    const qaRejectionReason = img.rawResponse?.startsWith('QA_REJECTED:')
+        ? img.rawResponse.replace('QA_REJECTED: ', '')
+        : null;
 
     const handleDownload = async () => {
         const url = img.imageUrl.startsWith('http') ? img.imageUrl : `/${img.imageUrl}`;
@@ -660,6 +664,23 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
             {isPending ? (
                 <div className="h-48 skeleton-shimmer flex items-center justify-center min-h-[160px] bg-bg-elevated">
                     <Loader2 className="w-6 h-6 text-text-tertiary animate-spin opacity-50" />
+                </div>
+            ) : isFailed && !img.imageUrl ? (
+                <div className="h-48 flex flex-col items-center justify-center min-h-[160px] bg-bg-elevated gap-1 px-3">
+                    <span className="text-xs text-danger font-medium">Generation failed</span>
+                    {qaRejectionReason && (
+                        <span className="text-[10px] text-text-tertiary text-center leading-tight">{qaRejectionReason}</span>
+                    )}
+                </div>
+            ) : isFailed && img.imageUrl ? (
+                <div className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img.imageUrl} alt="Rejected design" className="w-full aspect-square object-cover block opacity-40 grayscale" onClick={onView} />
+                    {qaRejectionReason && (
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-2 py-1">
+                            <span className="text-[10px] text-danger leading-tight block">QA: {qaRejectionReason}</span>
+                        </div>
+                    )}
                 </div>
             ) : (
                 // eslint-disable-next-line @next/next/no-img-element

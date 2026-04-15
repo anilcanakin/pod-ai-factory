@@ -12,63 +12,67 @@ if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
 }
 
-// Defining our Mockup Templates with 0-1 percentage areas
+// Defining our Mockup Templates with 0-1 percentage areas and real asset paths
 const templates = {
-    tshirt_model_white_front: { x: 0.35, y: 0.30, w: 0.30, h: 0.40 },
-    hoodie_model_beige_front: { x: 0.30, y: 0.35, w: 0.40, h: 0.35 },
-    sweatshirt_flatlay_ivory: { x: 0.25, y: 0.25, w: 0.50, h: 0.50 }
+    'black_tshirt_front': {
+        path: 'assets/mockups/blank-black-tshirt.jpg',
+        x: 0.32, y: 0.25, w: 0.36, h: 0.45, // Chest area positioning
+        label: 'Black T-Shirt'
+    }
 };
 
-// Generates a blank background "template" and scales down the master image to match the print area
-async function generateMockup(masterFileUrl, imageId, templateId) {
-    const filename = `${imageId}_mockup_${templateId}.png`;
-    const filepath = path.join(outputDir, filename);
+/**
+ * Downloads a design from a URL, resizes it, and composites it onto a template.
+ */
+async function generateMockup(designUrl, imageId, templateId) {
+    const fetch = require('node-fetch');
+    const { uploadBufferToStorage } = require('../services/storage.service');
+    
+    const config = templates[templateId] || templates['black_tshirt_front'];
+    const templatePath = path.resolve(__dirname, '../../', config.path);
 
-    const config = templates[templateId];
+    if (!fs.existsSync(templatePath)) {
+        throw new Error(`Template image not found at ${templatePath}`);
+    }
 
-    // For the MVP we simulate a template background 2000x2000
-    const bgWidth = 2000;
-    const bgHeight = 2000;
+    // 1. Fetch the design image (the transparent upscaled PNG)
+    console.log(`[MockupWorker] Fetching design from: ${designUrl}`);
+    const designResponse = await fetch(designUrl);
+    if (!designResponse.ok) throw new Error(`Failed to fetch design image: ${designResponse.status}`);
+    const designBuffer = await designResponse.buffer();
+
+    // 2. Get Template Metadata to calculate pixel coordinates
+    const templateMetadata = await sharp(templatePath).metadata();
+    const bgWidth = templateMetadata.width;
+    const bgHeight = templateMetadata.height;
 
     const printW = Math.floor(bgWidth * config.w);
     const printH = Math.floor(bgHeight * config.h);
     const printX = Math.floor(bgWidth * config.x);
     const printY = Math.floor(bgHeight * config.y);
 
-    // Simulated template background based on template ID
-    const bgColors = {
-        tshirt_model_white_front: '#ffffff',
-        hoodie_model_beige_front: '#f5f5dc',
-        sweatshirt_flatlay_ivory: '#fffff0'
-    };
-
-    // Load actual master file
-    const absoluteMasterPath = path.resolve(__dirname, '../../', masterFileUrl);
-
-    // Scale master to fit into the width/height
-    const resizedMaster = await sharp(absoluteMasterPath)
-        .resize(printW, printH, { fit: 'inside' })
+    // 3. Process Design: Resize to fit the print area
+    const resizedDesign = await sharp(designBuffer)
+        .resize(printW, printH, { fit: 'inside', withoutEnlargement: true })
         .toBuffer();
 
-    // Composite master on top of dummy background
-    await sharp({
-        create: {
-            width: bgWidth,
-            height: bgHeight,
-            channels: 4,
-            background: bgColors[templateId]
-        }
-    })
+    // 4. Composite: Design layer over Template layer
+    console.log(`[MockupWorker] Compositing layer for ${templateId}...`);
+    const mockupBuffer = await sharp(templatePath)
         .composite([{
-            input: resizedMaster,
+            input: resizedDesign,
             left: printX,
             top: printY,
-            blend: 'multiply' // Blend requirement
+            blend: 'multiply' // Essential for textile texture integration
         }])
-        .png()
-        .toFile(filepath);
+        .jpeg({ quality: 85 })
+        .toBuffer();
 
-    return `assets/outputs/${filename}`;
+    // 5. Upload to Supabase Storage (mockups folder)
+    const storagePath = `mockups/${imageId}_${templateId}_${Date.now()}.jpg`;
+    const publicUrl = await uploadBufferToStorage(mockupBuffer, storagePath, 'image/jpeg');
+
+    return publicUrl;
 }
 
 async function processMockups(job) {
@@ -77,17 +81,18 @@ async function processMockups(job) {
 
     try {
         const image = await prisma.image.findUnique({ where: { id: imageId } });
-        if (!image || !image.masterFileUrl) {
-            throw new Error(`Master file not found for Image ${imageId}`);
+        if (!image || !image.imageUrl || image.imageUrl === 'PENDING') {
+            throw new Error(`Valid design URL not found for Image ${imageId}`);
         }
 
-        console.log(`[MockupWorker] Generating mockups for image: ${imageId}`);
+        console.log(`[MockupWorker] Generating real-world mockups for image: ${imageId}`);
 
         const generatedMockups = [];
 
-        for (const templateId of Object.keys(templates)) {
-            console.log(`[MockupWorker] Processing template: ${templateId}`);
-            const mockupUrl = await generateMockup(image.masterFileUrl, imageId, templateId);
+        for (const [templateId, config] of Object.entries(templates)) {
+            console.log(`[MockupWorker] Processing template: ${templateId} (${config.label})`);
+            
+            const mockupUrl = await generateMockup(image.imageUrl, imageId, templateId);
 
             const mockupRecord = await prisma.mockup.create({
                 data: {
@@ -99,7 +104,24 @@ async function processMockups(job) {
             generatedMockups.push(mockupRecord);
         }
 
-        console.log(`[MockupWorker] Successfully generated 3 mockups for image ${imageId}`);
+        console.log(`[MockupWorker] Successfully generated ${generatedMockups.length} mockups for image ${imageId}`);
+
+        // Trigger AI-SEO Engine automatically after mockup generation
+        const etsyService = require('../services/etsy.service');
+        const taskService = require('../services/task.service');
+
+        // Increment Mockup task
+        await taskService.incrementTask('MOCKUP');
+
+        try {
+            await etsyService.generateSEO(imageId);
+            console.log(`[MockupWorker] AI-SEO generated for ${imageId}`);
+            // Increment SEO task
+            await taskService.incrementTask('SEO');
+        } catch (seoErr) {
+            console.warn(`[MockupWorker] SEO generation failed (non-fatal): ${seoErr.message}`);
+        }
+
         return generatedMockups;
 
     } catch (err) {

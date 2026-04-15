@@ -2,25 +2,163 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiIdeas, type Idea } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { apiIdeas, type Idea, type MarketIntel, type MarketScoring } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { FileDropzone } from '@/components/shared/FileDropzone';
-import { Lightbulb, Upload, RefreshCw, CheckCircle, XCircle, Factory, AlertTriangle, Loader2, Sparkles, TrendingUp } from 'lucide-react';
+import {
+    Lightbulb, Upload, RefreshCw, CheckCircle, XCircle, Factory,
+    AlertTriangle, Loader2, Sparkles, TrendingUp, ShieldCheck,
+    ChevronDown, ChevronUp, DollarSign, BarChart2, Globe, Target
+} from 'lucide-react';
 
 const TRENDING_NICHES = [
     'Patriotic 1776', 'Retro Nature', 'Cottagecore', 'Dark Academia', 'Vintage Sports',
 ];
 
+// ── Score helpers ─────────────────────────────────────────────────────────────
+function scoreColor(score: number) {
+    if (score >= 70) return 'text-emerald-400 bg-emerald-500/15 border-emerald-500/40';
+    if (score >= 40) return 'text-yellow-400 bg-yellow-500/15 border-yellow-500/40';
+    return 'text-red-400 bg-red-500/15 border-red-500/40';
+}
+
+function scoreRing(score: number) {
+    if (score >= 70) return 'stroke-emerald-400';
+    if (score >= 40) return 'stroke-yellow-400';
+    return 'stroke-red-400';
+}
+
+function ScoreBadge({ score }: { score: number }) {
+    const circumference = 2 * Math.PI * 14;
+    const filled = (score / 100) * circumference;
+    return (
+        <div className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-bold', scoreColor(score))}>
+            <svg width="22" height="22" viewBox="0 0 32 32" className="-ml-0.5">
+                <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" strokeOpacity={0.15} strokeWidth="4" />
+                <circle
+                    cx="16" cy="16" r="14" fill="none" strokeWidth="4"
+                    className={scoreRing(score)}
+                    strokeDasharray={`${filled} ${circumference}`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 16 16)"
+                />
+            </svg>
+            {score}
+        </div>
+    );
+}
+
+// ── Market Panel ──────────────────────────────────────────────────────────────
+function MarketPanel({ intel, scoring }: { intel: MarketIntel; scoring: MarketScoring }) {
+    return (
+        <div className="bg-slate-900/60 border border-slate-700/50 rounded-lg p-4 mt-2 space-y-3">
+            {/* Score summary */}
+            <div className="flex flex-wrap gap-4 items-start">
+                <div className="flex-1 min-w-[180px]">
+                    <p className="text-xs text-slate-500 mb-1">Recommendation</p>
+                    <p className="text-xs text-slate-300">{scoring.recommendation}</p>
+                </div>
+                <div className="flex gap-4">
+                    <div className="text-center">
+                        <p className="text-xs text-slate-500 mb-0.5">Competition</p>
+                        <span className={cn(
+                            'text-xs font-semibold px-2 py-0.5 rounded',
+                            intel.competitionLevel === 'Düşük' ? 'bg-emerald-500/20 text-emerald-300' :
+                            intel.competitionLevel === 'Orta' ? 'bg-yellow-500/20 text-yellow-300' :
+                            'bg-red-500/20 text-red-300'
+                        )}>
+                            {intel.competitionLevel}
+                        </span>
+                    </div>
+                    {intel.averagePrice && (
+                        <div className="text-center">
+                            <p className="text-xs text-slate-500 mb-0.5">Avg Price</p>
+                            <span className="text-xs font-semibold text-slate-200">${intel.averagePrice}</span>
+                        </div>
+                    )}
+                    {intel.estimatedMonthly && (
+                        <div className="text-center">
+                            <p className="text-xs text-slate-500 mb-0.5">Est./Month</p>
+                            <span className="text-xs font-semibold text-slate-200">~{intel.estimatedMonthly}</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Strengths & Risks */}
+            <div className="grid grid-cols-2 gap-3">
+                {scoring.strengths?.length > 0 && (
+                    <div>
+                        <p className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider mb-1">Strengths</p>
+                        <ul className="space-y-0.5">
+                            {scoring.strengths.map((s, i) => (
+                                <li key={i} className="text-xs text-slate-400 flex items-start gap-1">
+                                    <span className="text-emerald-500 mt-0.5">+</span>{s}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+                {scoring.risks?.length > 0 && (
+                    <div>
+                        <p className="text-[10px] font-semibold text-red-400 uppercase tracking-wider mb-1">Risks</p>
+                        <ul className="space-y-0.5">
+                            {scoring.risks.map((r, i) => (
+                                <li key={i} className="text-xs text-slate-400 flex items-start gap-1">
+                                    <span className="text-red-500 mt-0.5">−</span>{r}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+            </div>
+
+            {/* Trend terms */}
+            {intel.trendTerms?.length > 0 && (
+                <div>
+                    <p className="text-[10px] font-semibold text-blue-400 uppercase tracking-wider mb-1.5">Etsy Trend Keywords</p>
+                    <div className="flex flex-wrap gap-1.5">
+                        {intel.trendTerms.slice(0, 8).map((t, i) => (
+                            <span key={i} className="text-[10px] px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 text-blue-300 rounded-full">{t}</span>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Pinterest */}
+            {intel.pinterestTrends?.length > 0 && (
+                <div>
+                    <p className="text-[10px] font-semibold text-pink-400 uppercase tracking-wider mb-1.5">Pinterest Aesthetic Signals</p>
+                    <div className="flex flex-wrap gap-1.5">
+                        {intel.pinterestTrends.slice(0, 5).map((t, i) => (
+                            <span key={i} className="text-[10px] px-2 py-0.5 bg-pink-500/10 border border-pink-500/20 text-pink-300 rounded-full truncate max-w-[200px]">{t}</span>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {intel.isFallback && (
+                <p className="text-[10px] text-slate-500 italic">* Score based on AI analysis only — live Apify data unavailable (APIFY_API_TOKEN not set)</p>
+            )}
+        </div>
+    );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 export function IdeasClient() {
     const queryClient = useQueryClient();
+    const router = useRouter();
     const [uploading, setUploading] = useState(false);
     const [csvFile, setCsvFile] = useState<File | null>(null);
     const [sortField, setSortField] = useState<keyof Idea>('status');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
     const [nicheInput, setNicheInput] = useState('');
     const [bulkGenerating, setBulkGenerating] = useState(false);
+    const [validatingIds, setValidatingIds] = useState<Set<string>>(new Set());
+    const [expandedId, setExpandedId] = useState<string | null>(null);
 
     const { data: ideas = [], isLoading } = useQuery({
         queryKey: ['ideas'],
@@ -37,11 +175,31 @@ export function IdeasClient() {
     const factoryMutation = useMutation({
         mutationFn: (id: string) => apiIdeas.sendToFactory(id),
         onSuccess: (data) => {
-            toast.success(`Job created: ${data.jobId.substring(0, 8)}`);
+            toast.success('Generating image — redirecting to Gallery...');
             queryClient.invalidateQueries({ queryKey: ['ideas'] });
+            router.push(`/dashboard/gallery?jobId=${data.jobId}`);
         },
         onError: () => toast.error('Failed to send to factory'),
     });
+
+    const handleValidate = async (id: string) => {
+        if (validatingIds.has(id)) return;
+        setValidatingIds(prev => new Set([...prev, id]));
+        try {
+            const result = await apiIdeas.validate(id);
+            toast.success(`Score: ${result.scoring.score}/100 — ${result.scoring.scoreLabel}`);
+            queryClient.invalidateQueries({ queryKey: ['ideas'] });
+            setExpandedId(id); // auto-expand after validation
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Validation failed');
+        } finally {
+            setValidatingIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
+        }
+    };
 
     const handleGenerate = async () => {
         if (!csvFile) { toast.error('Select a CSV file first'); return; }
@@ -80,6 +238,12 @@ export function IdeasClient() {
     };
 
     const sorted = [...ideas].sort((a, b) => {
+        // Sort by marketScore first if that column is active, otherwise normal
+        if (sortField === 'marketScore') {
+            const av = a.marketScore ?? -1;
+            const bv = b.marketScore ?? -1;
+            return sortDir === 'asc' ? av - bv : bv - av;
+        }
         const av = a[sortField] ?? '';
         const bv = b[sortField] ?? '';
         const cmp = String(av).localeCompare(String(bv));
@@ -88,6 +252,7 @@ export function IdeasClient() {
 
     const pendingCount = ideas.filter(i => i.status === 'PENDING').length;
     const approvedCount = ideas.filter(i => i.status === 'APPROVED').length;
+    const validatedCount = ideas.filter(i => i.marketScore != null).length;
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -167,7 +332,8 @@ export function IdeasClient() {
                     <h2 className="text-sm font-semibold text-slate-200">
                         Generated Ideas {ideas.length > 0 && (
                             <span className="text-slate-500 font-normal ml-1">
-                                ({ideas.length} total · {pendingCount} pending · {approvedCount} approved)
+                                ({ideas.length} total · {pendingCount} pending · {approvedCount} approved
+                                {validatedCount > 0 && ` · ${validatedCount} validated`})
                             </span>
                         )}
                     </h2>
@@ -223,60 +389,121 @@ export function IdeasClient() {
                                             {sortField === field && <span className="ml-1 text-blue-400">{sortDir === 'asc' ? '↑' : '↓'}</span>}
                                         </th>
                                     ))}
+                                    {/* Score column header */}
+                                    <th
+                                        onClick={() => toggleSort('marketScore')}
+                                        className="text-center px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide cursor-pointer hover:text-slate-200 transition-colors select-none"
+                                    >
+                                        Score
+                                        {sortField === 'marketScore' && <span className="ml-1 text-blue-400">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                                    </th>
                                     <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-800">
-                                {sorted.map(idea => (
-                                    <tr key={idea.id} className="hover:bg-slate-800/40 transition-colors">
-                                        <td className="px-4 py-3 text-slate-300 font-medium">{idea.niche}</td>
-                                        <td className="px-4 py-3 text-slate-400">{idea.mainKeyword}</td>
-                                        <td className="px-4 py-3 text-slate-400 max-w-xs truncate">{idea.hook}</td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-300">{idea.styleEnum}</span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center gap-1.5">
-                                                <StatusBadge status={idea.status} />
-                                                {idea.trademarkRisk && (
-                                                    <div className="flex items-center gap-1 text-[10px] text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 px-1.5 py-0.5 rounded">
-                                                        <AlertTriangle className="w-3 h-3" /> Risk
+                            <tbody className="divide-y divide-slate-700/50">
+                                {sorted.map(idea => {
+                                    const isValidating = validatingIds.has(idea.id);
+                                    const isExpanded = expandedId === idea.id;
+                                    const marketData = idea.marketData as (typeof idea.marketData & { intel: Parameters<typeof MarketPanel>[0]['intel']; scoring: Parameters<typeof MarketPanel>[0]['scoring'] }) | null | undefined;
+                                    return (
+                                        <>
+                                            <tr key={idea.id} className="hover:bg-slate-800/40 transition-colors">
+                                                <td className="px-4 py-3 text-slate-300 font-medium">{idea.niche}</td>
+                                                <td className="px-4 py-3 text-slate-400">{idea.mainKeyword}</td>
+                                                <td className="px-4 py-3 text-slate-400 max-w-xs truncate">{idea.hook}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-300">{idea.styleEnum}</span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <StatusBadge status={idea.status} />
+                                                        {idea.trademarkRisk && (
+                                                            <div className="flex items-center gap-1 text-[10px] text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 px-1.5 py-0.5 rounded">
+                                                                <AlertTriangle className="w-3 h-3" /> Risk
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center justify-end gap-1.5">
-                                                {idea.status === 'PENDING' && (
-                                                    <>
+                                                </td>
+                                                {/* Score cell */}
+                                                <td className="px-4 py-3 text-center">
+                                                    {idea.marketScore != null ? (
                                                         <button
-                                                            onClick={() => updateMutation.mutate({ id: idea.id, status: 'APPROVED' })}
-                                                            className="flex items-center gap-1 px-2 py-1 bg-green-600/80 hover:bg-green-600 text-white text-xs rounded-md transition-colors"
+                                                            onClick={() => setExpandedId(isExpanded ? null : idea.id)}
+                                                            className="inline-flex items-center gap-1"
+                                                            title="Click to toggle market details"
                                                         >
-                                                            <CheckCircle className="w-3 h-3" /> Approve
+                                                            <ScoreBadge score={idea.marketScore} />
+                                                            {isExpanded
+                                                                ? <ChevronUp className="w-3 h-3 text-slate-500" />
+                                                                : <ChevronDown className="w-3 h-3 text-slate-500" />
+                                                            }
                                                         </button>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-600">—</span>
+                                                    )}
+                                                </td>
+                                                {/* Actions */}
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        {/* Validate button — always available */}
                                                         <button
-                                                            onClick={() => updateMutation.mutate({ id: idea.id, status: 'REJECTED' })}
-                                                            className="flex items-center gap-1 px-2 py-1 bg-red-600/80 hover:bg-red-600 text-white text-xs rounded-md transition-colors"
+                                                            onClick={() => handleValidate(idea.id)}
+                                                            disabled={isValidating}
+                                                            title="Run market validation (Apify + Claude scoring)"
+                                                            className={cn(
+                                                                'flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors',
+                                                                idea.marketScore != null
+                                                                    ? 'bg-slate-700/50 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-600'
+                                                                    : 'bg-violet-600/80 hover:bg-violet-600 text-white'
+                                                            )}
                                                         >
-                                                            <XCircle className="w-3 h-3" /> Reject
+                                                            {isValidating
+                                                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                                                : <ShieldCheck className="w-3 h-3" />
+                                                            }
+                                                            {isValidating ? 'Validating…' : idea.marketScore != null ? 'Re-validate' : 'Validate'}
                                                         </button>
-                                                    </>
-                                                )}
-                                                {idea.status === 'APPROVED' && (
-                                                    <button
-                                                        onClick={() => factoryMutation.mutate(idea.id)}
-                                                        disabled={factoryMutation.isPending}
-                                                        className="flex items-center gap-1 px-2 py-1 bg-blue-600/80 hover:bg-blue-600 text-white text-xs rounded-md transition-colors disabled:opacity-50"
-                                                    >
-                                                        {factoryMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Factory className="w-3 h-3" />}
-                                                        To Factory
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+
+                                                        {idea.status === 'PENDING' && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => updateMutation.mutate({ id: idea.id, status: 'APPROVED' })}
+                                                                    className="flex items-center gap-1 px-2 py-1 bg-green-600/80 hover:bg-green-600 text-white text-xs rounded-md transition-colors"
+                                                                >
+                                                                    <CheckCircle className="w-3 h-3" /> Approve
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => updateMutation.mutate({ id: idea.id, status: 'REJECTED' })}
+                                                                    className="flex items-center gap-1 px-2 py-1 bg-red-600/80 hover:bg-red-600 text-white text-xs rounded-md transition-colors"
+                                                                >
+                                                                    <XCircle className="w-3 h-3" /> Reject
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                        {idea.status === 'APPROVED' && (
+                                                            <button
+                                                                onClick={() => factoryMutation.mutate(idea.id)}
+                                                                disabled={factoryMutation.isPending}
+                                                                className="flex items-center gap-1 px-2 py-1 bg-blue-600/80 hover:bg-blue-600 text-white text-xs rounded-md transition-colors disabled:opacity-50"
+                                                            >
+                                                                {factoryMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Factory className="w-3 h-3" />}
+                                                                To Factory
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {/* Expandable market detail panel */}
+                                            {isExpanded && marketData && (
+                                                <tr key={`${idea.id}-panel`} className="bg-slate-900/40">
+                                                    <td colSpan={7} className="px-4 pb-4 pt-0">
+                                                        <MarketPanel intel={marketData.intel} scoring={marketData.scoring} />
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>

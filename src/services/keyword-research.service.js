@@ -71,13 +71,26 @@ async function getGoogleTrends(keywords) {
 
         if (!response.ok) return { trending: [], seasonal: false };
 
-        // Google Trends response başında )]}' prefix var, temizle
         const text = await response.text();
-        const clean = text.replace(/^\)\]\}'/, '').trim();
-        const data = JSON.parse(clean);
+
+        // Google, JSON hijacking koruması için yanıt başına çeşitli çöp önek ekler:
+        //   )]}'\n   ,  ")]}'",  {\"default\"...  vb.
+        // Strateji: İlk { veya [ karakterine kadar her şeyi sil.
+        const cleanJson = text.replace(/^[^{[]*/, '').trim();
+
+        if (!cleanJson) return { trending: [], seasonal: false };
+
+        let data;
+        try {
+            data = JSON.parse(cleanJson);
+        } catch (parseErr) {
+            // Hata ayıklama için ilk 60 karakteri logla
+            console.warn('[Trends] JSON parse hatası. Ham yanıt başı:', text.slice(0, 60));
+            return { trending: [], seasonal: false };
+        }
 
         const trending = data?.default?.topics?.map(t => t.mid || t.title?.query) || [];
-        return { trending: trending.slice(0, 5), seasonal: false };
+        return { trending: trending.filter(Boolean).slice(0, 5), seasonal: false };
 
     } catch (err) {
         console.warn('[Keyword] Google Trends failed:', err.message);

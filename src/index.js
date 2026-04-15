@@ -53,8 +53,8 @@ const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3001';
 app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
 console.log(`[CORS] İzin verilen origin: ${ALLOWED_ORIGIN}`);
 app.use(cookieParser());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ limit: '200mb', extended: true }));
 app.use(workspaceMiddleware);
 
 // Initialize background queue workers
@@ -368,6 +368,9 @@ app.use('/api/trends', require('./routes/trends.routes'));
 app.use('/api/agent', require('./routes/agent.routes'));
 app.use('/api/radar', require('./routes/radar.routes'));
 app.use('/api/fulfillment', require('./routes/fulfillment.routes'));
+app.use('/api/knowledge', require('./routes/knowledge.routes'));
+app.use('/api/tasks', require('./routes/task.routes'));
+app.use('/api/hq', require('./routes/hq.routes'));
 
 
 app.use((err, req, res, next) => {
@@ -375,18 +378,31 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Internal Server Error' });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`Server is running on port ${PORT}`);
 
+  // Auto-initialize daily tasks for the AI Agent
+  try {
+    const taskService = require('./services/task.service');
+    await taskService.initializeDailyTasks();
+  } catch (err) {
+    console.error('[TaskService] Initialization error:', err.message);
+  }
+
   // BullMQ Worker'larını backend ile birlikte başlat.
-  // Bu require() çağrıları Worker nesnelerini instantiate eder ve
-  // Redis kuyruklarını dinlemeye başlar.
   try {
     require('./queues/asset.worker');
     require('./queues/mockup.worker');
-    console.log('[Workers] AssetWorker + MockupWorker başlatıldı.');
+    require('./queues/knowledge.worker');
+    console.log('[Workers] Asset, Mockup ve Knowledge başlatıldı.');
   } catch (err) {
-    console.error('[Workers] Worker başlatma hatası:', err.message);
+    console.error('[Workers] Worker başlatma hatama:', err.message);
   }
 });
+
+// Büyük dosyalar ve uzun işlemler (Video processing vb) için timeout'u artır (10 dk)
+server.timeout = 600000;
+server.keepAliveTimeout = 610000;
+server.headersTimeout = 620000;
+
 

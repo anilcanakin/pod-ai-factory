@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import { SHORTCUT_LABELS } from '@/hooks/useKeyboardShortcuts';
 
 const navItems = [
+    { href: '/dashboard/hq', label: 'HQ', icon: Zap },
     { href: '/dashboard/overview', label: 'Overview', icon: LayoutDashboard },
     { href: '/dashboard/agent', label: 'AI Manager', icon: Bot },
     { href: '/dashboard/brain', label: 'AI Brain', icon: Brain },
@@ -73,15 +74,15 @@ export function Sidebar() {
     return (
         <aside className="fixed left-0 top-0 h-screen w-[220px] flex flex-col bg-bg-base border-r border-border-subtle z-20">
             {/* Logo */}
-            <div className="flex items-center gap-2.5 px-5 py-5 border-b border-border-subtle">
-                <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
+            <Link href="/dashboard/hq" className="flex items-center gap-2.5 px-5 py-5 border-b border-border-subtle group hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                     <Zap className="w-4 h-4 text-white" />
                 </div>
                 <div>
                     <span className="text-sm font-semibold text-text-primary leading-none" style={{ fontFamily: "'Geist', system-ui, sans-serif", fontWeight: 600 }}>POD AI</span>
                     <span className="block text-[10px] text-text-tertiary leading-none mt-0.5">Factory</span>
                 </div>
-            </div>
+            </Link>
 
             {/* Nav */}
             <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto scrollbar-thin">

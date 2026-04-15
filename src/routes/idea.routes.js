@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const upload = multer({ dest: 'assets/uploads/' });
+const upload = multer({ 
+    dest: 'assets/uploads/',
+    limits: { fileSize: 1000 * 1024 * 1024 } // 1GB (Bulk CSV ve büyük assetler için)
+});
 const csv = require('csv-parser');
 const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
@@ -152,6 +155,7 @@ router.post('/:id/factory', async (req, res) => {
     console.log('[Ideas/Factory] İstek alındı. ideaId:', req.params.id, '| workspaceId:', req.workspaceId);
     try {
         const { id } = req.params;
+        const { modelTier } = req.body; // optional: 'fast' | 'quality' | 'text' | 'vector'
 
         const idea = await prisma.idea.findUnique({ where: { id } });
         if (!idea) return res.status(404).json({ error: "Idea not found." });
@@ -194,31 +198,42 @@ router.post('/:id/factory', async (req, res) => {
             }
         });
 
-        // 3. Image kaydı oluştur (APPROVED) ve AssetWorker kuyruğuna ekle
-        //    Worker bu image'ı yakalar, BG remove + mockup + SEO işlemlerini yapar.
-        const prompt = `${idea.styleEnum} style POD design: ${idea.hook} — niche: ${idea.niche}, keyword: ${idea.mainKeyword}`;
+        // 3. Image kaydını PENDING olarak oluştur, FAL ile gerçek görsel üretilecek
+        const generationService = require('../services/generation.service');
+        // Ideas default: 'quality' (Flux Dev). Caller can pass 'fast'/'text'/'vector' to override.
+        const resolvedEngine = generationService.resolveModelId(modelTier || 'quality');
+
+        const prompt = `${idea.styleEnum} style POD t-shirt graphic design, no background, transparent background: "${idea.hook}" — niche: ${idea.niche}, keyword: ${idea.mainKeyword}. Clean vector art, print-ready, no text unless part of hook.`;
         const image = await prisma.image.create({
             data: {
                 jobId: job.id,
                 variantType: 'idea_generated',
                 promptUsed: prompt,
-                engine: 'idea_pipeline',
-                imageUrl: '',           // FAL entegrasyonu eklendiğinde doldurulacak
-                status: 'APPROVED',
-                isApproved: true,
+                engine: resolvedEngine,
+                imageUrl: 'PENDING',
+                status: 'GENERATED',
+                isApproved: false,
                 cost: 0,
             }
         });
         console.log('[Ideas/Factory] Image kaydı oluşturuldu:', image.id);
 
-        console.log('[API] İşi Redis kuyruğuna fırlatıyor. Kuyruk:', assetQueue.name, '| imageId:', image.id);
-        await assetQueue.add('processAsset', { imageId: image.id }, {
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 2000 }
-        });
-        console.log('[Ideas/Factory] AssetWorker kuyruğuna eklendi.');
+        // 4. FAL ile gerçek görsel üret (arka planda — response'u bloklamıyor)
+        generationService.runGeneration(job.id, 'fal', 1, 'square_hd')
+            .then(() => console.log('[Ideas/Factory] FAL üretimi tamamlandı. jobId:', job.id))
+            .catch(async (err) => {
+                console.error('[Ideas/Factory] FAL üretim hatası:', err.message);
+                await prisma.image.updateMany({
+                    where: { jobId: job.id, status: 'GENERATED' },
+                    data: { status: 'FAILED' }
+                });
+                await prisma.designJob.update({
+                    where: { id: job.id },
+                    data: { status: 'FAILED' }
+                });
+            });
 
-        // 4. Mark Idea as factory sent
+        // 5. Mark Idea as factory sent
         await prisma.idea.update({
             where: { id },
             data: { status: 'FACTORY_SENT' }
@@ -301,6 +316,116 @@ Output strict JSON array ONLY (no markdown, no explanation):
         res.json({ message: `Generated ${savedIdeas.length} ideas for "${niche}"`, ideas: savedIdeas });
     } catch (err) {
         console.error('Ideas generate-bulk error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/ideas/:id/validate — Market Validation with Profitability Score
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/validate', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const workspaceId = req.workspaceId || 'default-workspace';
+
+        const idea = await prisma.idea.findUnique({ where: { id } });
+        if (!idea) return res.status(404).json({ error: 'Idea not found' });
+
+        const { getFullIntelligence, formatMarketContext } = require('../services/market.service');
+        const billingService = require('../services/billing.service');
+
+        const keyword = idea.mainKeyword || idea.niche;
+        console.log(`[Validate] Starting market validation for: "${keyword}"`);
+
+        // ── Step 1: Gather intelligence from Apify (3 parallel agents) ──────────
+        const intel = await getFullIntelligence(keyword);
+
+        // ── Step 2: Score with Claude Haiku ──────────────────────────────────────
+        const marketContext = formatMarketContext(intel);
+
+        const systemPrompt = `You are an expert POD (Print-on-Demand) business analyst specializing in Etsy market evaluation.
+You combine competitor intelligence, pricing data, trend signals, and visual aesthetic signals to score niche viability.
+Always output ONLY valid compact JSON — no markdown, no explanation.`;
+
+        const userPrompt = `Evaluate this Etsy POD niche for profitability.
+
+NICHE DETAILS:
+- Niche: "${idea.niche}"
+- Main Keyword: "${keyword}"
+- Design Hook: "${idea.hook}"
+- Design Style: "${idea.styleEnum}"
+
+MARKET INTELLIGENCE:
+${marketContext || `No live market data available. Base scoring on keyword strength alone.`}
+
+SCORING RUBRIC:
+- 80-100 → Excellent: clear demand, manageable competition, good price point
+- 60-79  → Good: solid opportunity, needs visual differentiation
+- 40-59  → Moderate: competitive market, requires strong hook
+- 20-39  → Challenging: oversaturated or thin margins
+- 1-19   → Poor: avoid
+
+Return ONLY this JSON shape:
+{
+  "score": <integer 1-100>,
+  "scoreLabel": "<Excellent|Good|Moderate|Challenging|Poor>",
+  "strengths": ["<max 3 items>"],
+  "risks": ["<max 2 items>"],
+  "recommendation": "<one actionable sentence>"
+}`;
+
+        const scoreResponse = await anthropic.messages.create({
+            model: 'claude-haiku-4-5',
+            max_tokens: 600,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }]
+        });
+
+        if (scoreResponse.usage) {
+            billingService.logUsage('anthropic', 'claude-haiku-4-5', scoreResponse.usage, workspaceId, {
+                feature: 'market_validation',
+                ideaId: id
+            }).catch(() => {});
+        }
+
+        // ── Step 3: Parse scoring ─────────────────────────────────────────────────
+        let scoring;
+        try {
+            const raw = scoreResponse.content[0].text.trim();
+            const jsonMatch = raw.match(/\{[\s\S]*\}/);
+            scoring = JSON.parse(jsonMatch[0]);
+            // Clamp score
+            scoring.score = Math.min(100, Math.max(1, Math.round(scoring.score)));
+        } catch {
+            // Rule-based fallback if Claude returns malformed JSON
+            const competition = intel?.competitionLevel ?? 'Bilinmiyor';
+            const base = { 'Düşük': 72, 'Orta': 55, 'Yüksek': 38, 'Çok Yüksek': 22, 'Bilinmiyor': 50 };
+            scoring = {
+                score: base[competition] ?? 50,
+                scoreLabel: 'Moderate',
+                strengths: ['Rule-based estimate'],
+                risks: ['Claude scoring unavailable'],
+                recommendation: 'Run again for AI scoring.'
+            };
+        }
+
+        // ── Step 4: Persist on Idea record ────────────────────────────────────────
+        const marketData = {
+            intel,
+            scoring,
+            validatedAt: new Date().toISOString(),
+            keyword
+        };
+
+        const updated = await prisma.idea.update({
+            where: { id },
+            data: { marketScore: scoring.score, marketData }
+        });
+
+        console.log(`[Validate] ✅ "${keyword}" → Score: ${scoring.score} (${scoring.scoreLabel})`);
+        res.json({ idea: updated, scoring, intel });
+    } catch (err) {
+        console.error('[Ideas Validate]', err);
         res.status(500).json({ error: err.message });
     }
 });

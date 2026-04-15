@@ -337,10 +337,12 @@ export function FactoryClient() {
                 ));
                 
                 // Hepsi tamamlandıysa polling durdur
-                const allDone = images.every(img => 
-                    img.status === 'COMPLETED' || 
+                const allDone = images.every(img =>
+                    img.status === 'COMPLETED' ||
                     img.status === 'FAILED' ||
-                    img.status === 'APPROVED'
+                    img.status === 'APPROVED' ||
+                    img.status === 'PROCESSED' ||
+                    img.status === 'REJECTED'
                 );
                 if (allDone && images.length > 0) {
                     clearInterval(interval);

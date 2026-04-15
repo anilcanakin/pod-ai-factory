@@ -1,5 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    async redirects() {
+        return [
+            {
+                source: '/',
+                destination: '/dashboard/hq',
+                permanent: true,
+            },
+        ];
+    },
     async rewrites() {
         return [
             {
@@ -21,6 +30,11 @@ const nextConfig = {
             { protocol: 'https', hostname: '**' },
             { protocol: 'http', hostname: 'localhost' },
         ],
+    },
+    experimental: {
+        serverActions: {
+            bodySizeLimit: '100mb',
+        },
     },
 };
 

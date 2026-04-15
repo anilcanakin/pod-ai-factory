@@ -40,4 +40,12 @@ frontend/package-lock.json
 # Assets (generated data)
 assets/
 
+# User uploads & temp processing files
+uploads/
+temp_frames/
+scratch/
+
+# Test scripts
+test_*.js
+
 dump.rdb

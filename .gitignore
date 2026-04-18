@@ -47,5 +47,10 @@ scratch/
 
 # Test scripts
 test_*.js
+test-db*.js
+
+# Playwright browser session (login cookies — never commit)
+browser-data-etsy/
+browser-data/
 
 dump.rdb

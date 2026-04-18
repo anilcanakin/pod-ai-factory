@@ -66,6 +66,11 @@ export function BrainClient() {
     const [lastResult, setLastResult] = useState<VideoAnalysis | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Bulk video queue state
+    type BulkStatus = 'pending' | 'uploading' | 'queued' | 'error';
+    interface BulkItem { id: string; name: string; status: BulkStatus; progress: number; error?: string; }
+    const [bulkQueue, setBulkQueue] = useState<BulkItem[]>([]);
+
     // Text input state
     const [textTitle, setTextTitle] = useState('');
     const [textSource, setTextSource] = useState('');
@@ -138,12 +143,78 @@ export function BrainClient() {
         }
     }, [videoType, videoCategory]);
 
+    // Bulk: upload each file individually via XHR for per-file progress, batched 10 at a time
+    const handleBulkVideos = useCallback(async (files: File[]) => {
+        const valid = files.filter(f => f.size <= 500 * 1024 * 1024);
+        const skipped = files.length - valid.length;
+        if (skipped > 0) toast.warning(`${skipped} dosya 500MB limitini aştığı için atlandı`);
+        if (valid.length === 0) return;
+
+        const initial: BulkItem[] = valid.map(f => ({
+            id: Math.random().toString(36).slice(2),
+            name: f.name,
+            status: 'pending' as BulkStatus,
+            progress: 0
+        }));
+        setBulkQueue(initial);
+
+        const BATCH = 10;
+        for (let start = 0; start < valid.length; start += BATCH) {
+            const chunk = valid.slice(start, start + BATCH);
+            await Promise.all(chunk.map((file, ci) => {
+                const itemId = initial[start + ci].id;
+                return new Promise<void>(resolve => {
+                    setBulkQueue(prev => prev.map(it => it.id === itemId ? { ...it, status: 'uploading' } : it));
+
+                    const fd = new FormData();
+                    fd.append('video', file);
+                    fd.append('title', file.name.replace(/\.[^/.]+$/, ''));
+                    fd.append('videoType', videoType);
+                    if (videoCategory !== 'auto') fd.append('category', videoCategory);
+
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', '/api/brain/queue-video');
+                    xhr.withCredentials = true;
+
+                    xhr.upload.onprogress = (e) => {
+                        if (e.lengthComputable) {
+                            const pct = Math.round((e.loaded / e.total) * 100);
+                            setBulkQueue(prev => prev.map(it => it.id === itemId ? { ...it, progress: pct } : it));
+                        }
+                    };
+                    xhr.onload = () => {
+                        const ok = xhr.status >= 200 && xhr.status < 300;
+                        setBulkQueue(prev => prev.map(it => it.id === itemId
+                            ? { ...it, status: ok ? 'queued' : 'error', progress: 100, error: ok ? undefined : `HTTP ${xhr.status}` }
+                            : it
+                        ));
+                        resolve();
+                    };
+                    xhr.onerror = () => {
+                        setBulkQueue(prev => prev.map(it => it.id === itemId
+                            ? { ...it, status: 'error', error: 'Network error' }
+                            : it
+                        ));
+                        resolve();
+                    };
+                    xhr.send(fd);
+                });
+            }));
+        }
+        toast.success(`${valid.length} video arka planda analiz kuyruğuna eklendi`);
+    }, [videoType, videoCategory]);
+
     const onDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setDragOver(false);
-        const file = e.dataTransfer.files[0];
-        if (file) handleVideoFile(file);
-    }, [handleVideoFile]);
+        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
+        if (files.length === 0) { toast.error('Lütfen video dosyası yükleyin (MP4, MOV, AVI)'); return; }
+        if (files.length === 1) {
+            handleVideoFile(files[0]);
+        } else {
+            handleBulkVideos(files);
+        }
+    }, [handleVideoFile, handleBulkVideos]);
 
     const handleAddText = async () => {
         if (!textTitle.trim() || !textContent.trim()) {
@@ -527,6 +598,7 @@ export function BrainClient() {
 
                                     {/* Drop zone */}
                                     {processStep === 'idle' || processStep === 'done' ? (
+                                        <>
                                         <div
                                             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                                             onDragLeave={() => setDragOver(false)}
@@ -542,15 +614,21 @@ export function BrainClient() {
                                                 ref={fileInputRef}
                                                 type="file"
                                                 accept="video/*"
+                                                multiple
                                                 className="hidden"
-                                                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleVideoFile(f); }}
+                                                onChange={(e) => {
+                                                    const files = Array.from(e.target.files || []);
+                                                    if (files.length === 1) handleVideoFile(files[0]);
+                                                    else if (files.length > 1) handleBulkVideos(files);
+                                                    e.target.value = '';
+                                                }}
                                             />
                                             <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center">
                                                 <Upload className="w-7 h-7 text-accent" />
                                             </div>
                                             <div className="text-center">
-                                                <p className="text-sm font-semibold text-text-primary">Drop video here or click to browse</p>
-                                                <p className="text-xs text-text-tertiary mt-1">MP4, MOV, AVI · Max 500MB</p>
+                                                <p className="text-sm font-semibold text-text-primary">Drop video(s) here or click to browse</p>
+                                                <p className="text-xs text-text-tertiary mt-1">MP4, MOV, AVI · Max 500MB · Çoklu seçim desteklenir</p>
                                             </div>
                                             {processStep === 'done' && lastResult && (
                                                 <div className="flex items-center gap-2 text-green-400 text-sm font-medium">
@@ -560,6 +638,48 @@ export function BrainClient() {
                                                 </div>
                                             )}
                                         </div>
+
+                                        {/* Bulk queue progress panel */}
+                                        {bulkQueue.length > 0 && (
+                                            <div className="mt-4 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                                                        Kuyruk — {bulkQueue.filter(i => i.status === 'queued').length}/{bulkQueue.length} tamamlandı
+                                                    </span>
+                                                    <button
+                                                        onClick={() => setBulkQueue([])}
+                                                        className="text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+                                                    >
+                                                        Temizle
+                                                    </button>
+                                                </div>
+                                                <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                                                    {bulkQueue.map(item => (
+                                                        <div key={item.id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-bg-overlay border border-border-subtle">
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-xs text-text-secondary truncate">{item.name}</p>
+                                                                {item.status === 'uploading' && (
+                                                                    <div className="mt-1 h-1 bg-bg-base rounded-full overflow-hidden">
+                                                                        <div
+                                                                            className="h-full bg-accent rounded-full transition-all duration-200"
+                                                                            style={{ width: `${item.progress}%` }}
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                                {item.error && <p className="text-[10px] text-red-400 mt-0.5">{item.error}</p>}
+                                                            </div>
+                                                            <div className="shrink-0 w-16 text-right">
+                                                                {item.status === 'pending'   && <span className="text-[10px] text-text-tertiary">Bekliyor</span>}
+                                                                {item.status === 'uploading' && <span className="text-[10px] text-accent tabular-nums">{item.progress}%</span>}
+                                                                {item.status === 'queued'    && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 ml-auto" />}
+                                                                {item.status === 'error'     && <span className="text-[10px] text-red-400">Hata</span>}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        </>
                                     ) : (
                                         /* Processing progress */
                                         <div className="border-2 border-accent/20 rounded-2xl p-8 space-y-6 bg-accent/5">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiIdeas, type Idea, type MarketIntel, type MarketScoring } from '@/lib/api';
@@ -406,8 +406,8 @@ export function IdeasClient() {
                                     const isExpanded = expandedId === idea.id;
                                     const marketData = idea.marketData as (typeof idea.marketData & { intel: Parameters<typeof MarketPanel>[0]['intel']; scoring: Parameters<typeof MarketPanel>[0]['scoring'] }) | null | undefined;
                                     return (
-                                        <>
-                                            <tr key={idea.id} className="hover:bg-slate-800/40 transition-colors">
+                                        <React.Fragment key={idea.id}>
+                                            <tr className="hover:bg-slate-800/40 transition-colors">
                                                 <td className="px-4 py-3 text-slate-300 font-medium">{idea.niche}</td>
                                                 <td className="px-4 py-3 text-slate-400">{idea.mainKeyword}</td>
                                                 <td className="px-4 py-3 text-slate-400 max-w-xs truncate">{idea.hook}</td>
@@ -495,13 +495,13 @@ export function IdeasClient() {
                                             </tr>
                                             {/* Expandable market detail panel */}
                                             {isExpanded && marketData && (
-                                                <tr key={`${idea.id}-panel`} className="bg-slate-900/40">
+                                                <tr className="bg-slate-900/40">
                                                     <td colSpan={7} className="px-4 pb-4 pt-0">
                                                         <MarketPanel intel={marketData.intel} scoring={marketData.scoring} />
                                                     </td>
                                                 </tr>
                                             )}
-                                        </>
+                                        </React.Fragment>
                                     );
                                 })}
                             </tbody>

@@ -1,7 +1,6 @@
 // Central API client
-// NEXT_PUBLIC_API_BASE_URL=http://localhost:3001 ise tüm istekler doğrudan backend'e gider (cross-origin).
-// Backend'deki CORS ayarı http://localhost:3000'e izin vermelidir.
-// NEXT_PUBLIC_API_BASE_URL tanımsız ise relative '/api' kullanılır (Next.js proxy gerektirir).
+// Local dev: .env.local'de NEXT_PUBLIC_API_BASE_URL boş → relative '/api' kullanılır → next.config.ts rewrites backend'e proxy eder (CORS yok).
+// Production: NEXT_PUBLIC_API_BASE_URL=https://api.yourdomain.com → absolute URL, cross-origin, backend CORS_ORIGIN ayarı gerekir.
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL !== undefined
     ? process.env.NEXT_PUBLIC_API_BASE_URL
     : '';
@@ -597,4 +596,163 @@ export const apiRadar = {
         method: 'POST',
         body: JSON.stringify({ shopUrl })
     }),
+};
+
+// ─── WPI — Winning Product Intelligence ───────────────────
+
+export interface WpiProduct {
+    listingId: string;
+    title: string;
+    price: number;
+    currency: string;
+    imageUrl: string;
+    listingUrl: string;
+    sales: number;
+    rating: number | null;
+    shopName: string;
+}
+
+export interface WpiTrendData {
+    salesCount: number;
+    salesDelta: number;
+    trendPeriod: '48h' | 'BASELINE' | 'all-time';
+    isTrending: boolean;
+    isBaseline: boolean;
+    trendScore: number;
+}
+
+export interface WpiBrainComparison {
+    confidence: number;
+    reasoning: string;
+    designSuggestion: string;
+    niche: string;
+    targetKeywords: string[];
+    colorPalette: string;
+    competitiveEdge: string;
+}
+
+export interface WpiActionCard {
+    headline: string;
+    actionType: 'IMMEDIATE_ACTION' | 'TREND_ACTION';
+    competitorAnalysis: string;
+    designSuggestion: string;
+    action: string;
+    collection: string | null;
+    event: string | null;
+    colorPalette: string | null;
+    targetKeywords: string[];
+    competitiveEdge: string | null;
+    differentiationAngle: string | null;
+    confidence: number;
+    priority: 'IMMEDIATE' | 'HIGH' | 'NORMAL';
+    instantSignals: string[];
+    autoSendToFactory: boolean;
+}
+
+export interface WpiCard {
+    id: string;
+    title: string;
+    createdAt: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    keyword: string;
+    product: WpiProduct & {
+        isBestSeller?: boolean;
+        inCartCount?: number;
+        isPopularNow?: boolean;
+    };
+    trendData: WpiTrendData;
+    brainComparison: WpiBrainComparison & { differentiationAngle?: string };
+    actionCard: WpiActionCard;
+}
+
+export interface WpiScanSummary {
+    scanId: string;
+    scannedAt: string;
+    keywordsScanned: number;
+    totalProducts: number;
+    totalTrending: number;
+    totalWinners: number;
+    totalImmediate: number;
+    errors: number;
+}
+
+export interface WpiKeywordResult {
+    keyword: string;
+    productsScraped: number;
+    trendingCount: number;
+    winnersFound: number;
+    isBaseline: boolean;
+    actionCards: WpiCard[];
+    error: string | null;
+}
+
+export interface WpiScanResult {
+    success: boolean;
+    scanId: string;
+    summary: WpiScanSummary;
+    byKeyword: Record<string, WpiKeywordResult>;
+    actionCards: WpiCard[];
+}
+
+export interface WpiCollection {
+    name: string;
+    event: string;
+    keywords: string[];
+}
+
+export interface WpiScanProgress {
+    total: number;
+    done: number;
+    currentKeyword: string;
+}
+
+export interface WpiScanStartResponse {
+    success: boolean;
+    scanId: string;
+    status: 'running';
+    total: number;
+}
+
+export interface WpiScanPollResponse {
+    success: boolean;
+    status: 'running' | 'done' | 'error';
+    progress?: WpiScanProgress;
+    result?: WpiScanResult;
+    error?: string;
+}
+
+export const apiWpi = {
+    startScan: (keywords: string[], opts?: { saveWinners?: boolean; maxPerKeyword?: number }) =>
+        request<WpiScanStartResponse>('/wpi/scan', {
+            method: 'POST',
+            body: JSON.stringify({ keywords, ...opts }),
+        }),
+
+    pollScan: (scanId: string) =>
+        request<WpiScanPollResponse>(`/wpi/scan/${scanId}`),
+
+    listActionCards: (status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL' = 'PENDING', limit = 20) =>
+        request<{ success: boolean; count: number; cards: WpiCard[] }>(
+            `/wpi/action-cards?status=${status}&limit=${limit}`
+        ),
+
+    approve: (id: string, sendToFactory = false) =>
+        request<{ success: boolean; cardId: string; jobId: string | null }>(
+            `/wpi/action-cards/${id}/approve`,
+            { method: 'POST', body: JSON.stringify({ sendToFactory }) }
+        ),
+
+    reject: (id: string, reason = '') =>
+        request<{ success: boolean; cardId: string }>(
+            `/wpi/action-cards/${id}/reject`,
+            { method: 'POST', body: JSON.stringify({ reason }) }
+        ),
+
+    collections: () =>
+        request<{ success: boolean; collections: WpiCollection[] }>('/wpi/collections'),
+
+    config: () =>
+        request<{ success: boolean; config: { brainConfidenceMin: number; collectionsCount: number; actor: string } }>(
+            '/wpi/config'
+        ),
 };

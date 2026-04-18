@@ -114,7 +114,8 @@ model Image {
   cost             Decimal      @default(0.00)
   performanceScore Float        @default(0.0)
   winnerFlag       Boolean      @default(false)
-  
+  flagReason       String?
+
   mockups          Mockup[]
   seoData          SEOData?
   
@@ -158,6 +159,8 @@ enum ImageStatus {
   PROCESSED
   FAILED
   COMPLETED
+  FLAGGED
+  PENDING_APPROVAL
 }
 
 model VisionAnalysis {
@@ -300,4 +303,19 @@ model ApiUsage {
   cost        Decimal  @default(0.000000) @db.Decimal(12, 6)
   metadata    Json?    // { jobId, imageId, feature }
   createdAt   DateTime @default(now())
+}
+
+// ─── AI Agent Daily Tasks ─────────────────────────────────────────────────────
+
+model DailyTask {
+  id           String    @id @default(uuid())
+  date         DateTime
+  taskType     String    // "GENERATION" | "MOCKUP" | "SEO" | "ETSY_DRAFT"
+  targetCount  Int       @default(10)
+  currentCount Int       @default(0)
+  isCompleted  Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime? @updatedAt
+
+  @@unique([date, taskType])
 }

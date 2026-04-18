@@ -6,9 +6,12 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { OpenAI } = require('openai');
+const { Queue } = require('bullmq');
+const redisConnection = require('../config/redis');
 const brainService = require('../services/multimodal-brain.service');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const knowledgeQueue = new Queue('knowledge-ingestion', { connection: redisConnection });
 
 // Multer — video uploads up to 500MB
 const storage = multer.diskStorage({
@@ -245,7 +248,7 @@ router.post('/test-knowledge', async (req, res) => {
 
         const client = new Anthropic();
         const response = await client.messages.create({
-            model: 'claude-haiku-4-5',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1000,
             system: `You are an Etsy POD business expert assistant.
 Answer questions based ONLY on the knowledge base provided below.
@@ -274,6 +277,77 @@ ${seoKnowledge.slice(0, 2000)}`,
     } catch (err) {
         console.error('[Brain Test]', err);
         res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── POST /api/brain/queue-video — Queue single video for background analysis ─
+// Returns immediately with jobId; processing happens in knowledge.worker.js
+router.post('/queue-video', upload.single('video'), async (req, res) => {
+    try {
+        const { title, videoType, workspaceId, category } = req.body;
+        const videoFile = req.file;
+        if (!videoFile) return res.status(400).json({ error: 'No video file provided' });
+
+        const validTypes = ['training', 'meeting', 'etsy_update', 'tutorial'];
+        const job = await knowledgeQueue.add('brain-video', {
+            type: 'BRAIN_VIDEO',
+            filePath: videoFile.path,
+            originalName: videoFile.originalname,
+            title: title || videoFile.originalname.replace(/\.[^/.]+$/, ''),
+            videoType: validTypes.includes(videoType) ? videoType : 'training',
+            category: category || null,
+            workspaceId: workspaceId || req.workspaceId || 'default-workspace'
+        }, { attempts: 2, backoff: { type: 'exponential', delay: 5000 } });
+
+        res.json({ jobId: job.id, message: 'Video queued for background analysis', name: videoFile.originalname });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ─── POST /api/brain/bulk-social — Queue multiple social images ───────────────
+router.post('/bulk-social', upload.array('images', 50), async (req, res) => {
+    try {
+        const files = req.files;
+        const workspaceId = req.workspaceId || req.body.workspaceId || 'default-workspace';
+        if (!files || files.length === 0) return res.status(400).json({ error: 'No images provided' });
+
+        const jobs = await Promise.all(files.map(f =>
+            knowledgeQueue.add('brain-social', {
+                type: 'SOCIAL_PROOF',
+                filePath: f.path,
+                originalName: f.originalname,
+                title: `Social Trend: ${f.originalname}`,
+                workspaceId
+            }, { attempts: 2, backoff: { type: 'exponential', delay: 3000 } })
+        ));
+
+        res.json({ queued: jobs.length, jobIds: jobs.map(j => j.id), message: `${jobs.length} images queued for analysis` });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ─── POST /api/brain/bulk-expert — Queue multiple expert images ───────────────
+router.post('/bulk-expert', upload.array('images', 50), async (req, res) => {
+    try {
+        const files = req.files;
+        const workspaceId = req.workspaceId || req.body.workspaceId || 'default-workspace';
+        if (!files || files.length === 0) return res.status(400).json({ error: 'No images provided' });
+
+        const jobs = await Promise.all(files.map(f =>
+            knowledgeQueue.add('brain-expert', {
+                type: 'EXPERT_PROOF',
+                filePath: f.path,
+                originalName: f.originalname,
+                title: `Expert Strategy: ${f.originalname}`,
+                workspaceId
+            }, { attempts: 2, backoff: { type: 'exponential', delay: 3000 } })
+        ));
+
+        res.json({ queued: jobs.length, jobIds: jobs.map(j => j.id), message: `${jobs.length} images queued for analysis` });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 

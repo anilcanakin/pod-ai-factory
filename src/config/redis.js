@@ -1,8 +1,6 @@
 const Redis = require('ioredis');
 
-// REDIS_URL (Upstash veya herhangi bir managed Redis) varsa onu kullan,
-// yoksa localhost'a düş. Upstash rediss:// (TLS) URL'lerini ioredis
-// otomatik olarak tanır; tls seçeneğini ayrıca geçirmemize gerek yok.
+// Upstash varsa kullan, yoksa Docker/yerel Redis'e düş
 const connection = process.env.REDIS_URL
     ? new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null })
     : new Redis({
@@ -15,7 +13,7 @@ connection.on('connect', () => {
     const target = process.env.REDIS_URL
         ? process.env.REDIS_URL.replace(/:\/\/[^@]+@/, '://<credentials>@')
         : `${process.env.REDIS_HOST || '127.0.0.1'}:${process.env.REDIS_PORT || 6379}`;
-    console.log(`[Redis] Bağlandı → ${target}`);
+    console.log(`[Redis] ✔ Bağlandı → ${target}`);
 });
 
 connection.on('error', (err) => {

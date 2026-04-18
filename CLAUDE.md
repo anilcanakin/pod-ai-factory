@@ -1,5 +1,14 @@
 # POD AI Factory — CLAUDE.md
 
+## AI Assistant Rules (claude-doctor generated)
+
+- **Read before editing.** Always read the full file before making any changes. Plan all edits first, then make ONE complete edit. If the same file has been edited 3+ times in a session, stop and re-read the original requirements.
+- **Stay on target.** Every few turns, re-read the original request to confirm you haven't drifted from the goal.
+- **Follow through completely.** Re-read the user's last message before responding. Execute every instruction fully — do not partially implement.
+- **On correction: stop and confirm.** When the user corrects you, stop, re-read their message, quote back what they asked for, and confirm before proceeding.
+
+---
+
 ## Project Overview
 
 POD AI Factory is an AI-powered automation platform for running an Etsy Print-on-Demand business with minimum human touch. The owner (Anılcan) is setting up an Etsy POD store and wants end-to-end automation:

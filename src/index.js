@@ -45,10 +45,9 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
 }
 
 // Middleware
-// CORS_ORIGIN env'de set edilmemişse frontend'in çalıştığı :3000'e izin ver.
+// Backend :3000, Frontend :3001 portunda çalışır.
+// CORS_ORIGIN set edilmemişse frontend'in varsayılan portuna (3001) izin ver.
 // PRODUCTION: CORS_ORIGIN env değişkenine gerçek frontend URL'ini set et.
-// Frontend :3000'de, backend :3001'de çalışır.
-// CORS_ORIGIN set edilmemişse frontend'in varsayılan portuna izin ver.
 const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3001';
 app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
 console.log(`[CORS] İzin verilen origin: ${ALLOWED_ORIGIN}`);
@@ -367,6 +366,8 @@ app.use('/api/brain', require('./routes/brain.routes'));
 app.use('/api/trends', require('./routes/trends.routes'));
 app.use('/api/agent', require('./routes/agent.routes'));
 app.use('/api/radar', require('./routes/radar.routes'));
+app.use('/api/apify', require('./routes/apify.routes'));
+app.use('/api/wpi',   require('./routes/wpi.routes'));
 app.use('/api/fulfillment', require('./routes/fulfillment.routes'));
 app.use('/api/knowledge', require('./routes/knowledge.routes'));
 app.use('/api/tasks', require('./routes/task.routes'));

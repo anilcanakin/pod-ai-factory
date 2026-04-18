@@ -5,7 +5,6 @@ import {
   ShieldCheck,
   Zap,
   Target,
-  Terminal,
   Activity,
   UploadCloud,
   DollarSign,
@@ -14,7 +13,10 @@ import {
   CheckCircle2,
   Cpu,
   BarChart3,
-  RefreshCw
+  RefreshCw,
+  Eye,
+  Rocket,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -81,12 +83,15 @@ export default function BossDashboard() {
 
   const [expertMemories, setExpertMemories] = useState<any[]>([]);
 
-  const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+  // Bulk upload progress state
+  interface BulkUploadProgress { total: number; done: number; errors: number; }
+  const [socialProgress, setSocialProgress] = useState<BulkUploadProgress | null>(null);
+  const [expertProgress, setExpertProgress] = useState<BulkUploadProgress | null>(null);
 
   const fetchAiSpend = async () => {
     setSpendLoading(true);
     try {
-      const res = await fetch(`${API}/api/billing/ai-spend`, { credentials: 'include' });
+      const res = await fetch(`/api/billing/ai-spend`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setAiSpend(data);
@@ -99,8 +104,11 @@ export default function BossDashboard() {
   };
 
   const fetchStats = () => {
-    fetch('http://localhost:3000/api/hq/stats', { credentials: 'omit' })
-      .then(res => res.json())
+    fetch('/api/hq/stats', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         if (data.tasks) {
             setTasks(data.tasks);
@@ -108,18 +116,15 @@ export default function BossDashboard() {
             setFlaggedItems(data.flaggedItems || []);
         }
 
-        // Fetch QA Pending Items
-        fetch('http://localhost:3000/api/hq/pending').then(r => r.json()).then(setPendingItems);
-
-        // Fetch Expert Memories
-        fetch('http://localhost:3000/api/brain').then(r => r.json()).then(data => {
+        fetch('/api/hq/pending', { credentials: 'include' }).then(r => r.json()).then(setPendingItems).catch(console.warn);
+        fetch('/api/brain', { credentials: 'include' }).then(r => r.json()).then(data => {
             setExpertMemories(data.filter((m:any) => m.sourceType === 'Expert'));
-        });
+        }).catch(console.warn);
 
         setLoading(false);
       })
       .catch(err => {
-        console.error('Failed to fetch HQ stats:', err);
+        console.error('API Connection Error:', err);
         setLoading(false);
       });
   };
@@ -180,7 +185,7 @@ export default function BossDashboard() {
       });
 
       try {
-          const res = await fetch('http://localhost:3000/api/hq/bulk', {
+          const res = await fetch('/api/hq/bulk', {
               method: 'POST',
               body: formData,
               credentials: 'omit'
@@ -203,7 +208,7 @@ export default function BossDashboard() {
 
   const handleOverride = async (itemId: string) => {
       try {
-          const res = await fetch(`http://localhost:3000/api/hq/override/${itemId}`, { method: 'POST' });
+          const res = await fetch(`/api/hq/override/${itemId}`, { method: 'POST' });
           if (res.ok) {
               toast.success("Hukuki engel kaldırıldı. Ürün banda döndü!");
               fetchStats();
@@ -225,7 +230,7 @@ export default function BossDashboard() {
       toast("Yaratıcı Motor Başlatıldı. Sinyaller Aranıyor...", { icon: "🧠" });
 
       try {
-          const res = await fetch(`http://localhost:3000/api/hq/generate-auto`, { 
+          const res = await fetch(`/api/hq/generate-auto`, { 
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ niche: targetKeyword })
@@ -247,7 +252,7 @@ export default function BossDashboard() {
 
   const handleApprove = async (id: string) => {
       try {
-          const res = await fetch(`http://localhost:3000/api/hq/approve/${id}`, { method: 'POST' });
+          const res = await fetch(`/api/hq/approve/${id}`, { method: 'POST' });
           if (res.ok) {
               toast.success("Ürün Etsy'ye gönderildi!", { icon: "✅" });
               fetchStats();
@@ -257,7 +262,7 @@ export default function BossDashboard() {
 
   const handleReject = async (id: string) => {
       try {
-          const res = await fetch(`http://localhost:3000/api/hq/reject/${id}`, { method: 'POST' });
+          const res = await fetch(`/api/hq/reject/${id}`, { method: 'POST' });
           if (res.ok) {
               toast.error("Ürün çöpe atıldı.", { icon: "🗑️" });
               fetchStats();
@@ -267,7 +272,7 @@ export default function BossDashboard() {
 
   const handleApproveAll = async () => {
       try {
-          const res = await fetch(`http://localhost:3000/api/hq/approve-all`, { method: 'POST' });
+          const res = await fetch(`/api/hq/approve-all`, { method: 'POST' });
           if (res.ok) {
               toast.success("Tüm kuyruk Etsy'ye roketlendi!", { icon: "🚀" });
               fetchStats();
@@ -276,63 +281,78 @@ export default function BossDashboard() {
   };
 
   const handleSocialUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
 
-      toast("Sosyal İstihbarat Analiz Ediliyor...", { icon: "👁️‍🗨️" });
-      
-      const formData = new FormData();
-      formData.append('image', file);
-      formData.append('title', `Social Trend: ${file.name}`);
+      // Batch into groups of 10 to avoid browser lockup
+      const BATCH = 10;
+      let done = 0, errors = 0;
+      setSocialProgress({ total: files.length, done: 0, errors: 0 });
+      toast(`${files.length} sosyal içerik analiz kuyruğuna ekleniyor...`, { icon: "👁️‍🗨️" });
 
-      try {
-          const res = await fetch('http://localhost:3000/api/brain/ingest-social', {
-              method: 'POST',
-              body: formData,
-              credentials: 'omit'
-          });
-          const data = await res.json();
-          if (res.ok) {
-              toast.success("Görsel Hafıza Güncellendi! Trend RAG'e gömüldü.");
-              fetchStats();
-          } else {
-              toast.error(data.error || "İstihbarat yüklenemedi.");
+      for (let i = 0; i < files.length; i += BATCH) {
+          const batch = files.slice(i, i + BATCH);
+          const fd = new FormData();
+          batch.forEach(f => fd.append('images', f));
+          try {
+              const res = await fetch('/api/brain/bulk-social', { method: 'POST', body: fd, credentials: 'include' });
+              if (res.ok) {
+                  const data = await res.json();
+                  done += data.queued ?? batch.length;
+              } else {
+                  errors += batch.length;
+              }
+          } catch {
+              errors += batch.length;
           }
-      } catch (err) {
-          toast.error("Bağlantı hatası.");
-      } finally {
-          if (socialInputRef.current) socialInputRef.current.value = '';
+          setSocialProgress({ total: files.length, done, errors });
       }
+
+      if (errors === 0) {
+          toast.success(`${done} görsel analiz kuyruğuna eklendi! Arka planda işlenecek.`);
+      } else {
+          toast.warning(`${done} başarılı, ${errors} hatalı.`);
+      }
+      setSocialProgress(null);
+      fetchStats();
+      if (socialInputRef.current) socialInputRef.current.value = '';
   };
 
   const handleExpertUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
 
-      toast("Uzman Görüşü Sisteme İşleniyor...", { icon: "🎓" });
-      
-      const formData = new FormData();
-      formData.append('image', file);
-      formData.append('title', `Expert Strategy: ${file.name}`);
+      const BATCH = 10;
+      let done = 0, errors = 0;
+      setExpertProgress({ total: files.length, done: 0, errors: 0 });
+      toast(`${files.length} uzman stratejisi kuyruğuna ekleniyor...`, { icon: "🎓" });
 
-      try {
-          const res = await fetch('http://localhost:3000/api/brain/ingest-expert', {
-              method: 'POST',
-              body: formData,
-              credentials: 'omit'
-          });
-          const data = await res.json();
-          if (res.ok) {
-              toast.success("Uzman Hafızası Güncellendi! Strateji RAG önceliğine alındı.");
-              fetchStats();
-          } else {
-              toast.error(data.error || "Uzman görüşü yüklenemedi.");
+      for (let i = 0; i < files.length; i += BATCH) {
+          const batch = files.slice(i, i + BATCH);
+          const fd = new FormData();
+          batch.forEach(f => fd.append('images', f));
+          try {
+              const res = await fetch('/api/brain/bulk-expert', { method: 'POST', body: fd, credentials: 'include' });
+              if (res.ok) {
+                  const data = await res.json();
+                  done += data.queued ?? batch.length;
+              } else {
+                  errors += batch.length;
+              }
+          } catch {
+              errors += batch.length;
           }
-      } catch (err) {
-          toast.error("Bağlantı hatası.");
-      } finally {
-          if (expertInputRef.current) expertInputRef.current.value = '';
+          setExpertProgress({ total: files.length, done, errors });
       }
+
+      if (errors === 0) {
+          toast.success(`${done} uzman stratejisi analiz kuyruğuna eklendi!`);
+      } else {
+          toast.warning(`${done} başarılı, ${errors} hatalı.`);
+      }
+      setExpertProgress(null);
+      fetchStats();
+      if (expertInputRef.current) expertInputRef.current.value = '';
   };
 
   if (loading) return (
@@ -551,7 +571,7 @@ export default function BossDashboard() {
                         <div className="space-y-4">
                             {flaggedItems.map(item => (
                                 <div key={item.id} className="bg-bg-base border border-red-500/20 rounded-lg p-4 flex gap-4 items-center">
-                                    <img src={`http://localhost:3000/${item.imageUrl}`} alt="flagged" className="w-16 h-16 object-cover rounded-md" />
+                                    <img src={`/${item.imageUrl}`} alt="flagged" className="w-16 h-16 object-cover rounded-md" />
                                     <div className="flex-1">
                                         <h3 className="text-sm font-bold text-red-400">Marka / Telif İhlali</h3>
                                         <p className="text-xs text-text-tertiary font-mono break-all">{item.flagReason}</p>
@@ -648,14 +668,14 @@ export default function BossDashboard() {
                                 {/* 1. Ham Dekupe Tasarım */}
                                 <div className="bg-bg-base border border-border-default rounded flex justify-center p-2 relative group items-center min-h-[140px]">
                                     <div className="absolute inset-0 bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAHElEQVQYV2NkYGD4z0AEYBw1kMgA04mIioHAAwAIwwEFAvj2+QAAAABJRU5ErkJggg==')] opacity-10 rounded"></div>
-                                    <img src={`http://localhost:3000/${creativeResult.transparentUrl}`} alt="Generated Design" className="w-28 h-28 object-contain relative z-10 drop-shadow-xl" />
+                                    <img src={`/${creativeResult.transparentUrl}`} alt="Generated Design" className="w-28 h-28 object-contain relative z-10 drop-shadow-xl" />
                                     <span className="absolute bottom-2 left-2 text-[8px] font-mono uppercase bg-black/60 px-2 py-0.5 rounded text-white z-20">Ham Baskı</span>
                                 </div>
 
                                 {/* 2. Lifestyle Sahne Mockup */}
                                 {creativeResult.sceneUrl ? (
                                     <div className="bg-bg-base border border-border-default rounded flex justify-center p-0 relative group items-center overflow-hidden min-h-[140px]">
-                                        <img src={`http://localhost:3000/${creativeResult.sceneUrl}`} alt="Lifestyle Scene" className="w-full h-full object-cover relative z-10" />
+                                        <img src={`/${creativeResult.sceneUrl}`} alt="Lifestyle Scene" className="w-full h-full object-cover relative z-10" />
                                         <span className="absolute bottom-2 right-2 text-[8px] font-mono uppercase bg-accent/80 px-2 py-0.5 rounded text-white z-20 shadow">Psikolojik Sahne</span>
                                     </div>
                                 ) : (
@@ -681,20 +701,36 @@ export default function BossDashboard() {
                         Instagram trendlerini görsele dönüştürün. Vision API DNA'yı çıkarır ve 'Design Brain'e (RAG) ekler.
                     </p>
                     
-                    <input 
-                        type="file" 
-                        accept="image/*" 
-                        className="hidden" 
+                    <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
                         ref={socialInputRef}
-                        onChange={handleSocialUpload} 
+                        onChange={handleSocialUpload}
                     />
-                    
-                    <button 
-                        onClick={() => socialInputRef.current?.click()}
-                        className="w-full bg-bg-surface hover:bg-bg-elevated border border-border-default text-text-secondary py-3 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all"
-                    >
-                        Görsel Seç veya Sürükle
-                    </button>
+
+                    {socialProgress ? (
+                        <div className="w-full space-y-2">
+                            <div className="flex justify-between text-[10px] text-text-tertiary font-mono">
+                                <span>Yükleniyor...</span>
+                                <span>{socialProgress.done}/{socialProgress.total}</span>
+                            </div>
+                            <div className="h-1.5 bg-bg-base rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-accent rounded-full transition-all duration-300"
+                                    style={{ width: `${Math.round((socialProgress.done / socialProgress.total) * 100)}%` }}
+                                />
+                            </div>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => socialInputRef.current?.click()}
+                            className="w-full bg-bg-surface hover:bg-bg-elevated border border-border-default text-text-secondary py-3 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all"
+                        >
+                            Görsel Seç veya Sürükle (Çoklu)
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
@@ -718,12 +754,12 @@ export default function BossDashboard() {
                             {/* Görsel Galeri (Raw + Mockup) */}
                             <div className="grid grid-cols-2 h-40 bg-[#0a0d14]">
                                 <div className="relative border-r border-border-subtle p-2 flex items-center justify-center">
-                                    <img src={`http://localhost:3000/${item.masterFileUrl}`} className="max-w-full max-h-full object-contain" alt="Raw" />
+                                    <img src={`/${item.masterFileUrl}`} className="max-w-full max-h-full object-contain" alt="Raw" />
                                     <span className="absolute top-2 left-2 bg-black/80 font-mono text-[8px] text-white px-1.5 py-0.5 rounded">RAW ART</span>
                                 </div>
                                 <div className="relative p-2 flex items-center justify-center">
                                     {item.mockups?.[0] ? (
-                                        <img src={`http://localhost:3000/${item.mockups[0].mockupUrl}`} className="max-w-full max-h-full object-cover rounded" alt="Mockup" />
+                                        <img src={`/${item.mockups[0].mockupUrl}`} className="max-w-full max-h-full object-cover rounded" alt="Mockup" />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center text-xs text-text-tertiary">No Scene</div>
                                     )}
@@ -766,10 +802,28 @@ export default function BossDashboard() {
                     <p className="text-sm text-text-secondary">Instagram aboneliklerinden gelen stratejik veriler. Üretimde %50 ağırlıklı kullanılır.</p>
                 </div>
                 <div>
-                    <input type="file" accept="image/*" className="hidden" ref={expertInputRef} onChange={handleExpertUpload} />
-                    <button onClick={() => expertInputRef.current?.click()} className="bg-success/20 text-success border border-success/50 px-5 py-2 rounded font-bold text-xs uppercase hover:bg-success/30 transition shadow-lg shadow-success/10">
-                        + STRATEJİ YÜKLE
-                    </button>
+                    <input type="file" accept="image/*" multiple className="hidden" ref={expertInputRef} onChange={handleExpertUpload} />
+                    {expertProgress ? (
+                        <div className="flex items-center gap-3">
+                            <div className="flex-1 space-y-1">
+                                <div className="flex justify-between text-[10px] text-text-tertiary font-mono">
+                                    <span>Yükleniyor...</span>
+                                    <span>{expertProgress.done}/{expertProgress.total}</span>
+                                </div>
+                                <div className="h-1.5 bg-bg-base rounded-full overflow-hidden w-36">
+                                    <div
+                                        className="h-full bg-success rounded-full transition-all duration-300"
+                                        style={{ width: `${Math.round((expertProgress.done / expertProgress.total) * 100)}%` }}
+                                    />
+                                </div>
+                            </div>
+                            <Loader2 className="w-4 h-4 animate-spin text-success" />
+                        </div>
+                    ) : (
+                        <button onClick={() => expertInputRef.current?.click()} className="bg-success/20 text-success border border-success/50 px-5 py-2 rounded font-bold text-xs uppercase hover:bg-success/30 transition shadow-lg shadow-success/10">
+                            + STRATEJİ YÜKLE (Çoklu)
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -778,7 +832,7 @@ export default function BossDashboard() {
                     {expertMemories.slice(0, 8).map(m => (
                         <div key={m.id} className="bg-bg-elevated border border-border-default rounded-lg overflow-hidden flex flex-col group hover:border-success/50 transition-all">
                             <div className="h-32 bg-black relative">
-                                <img src={`http://localhost:3000/${m.sourceUrl}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition" alt="Strategy" />
+                                <img src={`/${m.sourceUrl}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition" alt="Strategy" />
                                 <div className="absolute top-2 left-2 flex gap-1">
                                     <span className="bg-success text-black text-[8px] font-black px-1.5 py-0.5 rounded shadow">EXPERT</span>
                                     <span className="bg-white/20 backdrop-blur-sm text-white text-[8px] font-mono px-1.5 py-0.5 rounded uppercase">{m.analysisResult?.recommendedNiche || 'Niche'}</span>

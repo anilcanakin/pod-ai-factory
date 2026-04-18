@@ -1,6 +1,6 @@
-const Anthropic = require('@anthropic-ai/sdk');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const anthropic = require('../lib/anthropic');
 
 const DEFAULT_KNOWLEDGE = `## ETSY 2026 SEO ALGORITHM KNOWLEDGE
 
@@ -65,9 +65,7 @@ async function getKnowledge(workspaceId) {
 async function autoUpdateKnowledge(workspaceId) {
     console.log('[SEO Knowledge] Starting auto-update...');
 
-    const client = new Anthropic();
-
-    const response = await client.messages.create({
+    const response = await anthropic.messages.create({
         model: 'claude-haiku-4-5',
         max_tokens: 2000,
         messages: [{

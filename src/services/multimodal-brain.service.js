@@ -12,6 +12,14 @@ const billingService = require('./billing.service');
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+async function ensureWorkspace(workspaceId) {
+    await prisma.workspace.upsert({
+        where: { id: workspaceId },
+        update: {},
+        create: { id: workspaceId, name: 'Default Workspace', slug: workspaceId }
+    });
+}
+
 async function generateEmbedding(text) {
     try {
         const response = await openai.embeddings.create({
@@ -74,6 +82,7 @@ class MultimodalBrainService {
     async processVideo(workspaceId, videoPath, title, type = 'VIDEO_TUTORIAL') {
         const sessionId = Date.now().toString();
         console.log(`[Brain] Starting Gemini digestion for: ${title}`);
+        await ensureWorkspace(workspaceId);
 
         try {
             const frames = await this.extractFrames(videoPath, sessionId);
@@ -113,6 +122,7 @@ OUTPUT FORMAT (JSON only, no markdown):
             const embeddingText = `${title} ${analysis.summary}`;
             const vectorEmbedding = await generateEmbedding(embeddingText);
 
+            console.log('[Brain] Saving processVideo memory to DB...');
             const memory = await prisma.corporateMemory.create({
                 data: {
                     workspaceId,
@@ -124,6 +134,7 @@ OUTPUT FORMAT (JSON only, no markdown):
                     ...(vectorEmbedding && { vectorEmbedding })
                 }
             });
+            console.log('[Brain] Memory saved for id:', memory.id);
 
             fs.rmSync(path.join(this.tempDir, sessionId), { recursive: true, force: true });
             return memory;
@@ -143,6 +154,7 @@ OUTPUT FORMAT (JSON only, no markdown):
         fs.mkdirSync(framesDir);
 
         console.log(`[Brain] Starting full Claude analysis for: ${title}`);
+        await ensureWorkspace(workspaceId);
 
         try {
             // 1. Extract 20 frames spread across video
@@ -206,7 +218,7 @@ OUTPUT FORMAT (JSON only, no markdown):
 
                 try {
                     const response = await client.messages.create({
-                        model: 'claude-haiku-4-5',
+                        model: 'claude-haiku-4-5-20251001',
                         max_tokens: 500,
                         messages: [{
                             role: 'user',
@@ -228,7 +240,7 @@ Be concise and focus on actionable Etsy/POD business insights.`
                         }]
                     });
                     if (response.usage) {
-                        billingService.logUsage('anthropic', 'claude-haiku-4-5', response.usage, workspaceId, { feature: 'brain_frame_analysis' }).catch(() => {});
+                        billingService.logUsage('anthropic', 'claude-haiku-4-5-20251001', response.usage, workspaceId, { feature: 'brain_frame_analysis' }).catch(() => {});
                     }
                     frameAnalyses.push(`[Frame ${i + 1}]: ${response.content[0].text}`);
                 } catch (err) {
@@ -238,7 +250,7 @@ Be concise and focus on actionable Etsy/POD business insights.`
 
             // 5. Synthesize all signals into structured knowledge
             const synthesisResponse = await client.messages.create({
-                model: 'claude-haiku-4-5',
+                model: 'claude-haiku-4-5-20251001',
                 max_tokens: 2000,
                 messages: [{
                     role: 'user',
@@ -264,7 +276,7 @@ Be specific and actionable. Focus on what can be immediately applied.`
 
             const synthesis = synthesisResponse.content[0].text;
             if (synthesisResponse.usage) {
-                billingService.logUsage('anthropic', 'claude-haiku-4-5', synthesisResponse.usage, workspaceId, { feature: 'brain_video_synthesis' }).catch(() => {});
+                billingService.logUsage('anthropic', 'claude-haiku-4-5-20251001', synthesisResponse.usage, workspaceId, { feature: 'brain_video_synthesis' }).catch(() => {});
             }
 
             // 6. Save to CorporateMemory
@@ -272,6 +284,7 @@ Be specific and actionable. Focus on what can be immediately applied.`
             const embeddingText = `${title} ${synthesis.slice(0, 2000)}`;
             const vectorEmbedding = await generateEmbedding(embeddingText);
 
+            console.log('[Brain] Saving analyzeVideoFull memory to DB, workspaceId:', workspaceId);
             const memory = await prisma.corporateMemory.create({
                 data: {
                     workspaceId,
@@ -291,6 +304,7 @@ Be specific and actionable. Focus on what can be immediately applied.`
                     ...(vectorEmbedding && { vectorEmbedding })
                 }
             });
+            console.log('[Brain] Memory saved for id:', memory.id);
 
             // 7. Auto-extract and merge SEO insights
             const seoUpdated = await this.extractSeoKnowledge(workspaceId, synthesis);
@@ -318,10 +332,11 @@ Be specific and actionable. Focus on what can be immediately applied.`
 
     async addTextKnowledge(workspaceId, title, textContent, source = 'manual', category = null) {
         console.log(`[Brain] Processing text note: ${title}`);
+        await ensureWorkspace(workspaceId);
         const client = new Anthropic();
 
         const response = await client.messages.create({
-            model: 'claude-haiku-4-5',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1500,
             messages: [{
                 role: 'user',
@@ -345,13 +360,14 @@ Be specific and immediately actionable.`
 
         const synthesis = response.content[0].text;
         if (response.usage) {
-            billingService.logUsage('anthropic', 'claude-haiku-4-5', response.usage, workspaceId, { feature: 'brain_text_analysis' }).catch(() => {});
+            billingService.logUsage('anthropic', 'claude-haiku-4-5-20251001', response.usage, workspaceId, { feature: 'brain_text_analysis' }).catch(() => {});
         }
 
         const resolvedCategory = category || detectCategory(synthesis);
         const embeddingText = `${title} ${synthesis.slice(0, 2000)}`;
         const vectorEmbedding = await generateEmbedding(embeddingText);
 
+        console.log('[Brain] Saving addTextKnowledge memory to DB, workspaceId:', workspaceId);
         const memory = await prisma.corporateMemory.create({
             data: {
                 workspaceId,
@@ -369,6 +385,7 @@ Be specific and immediately actionable.`
                 ...(vectorEmbedding && { vectorEmbedding })
             }
         });
+        console.log('[Brain] Memory saved for id:', memory.id);
 
         const seoUpdated = await this.extractSeoKnowledge(workspaceId, synthesis);
         if (seoUpdated) {
@@ -389,7 +406,7 @@ Be specific and immediately actionable.`
             const client = new Anthropic();
 
             const checkResponse = await client.messages.create({
-                model: 'claude-haiku-4-5',
+                model: 'claude-haiku-4-5-20251001',
                 max_tokens: 800,
                 messages: [{
                     role: 'user',
@@ -401,7 +418,7 @@ ${synthesis.slice(0, 3000)}`
 
             const seoExtract = checkResponse.content[0].text.trim();
             if (checkResponse.usage) {
-                billingService.logUsage('anthropic', 'claude-haiku-4-5', checkResponse.usage, workspaceId, { feature: 'brain_seo_extract' }).catch(() => {});
+                billingService.logUsage('anthropic', 'claude-haiku-4-5-20251001', checkResponse.usage, workspaceId, { feature: 'brain_seo_extract' }).catch(() => {});
             }
             if (seoExtract === 'NONE' || seoExtract.length < 80) return false;
 

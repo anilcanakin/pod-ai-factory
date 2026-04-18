@@ -1,6 +1,11 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// Guard: ApiUsage tablosu henüz migrate edilmediyse çağrıları sessizce atla
+function isApiUsageReady() {
+    return typeof prisma.apiUsage !== 'undefined';
+}
+
 class BillingService {
     // AI Provider Pricing (per token)
     static PRICES = {
@@ -29,9 +34,8 @@ class BillingService {
      * Accepts both Gemini usageMetadata shape and Anthropic usage shape.
      */
     async logUsage(provider, modelName, usageMetadata, workspaceId = 'default-workspace', metadata = {}) {
+        if (!isApiUsageReady()) return null;
         try {
-            // Gemini: promptTokenCount / candidatesTokenCount
-            // Anthropic SDK: input_tokens / output_tokens
             const inputTokens  = usageMetadata.promptTokenCount  || usageMetadata.input_tokens  || usageMetadata.inputTokens  || 0;
             const outputTokens = usageMetadata.candidatesTokenCount || usageMetadata.output_tokens || usageMetadata.outputTokens || 0;
 
@@ -64,89 +68,90 @@ class BillingService {
      * Get Billing Stats (Daily & Monthly)
      */
     async getStats(workspaceId = 'default-workspace') {
-        const now = new Date();
-        
-        // Daily Start (00:00:00)
-        const dayStart = new Date(now);
-        dayStart.setHours(0, 0, 0, 0);
+        if (!isApiUsageReady()) return { dailySpend: 0, monthlySpend: 0, currency: 'USD' };
+        try {
+            const now = new Date();
+            const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-        // Monthly Start (1st of month 00:00:00)
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            const [dailyResult, monthlyResult] = await Promise.all([
+                prisma.apiUsage.aggregate({
+                    where: { workspaceId, createdAt: { gte: dayStart } },
+                    _sum: { cost: true }
+                }),
+                prisma.apiUsage.aggregate({
+                    where: { workspaceId, createdAt: { gte: monthStart } },
+                    _sum: { cost: true }
+                })
+            ]);
 
-        const [dailyResult, monthlyResult] = await Promise.all([
-            prisma.apiUsage.aggregate({
-                where: {
-                    workspaceId,
-                    createdAt: { gte: dayStart }
-                },
-                _sum: { cost: true }
-            }),
-            prisma.apiUsage.aggregate({
-                where: {
-                    workspaceId,
-                    createdAt: { gte: monthStart }
-                },
-                _sum: { cost: true }
-            })
-        ]);
-
-        return {
-            dailySpend: Number(dailyResult._sum.cost || 0),
-            monthlySpend: Number(monthlyResult._sum.cost || 0),
-            currency: 'USD'
-        };
+            return {
+                dailySpend: Number(dailyResult._sum.cost || 0),
+                monthlySpend: Number(monthlyResult._sum.cost || 0),
+                currency: 'USD'
+            };
+        } catch (err) {
+            console.error('[Billing] getStats error:', err.message);
+            return { dailySpend: 0, monthlySpend: 0, currency: 'USD' };
+        }
     }
 
     /**
      * Detailed breakdown by provider for the dashboard widget.
      */
     async getDetailedStats(workspaceId = 'default-workspace') {
-        const now = new Date();
-        const dayStart = new Date(now);
-        dayStart.setHours(0, 0, 0, 0);
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        if (!isApiUsageReady()) return this._emptyDetailedStats();
+        try {
+            const now = new Date();
+            const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-        const where = (start) => ({
-            ...(workspaceId ? { workspaceId } : {}),
-            createdAt: { gte: start }
-        });
+            const where = (start) => ({
+                ...(workspaceId ? { workspaceId } : {}),
+                createdAt: { gte: start }
+            });
 
-        const [daily, monthly, dailyByProvider, monthlyByProvider, recentLogs] = await Promise.all([
-            prisma.apiUsage.aggregate({ where: where(dayStart),   _sum: { cost: true, inputTokens: true, outputTokens: true } }),
-            prisma.apiUsage.aggregate({ where: where(monthStart), _sum: { cost: true, inputTokens: true, outputTokens: true } }),
-            prisma.apiUsage.groupBy({
-                by: ['provider'],
-                where: where(dayStart),
-                _sum: { cost: true }
-            }),
-            prisma.apiUsage.groupBy({
-                by: ['provider'],
-                where: where(monthStart),
-                _sum: { cost: true }
-            }),
-            // Last 20 usage events for live feed
-            prisma.apiUsage.findMany({
-                where: workspaceId ? { workspaceId } : {},
-                orderBy: { createdAt: 'desc' },
-                take: 20,
-                select: { provider: true, modelName: true, cost: true, inputTokens: true, outputTokens: true, createdAt: true, metadata: true }
-            })
-        ]);
+            const [daily, monthly, dailyByProvider, monthlyByProvider, recentLogs] = await Promise.all([
+                prisma.apiUsage.aggregate({ where: where(dayStart),   _sum: { cost: true, inputTokens: true, outputTokens: true } }),
+                prisma.apiUsage.aggregate({ where: where(monthStart), _sum: { cost: true, inputTokens: true, outputTokens: true } }),
+                prisma.apiUsage.groupBy({ by: ['provider'], where: where(dayStart),   _sum: { cost: true } }),
+                prisma.apiUsage.groupBy({ by: ['provider'], where: where(monthStart), _sum: { cost: true } }),
+                prisma.apiUsage.findMany({
+                    where: workspaceId ? { workspaceId } : {},
+                    orderBy: { createdAt: 'desc' },
+                    take: 20,
+                    select: { provider: true, modelName: true, cost: true, inputTokens: true, outputTokens: true, createdAt: true, metadata: true }
+                })
+            ]);
 
-        const toMap = (rows) => rows.reduce((acc, r) => {
-            acc[r.provider] = Number(r._sum.cost || 0);
-            return acc;
-        }, {});
+            const toMap = (rows) => rows.reduce((acc, r) => {
+                acc[r.provider] = Number(r._sum.cost || 0);
+                return acc;
+            }, {});
 
+            return {
+                dailySpend:    Number(daily._sum.cost   || 0),
+                monthlySpend:  Number(monthly._sum.cost || 0),
+                dailyTokens:   { input: daily._sum.inputTokens || 0,   output: daily._sum.outputTokens || 0 },
+                monthlyTokens: { input: monthly._sum.inputTokens || 0, output: monthly._sum.outputTokens || 0 },
+                dailyByProvider:   toMap(dailyByProvider),
+                monthlyByProvider: toMap(monthlyByProvider),
+                recentLogs,
+                currency: 'USD',
+                resetAt: new Date(new Date().setHours(24, 0, 0, 0)).toISOString()
+            };
+        } catch (err) {
+            console.error('[Billing] getDetailedStats error:', err.message);
+            return this._emptyDetailedStats();
+        }
+    }
+
+    _emptyDetailedStats() {
         return {
-            dailySpend:    Number(daily._sum.cost   || 0),
-            monthlySpend:  Number(monthly._sum.cost || 0),
-            dailyTokens:   { input: daily._sum.inputTokens || 0,   output: daily._sum.outputTokens || 0 },
-            monthlyTokens: { input: monthly._sum.inputTokens || 0, output: monthly._sum.outputTokens || 0 },
-            dailyByProvider:   toMap(dailyByProvider),
-            monthlyByProvider: toMap(monthlyByProvider),
-            recentLogs,
-            currency: 'USD',
+            dailySpend: 0, monthlySpend: 0,
+            dailyTokens: { input: 0, output: 0 }, monthlyTokens: { input: 0, output: 0 },
+            dailyByProvider: {}, monthlyByProvider: {},
+            recentLogs: [], currency: 'USD',
             resetAt: new Date(new Date().setHours(24, 0, 0, 0)).toISOString()
         };
     }

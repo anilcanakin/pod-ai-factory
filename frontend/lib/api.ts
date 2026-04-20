@@ -615,9 +615,10 @@ export interface WpiProduct {
 export interface WpiTrendData {
     salesCount: number;
     salesDelta: number;
-    trendPeriod: '48h' | 'BASELINE' | 'all-time';
+    trendPeriod: '48h' | 'BASELINE' | 'HOT_NOW' | 'INSTANT' | 'all-time';
     isTrending: boolean;
     isBaseline: boolean;
+    isHotNow?: boolean;
     trendScore: number;
 }
 
@@ -625,10 +626,12 @@ export interface WpiBrainComparison {
     confidence: number;
     reasoning: string;
     designSuggestion: string;
+    designPrompt?: string;
+    competitiveEdge: string;
     niche: string;
     targetKeywords: string[];
     colorPalette: string;
-    competitiveEdge: string;
+    differentiationAngle?: string;
 }
 
 export interface WpiActionCard {
@@ -636,6 +639,7 @@ export interface WpiActionCard {
     actionType: 'IMMEDIATE_ACTION' | 'TREND_ACTION';
     competitorAnalysis: string;
     designSuggestion: string;
+    designPrompt?: string;
     action: string;
     collection: string | null;
     event: string | null;
@@ -647,7 +651,10 @@ export interface WpiActionCard {
     priority: 'IMMEDIATE' | 'HIGH' | 'NORMAL';
     instantSignals: string[];
     autoSendToFactory: boolean;
+    hotNow?: boolean;
 }
+
+export type WpiProductCategory = 'POD_APPAREL' | 'HOME_DECOR' | 'DIGITAL_DOWNLOAD' | 'ACCESSORIES' | 'NON_POD';
 
 export interface WpiCard {
     id: string;
@@ -659,9 +666,10 @@ export interface WpiCard {
         isBestSeller?: boolean;
         inCartCount?: number;
         isPopularNow?: boolean;
+        category?: WpiProductCategory;
     };
     trendData: WpiTrendData;
-    brainComparison: WpiBrainComparison & { differentiationAngle?: string };
+    brainComparison: WpiBrainComparison;
     actionCard: WpiActionCard;
 }
 
@@ -700,10 +708,16 @@ export interface WpiCollection {
     keywords: string[];
 }
 
+export type WpiKeywordStatus = 'queued' | 'running' | 'done' | 'timeout' | 'error';
+
 export interface WpiScanProgress {
     total: number;
     done: number;
     currentKeyword: string;
+    phase?: 'scraping' | 'filtering' | 'ai_analysis' | 'saving' | 'done';
+    aiDone?: number;
+    aiTotal?: number;
+    keywordStatuses?: Record<string, WpiKeywordStatus>;
 }
 
 export interface WpiScanStartResponse {
@@ -755,4 +769,86 @@ export const apiWpi = {
         request<{ success: boolean; config: { brainConfidenceMin: number; collectionsCount: number; actor: string } }>(
             '/wpi/config'
         ),
+
+    factoryQueue: () =>
+        request<{
+            success: boolean;
+            count: number;
+            jobs: Array<{
+                id: string;
+                createdAt: string;
+                keyword: string;
+                niche: string;
+                designPrompt: string;
+                colorPalette: string;
+                previewUrl: string | null;
+            }>;
+        }>('/wpi/factory-queue'),
+
+    optimizeSeo: (cardId: string) =>
+        request<{ success: boolean; seoPackage: WpiSeoPackage }>(
+            `/wpi/action-cards/${cardId}/seo-optimize`,
+            { method: 'POST' }
+        ),
+};
+
+export interface WpiSeoPackage {
+    title: string;
+    tags: string[];
+    description: string;
+    keywordDensityMap: Array<{ kw: string; count: number }>;
+}
+
+export interface ScoutNiche {
+    niche: string;
+    keyword: string;
+    reasoning: string;
+    confidence: number;
+    source?: string;
+    createdAt?: string;
+    id?: string;
+}
+
+export const apiScout = {
+    suggest: (workspaceId?: string) =>
+        request<{ success: boolean; suggestions: ScoutNiche[]; trendsUsed: number }>(
+            '/scout/suggest', { method: 'POST', body: JSON.stringify({ workspaceId }) }
+        ),
+
+    list: () =>
+        request<{ success: boolean; suggestions: ScoutNiche[] }>('/scout/suggestions'),
+};
+
+// ─── Knowledge (Academy Brain) ────────────────────────────────
+export interface KnowledgeEntry {
+    id: string;
+    title: string;
+    content: string;
+    category: string;
+    type: string;
+    createdAt: string;
+}
+
+export const apiKnowledge = {
+    ingestText: (title: string, content: string, category: string) =>
+        request<{ success: boolean; saved: number; chunks: string[] }>('/knowledge/ingest-text', {
+            method: 'POST',
+            body: JSON.stringify({ title, content, category }),
+        }),
+    search: (query: string, topK?: number, category?: string) =>
+        request<{ success: boolean; count: number; results: Array<KnowledgeEntry & { score: number }> }>('/knowledge/search', {
+            method: 'POST',
+            body: JSON.stringify({ query, topK, category }),
+        }),
+    entries: (category?: string, limit?: number) => {
+        const params = new URLSearchParams();
+        if (category) params.set('category', category);
+        if (limit) params.set('limit', String(limit));
+        const qs = params.toString();
+        return request<{ success: boolean; count: number; entries: KnowledgeEntry[] }>(
+            `/knowledge/entries${qs ? `?${qs}` : ''}`
+        );
+    },
+    delete: (id: string) =>
+        request<{ success: boolean }>(`/knowledge/entries/${id}`, { method: 'DELETE' }),
 };

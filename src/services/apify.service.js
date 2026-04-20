@@ -37,7 +37,8 @@ const ACTORS = {
 };
 
 // ─── Timeouts (saniye) ────────────────────────────────────────────────────────
-const TIMEOUTS = { KEYWORDS: 300, PRODUCTS: 360, PINTEREST: 240 };
+// 60s ilk deneme — aşılırsa kısmi veri alınır, hata fırlatılmaz.
+const TIMEOUTS = { KEYWORDS: 60, PRODUCTS: 60, PINTEREST: 60 };
 
 // ─── Bellek (MB) ──────────────────────────────────────────────────────────────
 const MEMORY = { KEYWORDS: 512, PRODUCTS: 1024, PINTEREST: 1024 };
@@ -191,10 +192,10 @@ async function _runActorWithX402(actorId, input, { waitSecs = 300, memory = 1024
 
 // ─── Standart SDK runner ──────────────────────────────────────────────────────
 
-async function _runActor(actorId, input, { waitSecs = 300, memory = 1024, maxItems, retried = false } = {}) {
-    // maxItems her iki runner'da da Apify platform seçeneği — input body'ye koyma
-    const runOptions = { waitSecs, memory, ...(maxItems ? { maxItems } : {}) };
-    console.log(`[Apify] ▶ ${actorId} | memory:${memory}MB | timeout:${waitSecs}s${maxItems ? ` | maxItems:${maxItems}` : ''} | input:`, JSON.stringify(input).slice(0, 200));
+async function _runActor(actorId, input, { waitSecs = 60, memory = 1024, maxItems } = {}) {
+    // Timeout 60s — aşılırsa kısmi dataset okunur, hata fırlatılmaz.
+    const runOptions = { waitSecs: Math.min(waitSecs, 60), memory, ...(maxItems ? { maxItems } : {}) };
+    console.log(`[Apify] ▶ ${actorId} | memory:${memory}MB | timeout:${runOptions.waitSecs}s${maxItems ? ` | maxItems:${maxItems}` : ''} | input:`, JSON.stringify(input).slice(0, 200));
 
     let run;
     try {
@@ -208,10 +209,17 @@ async function _runActor(actorId, input, { waitSecs = 300, memory = 1024, maxIte
         throw callErr;
     }
 
-    if (run.status === 'TIMED-OUT' && !retried) {
-        const extraTime = Math.round(waitSecs * 1.5);
-        console.warn(`[Apify] ⚠ ${run.id} timeout — ${extraTime}s ile yeniden deneniyor...`);
-        return _runActor(actorId, input, { waitSecs: extraTime, memory, retried: true });
+    if (run.status === 'TIMED-OUT') {
+        // Arka planda çalışmaya devam ediyor — şimdiye kadar toplanan kısmi verileri al
+        console.warn(`[Apify] ⚠ ${run.id} 60s timeout — kısmi dataset alınıyor (run arka planda devam ediyor)...`);
+        try {
+            const { items } = await apify.dataset(run.defaultDatasetId).listItems();
+            console.log(`[Apify] ↳ ${items.length} kısmi öğe (runId: ${run.id})`);
+            return items;
+        } catch {
+            console.warn(`[Apify] ↳ Kısmi veri alınamadı — boş dizi döndürülüyor.`);
+            return [];
+        }
     }
 
     if (run.status !== 'SUCCEEDED') {

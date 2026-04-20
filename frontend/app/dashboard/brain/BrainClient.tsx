@@ -4,12 +4,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     Brain, Upload, Video, FileText, Zap, ChevronRight, Plus, Trash2,
     Loader2, Lightbulb, Target, Layout, CheckCircle2, AlertCircle,
-    RefreshCw, BookOpen, Mic, BarChart2, ArrowUpCircle, X, MessageSquare
+    RefreshCw, BookOpen, Mic, BarChart2, ArrowUpCircle, X, MessageSquare,
+    GraduationCap
 } from 'lucide-react';
-import { apiBrain, CorporateMemory, VideoAnalysis } from '@/lib/api';
+import { apiBrain, CorporateMemory, VideoAnalysis, apiKnowledge } from '@/lib/api';
 import { toast } from 'sonner';
 
-type InputTab = 'video' | 'text' | 'test';
+type InputTab = 'video' | 'text' | 'test' | 'learn';
 type VideoType = 'training' | 'meeting' | 'etsy_update' | 'tutorial';
 type ProcessStep = 'idle' | 'uploading' | 'transcribing' | 'analyzing' | 'saving' | 'done';
 
@@ -83,6 +84,13 @@ export function BrainClient() {
     const [testQuestion, setTestQuestion] = useState('');
     const [testAnswer, setTestAnswer] = useState('');
     const [testing, setTesting] = useState(false);
+
+    // Academy (learn) state
+    const [learnTitle, setLearnTitle] = useState('');
+    const [learnContent, setLearnContent] = useState('');
+    const [learnCategory, setLearnCategory] = useState<'STRATEGY' | 'RULES' | 'SEO_TACTICS'>('STRATEGY');
+    const [learning, setLearning] = useState(false);
+    const [learnResult, setLearnResult] = useState<{ saved: number; chunks: string[] } | null>(null);
 
     useEffect(() => { loadMemories(); }, []);
 
@@ -285,6 +293,26 @@ export function BrainClient() {
             toast.error('Consider updating your knowledge base with more accurate information.');
         } else {
             toast.info('Consider adding more specific information to improve accuracy.');
+        }
+    };
+
+    const handleLearn = async () => {
+        if (!learnTitle.trim() || !learnContent.trim()) {
+            toast.error('Başlık ve içerik zorunludur');
+            return;
+        }
+        setLearning(true);
+        setLearnResult(null);
+        try {
+            const res = await apiKnowledge.ingestText(learnTitle.trim(), learnContent.trim(), learnCategory);
+            setLearnResult({ saved: res.saved, chunks: res.chunks });
+            setLearnTitle('');
+            setLearnContent('');
+            toast.success(`${res.saved} chunk kaydedildi — AI artık bu kuralları biliyor.`);
+        } catch (err) {
+            toast.error('Hata: ' + (err as Error).message);
+        } finally {
+            setLearning(false);
         }
     };
 
@@ -534,7 +562,8 @@ export function BrainClient() {
                             {([
                                 { key: 'video', label: 'Upload Video', icon: Video },
                                 { key: 'text', label: 'Paste Text', icon: FileText },
-                                { key: 'test', label: 'Test Knowledge', icon: MessageSquare }
+                                { key: 'test', label: 'Test Knowledge', icon: MessageSquare },
+                                { key: 'learn', label: 'Academy Rules', icon: GraduationCap },
                             ] as const).map(({ key, label, icon: Icon }) => (
                                 <button
                                     key={key}
@@ -833,7 +862,7 @@ export function BrainClient() {
                                         </p>
                                     </div>
                                 </div>
-                            ) : (
+                            ) : inputTab === 'test' ? (
                                 /* ── Test Knowledge ───────────────────── */
                                 <div className="space-y-5">
                                     <div>
@@ -925,6 +954,92 @@ export function BrainClient() {
                                             </p>
                                         </div>
                                     )}
+                                </div>
+                            ) : (
+                                /* ── Academy Rules ────────────────────── */
+                                <div className="space-y-5">
+                                    <div>
+                                        <h2 className="text-lg font-bold text-text-primary mb-1">Academy Rules</h2>
+                                        <p className="text-sm text-text-tertiary">
+                                            Strateji, iş kuralları veya SEO taktiklerini doğrudan sisteme öğret. AI, WPI ve Scout analizlerinde bu kuralları bağlayıcı olarak uygular.
+                                        </p>
+                                    </div>
+
+                                    {/* Category selector */}
+                                    <div>
+                                        <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Kategori</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {([
+                                                { value: 'STRATEGY',    label: 'Strateji',    desc: 'İş & büyüme kuralları' },
+                                                { value: 'RULES',       label: 'Kurallar',    desc: 'Yasaklar & zorunluluklar' },
+                                                { value: 'SEO_TACTICS', label: 'SEO Taktik',  desc: 'Keyword & başlık formülleri' },
+                                            ] as const).map(c => (
+                                                <button
+                                                    key={c.value}
+                                                    onClick={() => setLearnCategory(c.value)}
+                                                    className={`p-3 rounded-xl text-left border transition-all ${
+                                                        learnCategory === c.value
+                                                            ? 'bg-accent/10 border-accent/30 text-accent'
+                                                            : 'bg-bg-overlay border-border-subtle text-text-secondary hover:border-border-default'
+                                                    }`}
+                                                >
+                                                    <p className="text-xs font-semibold">{c.label}</p>
+                                                    <p className="text-[10px] text-text-tertiary mt-0.5">{c.desc}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Başlık *</label>
+                                        <input
+                                            type="text"
+                                            value={learnTitle}
+                                            onChange={e => setLearnTitle(e.target.value)}
+                                            placeholder="ör. Rakipten Farklılaşma Kuralları"
+                                            className="w-full bg-bg-overlay border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent transition-colors"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">İçerik *</label>
+                                        <textarea
+                                            value={learnContent}
+                                            onChange={e => setLearnContent(e.target.value)}
+                                            placeholder="Kuralları, stratejileri veya SEO taktiklerini buraya yaz ya da yapıştır. Örneğin: 'Başlıkta asla marka adı kullanma. İlk 3 keyword en yüksek arama hacmini hedeflemeli. Fiyat rakipten %10-15 düşük başlamalı…'"
+                                            rows={12}
+                                            className="w-full bg-bg-overlay border border-border-subtle rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent transition-colors resize-none font-mono"
+                                        />
+                                        <p className="text-[11px] text-text-tertiary mt-1 text-right">{learnContent.length.toLocaleString()} chars</p>
+                                    </div>
+
+                                    <button
+                                        onClick={handleLearn}
+                                        disabled={learning || !learnTitle.trim() || !learnContent.trim()}
+                                        className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-opacity"
+                                    >
+                                        {learning ? (
+                                            <><Loader2 className="w-4 h-4 animate-spin" />Öğreniliyor...</>
+                                        ) : (
+                                            <><GraduationCap className="w-4 h-4" />Bunu Öğren</>
+                                        )}
+                                    </button>
+
+                                    {learnResult && (
+                                        <div className="p-4 rounded-xl bg-green-500/5 border border-green-500/20 flex items-center gap-3">
+                                            <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
+                                            <div>
+                                                <p className="text-sm font-semibold text-green-400">{learnResult.saved} chunk kaydedildi</p>
+                                                <p className="text-[11px] text-text-tertiary mt-0.5">AI artık WPI ve Scout analizlerinde bu kuralları kullanıyor.</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="p-4 rounded-xl bg-accent/5 border border-accent/10 border-dashed">
+                                        <p className="text-[11px] text-accent text-center leading-relaxed">
+                                            Bu kurallar vektör embedding ile saklanır. WPI taraması ve Scout analizinde "Bu stratejiye aykırı hiçbir şey önerme" komutuyla AI'ya enjekte edilir.
+                                        </p>
+                                    </div>
                                 </div>
                             )}
                         </div>

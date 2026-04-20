@@ -18,6 +18,8 @@ const { scrapeEtsyProducts, ApifyPaymentError } = require('./apify.service');
 
 const prisma    = new PrismaClient();
 const anthropic = require('../lib/anthropic');
+const redis     = require('../config/redis');
+const { getContextForAI } = require('./knowledge.service');
 
 // ─── Config ────────────────────────────────────────────────────────────────────
 const MIN_SALES_FOR_WINNER    = 8;    // ignore products with < N sales
@@ -26,6 +28,10 @@ const BRAIN_CONFIDENCE_MIN    = 80;   // min % to generate an action card
 const SNAPSHOT_LOOKBACK_HOURS = 72;   // compare against snapshots up to 3 days old
 const MAX_PRODUCTS_PER_KW     = 50;   // products scraped per keyword
 const MAX_WINNERS_PER_KW      = 5;    // cap action cards per keyword
+const KEYWORD_CONCURRENCY     = 2;   // kaç keyword'ü paralel tarıyoruz
+const AI_MIN_SALES             = 5;   // pre-filter: yalnızca bu satış üzerindeki ürünler AI'ya gider
+const BRAIN_CACHE_TTL          = 3600; // 1h — aynı ürünü tekrar analiz ettirme
+const AI_CHUNK_SIZE            = 5;   // paralel AI çağrısı sayısı (chunk başına)
 
 // ─── 2026 Collection Matcher ───────────────────────────────────────────────────
 const COLLECTIONS_2026 = [
@@ -67,13 +73,12 @@ function _matchCollection(title = '', keyword = '') {
 // ─── Snapshot helpers (stored in CorporateMemory) ─────────────────────────────
 
 async function _saveSnapshot(workspaceId, keyword, products) {
+    // Minimalist format — sadece trend hesaplaması için gereken alanlar.
+    // { u: listingUrl, s: salesCount } — title/price/img burada saklanmaz,
+    // Redis + Prisma payload'ını küçük tutar.
     const slim = products.map(p => ({
-        url:     p.listingUrl,
-        title:   p.title,
-        sales:   p.sales,
-        price:   p.price,
-        shop:    p.shopName,
-        img:     p.imageUrl,
+        u: p.listingUrl || p.url || '',
+        s: p.sales ?? 0,
     }));
 
     await prisma.corporateMemory.create({
@@ -81,9 +86,9 @@ async function _saveSnapshot(workspaceId, keyword, products) {
             workspaceId,
             type:     'WPI_SNAPSHOT',
             title:    `[WPI_SNAPSHOT] ${keyword}`,
-            content:  `WPI scan snapshot — ${products.length} products — ${new Date().toISOString()}`,
+            content:  `${products.length} products @ ${new Date().toISOString()}`,
             category: 'STRATEGY',
-            isActive: false,   // snapshots are internal, don't surface in Brain UI
+            isActive: false,
             analysisResult: {
                 scanType:  'WPI_SNAPSHOT',
                 keyword,
@@ -133,15 +138,14 @@ function _detectTrending(products, prevSnapshot) {
     const prevMap = {};
     if (prevSnapshot) {
         for (const p of prevSnapshot) {
-            const key = p.url || p.listingUrl || '';
-            if (key) prevMap[key] = p.sales ?? 0;
+            // Yeni format: { u, s } — eski format: { url/listingUrl, sales } (geriye uyumlu)
+            const key = p.u || p.url || p.listingUrl || '';
+            if (key) prevMap[key] = p.s ?? p.sales ?? 0;
         }
     }
     const hasHistory = prevSnapshot !== null && Object.keys(prevMap).length > 0;
 
     return products.map(p => {
-        // p.sales, apify.service.js _normaliseEtsyItem tarafından
-        // total_sales / sales_count / numberOfSales'dan doldurulur
         const currentSales = p.sales || 0;
         const productKey   = p.listingUrl || p.url || '';
 
@@ -151,36 +155,101 @@ function _detectTrending(products, prevSnapshot) {
 
         if (hasHistory) {
             if (prevMap[productKey] !== undefined) {
-                // Bilinen ürün — gerçek delta hesapla
                 salesDelta = Math.max(0, currentSales - prevMap[productKey]);
                 isTrending = salesDelta >= TRENDING_DELTA_MIN;
             }
-            // Snapshot'ta olmayan yeni bir ürün → bu da trending sayılabilir
-            // ama agresif false positive vermemek için konservatif kalıyoruz
         }
-        // BASELINE modda isTrending = false → Action Card üretilmez
+
+        // HOT NOW: Güçlü sinyal varsa salesDelta beklenmez, anında ACTION CARD
+        const isHotNow = !!(p.isBestSeller || (p.inCartCount > INSTANT_IN_CART_MIN) || p.isPopularNow);
+        if (isHotNow) isTrending = true;
+
+        const trendPeriod = isHotNow
+            ? 'HOT_NOW'
+            : hasHistory ? '48h' : 'BASELINE';
 
         const trendScore = hasHistory
             ? salesDelta * 10 + currentSales * 0.1   // delta ağırlıklı
-            : currentSales;                            // baseline: salt satış sayısı
+            : isHotNow
+                ? currentSales * 2                     // HOT NOW boost
+                : currentSales;
 
         return {
             ...p,
             trendData: {
                 salesCount:  currentSales,
                 salesDelta,
-                trendPeriod: hasHistory ? '48h' : 'BASELINE',
+                trendPeriod,
                 isTrending,
-                isBaseline,
+                isBaseline:  !hasHistory && !isHotNow,
+                isHotNow,
                 trendScore,
             },
         };
     });
 }
 
-// ─── Instant Intelligence ─────────────────────────────────────────────────────
+// ─── Product Categorizer ──────────────────────────────────────────────────────
 
 const INSTANT_IN_CART_MIN = 20; // minimum in_cart sayısı
+
+const _APPAREL_RE   = /shirt|tee|hoodie|sweatshirt|apparel|clothing|tank|jacket|dress|shorts|legging|onesie/i;
+const _DECOR_RE     = /wall art|poster|print|home decor|pillow|blanket|mug|cup|canvas|frame|tapestry|sign|banner/i;
+const _ACCESSORY_RE = /bag|tote|hat|cap|phone case|accessory|accessories|keychain|mask|patch|pin/i;
+const _NONPOD_RE    = /jewelry|jewellery|ring|necklace|bracelet|earring|bead|gemstone|crystal|supply|supplies|material|yarn|fabric|tool/i;
+
+function _categorizeProduct(product) {
+    const isDigital = !!(product.isDigital ?? product.is_digital);
+    if (isDigital) return 'DIGITAL_DOWNLOAD';
+
+    const haystack = [
+        product.taxonomyPath  ?? product.taxonomy_path ?? '',
+        product.category      ?? '',
+        product.title         ?? '',
+    ].join(' ');
+
+    if (_NONPOD_RE.test(haystack))    return 'NON_POD';
+    if (_APPAREL_RE.test(haystack))   return 'POD_APPAREL';
+    if (_DECOR_RE.test(haystack))     return 'HOME_DECOR';
+    if (_ACCESSORY_RE.test(haystack)) return 'ACCESSORIES';
+
+    return 'POD_APPAREL'; // safe default — most POD is apparel
+}
+
+// ─── Brain cache (Redis, 1 saat TTL) ─────────────────────────────────────────
+
+function _brainCacheKey(url, keyword) {
+    return 'wpi:brain:' + Buffer.from(`${url}|${keyword}`).toString('base64').slice(0, 48);
+}
+
+async function _getCachedBrain(url, keyword) {
+    if (!url) return null;
+    try {
+        const raw = await redis.get(_brainCacheKey(url, keyword));
+        return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+}
+
+async function _setCachedBrain(url, keyword, result) {
+    if (!url) return;
+    try {
+        await redis.set(_brainCacheKey(url, keyword), JSON.stringify(result), 'EX', BRAIN_CACHE_TTL);
+    } catch {}
+}
+
+// ─── Parallel chunk processor ─────────────────────────────────────────────────
+
+async function _processChunks(items, chunkSize, asyncFn) {
+    const results = [];
+    for (let i = 0; i < items.length; i += chunkSize) {
+        const chunk = items.slice(i, i + chunkSize);
+        const chunkResults = await Promise.all(chunk.map(asyncFn));
+        results.push(...chunkResults);
+    }
+    return results;
+}
+
+// ─── Instant Intelligence ─────────────────────────────────────────────────────
 
 /**
  * BASELINE aşamasında bile çalışır.
@@ -209,7 +278,7 @@ function _detectInstantWinners(products) {
  * "Bu ürün zaten Best Seller — biz buna nasıl bir Competitive Edge ekleyebiliriz?"
  */
 async function _compareWithBrainInstant(product, keyword, workspaceId) {
-    const [memories, seoKb] = await Promise.all([
+    const [memories, seoKb, academyContext] = await Promise.all([
         prisma.corporateMemory.findMany({
             where: {
                 workspaceId,
@@ -224,6 +293,7 @@ async function _compareWithBrainInstant(product, keyword, workspaceId) {
             where: { workspaceId, isActive: true },
             orderBy: { createdAt: 'desc' },
         }),
+        getContextForAI(workspaceId, `${product.title} ${keyword}`, { maxChars: 600, topK: 4 }),
     ]);
 
     const brainLines = memories.length > 0
@@ -231,6 +301,7 @@ async function _compareWithBrainInstant(product, keyword, workspaceId) {
         : '(Knowledge base boş — genel Etsy POD bilgisiyle değerlendir.)';
 
     const seoLines = seoKb?.content ? seoKb.content.slice(0, 400) : '(SEO KB boş)';
+    const academyLines = academyContext || '(Academy henüz boş)';
 
     const signalLines = (product._instantSignals || []).map(s => {
         if (s === 'BEST_SELLER')       return '✅ Etsy Best Seller rozetine sahip';
@@ -257,6 +328,9 @@ ${brainLines}
 SEO BİLGİSİ:
 ${seoLines}
 
+ACADEMY KURALLARI (Strateji / Kurallar / SEO Taktikleri — BUNLARA AYKIRI HİÇBİR ŞEY ÖNERME):
+${academyLines}
+
 GÖREV: Bu ürün ZATEN bir Best Seller / yüksek talep gören ürün.
 Soru: **Biz buna nasıl bir "Competitive Edge" (Rekabetçi Avantaj) ekleyebiliriz?**
 
@@ -271,8 +345,9 @@ SADECE JSON döndür:
 {
   "confidence": <0-100, bu nichede rakibe karşı başarı ihtimalimiz>,
   "reasoning": "<Türkçe, max 2 cümle, neden bu rakip strong ve biz nasıl farklılaşırız>",
-  "competitiveEdge": "<Türkçe, 1 net cümle — bizim ekleyeceğimiz özgün değer>",
+  "competitiveEdge": "<Türkçe — 'Rakip şunu yapmış: [X]. Biz [Y] eklersek daha iyi satarız çünkü [Z].' formatında, 2 cümle max>",
   "designSuggestion": "<Türkçe, 1 net cümle — rakibe göre ne yapmalıyız?>",
+  "designPrompt": "<İngilizce, Fal.ai için optimize edilmiş prompt — stil, renkler, teknik detaylar dahil. Ör: 'best seller patriotic t-shirt design, bold eagle graphic, distressed vintage style, navy blue + red + white, transparent background, high contrast, DTG print ready'>",
   "niche": "<tek kelime>",
   "targetKeywords": ["<en iyi 3 Etsy keyword>"],
   "colorPalette": "<önerilen renk paleti, ör: navy blue + gold + cream>",
@@ -315,7 +390,7 @@ SADECE JSON döndür:
  */
 async function _compareWithBrain(product, keyword, workspaceId) {
     // Fetch relevant brain memories (VISUAL + STRATEGY + SEO categories)
-    const [memories, seoKb] = await Promise.all([
+    const [memories, seoKb, academyContext] = await Promise.all([
         prisma.corporateMemory.findMany({
             where: {
                 workspaceId,
@@ -330,6 +405,7 @@ async function _compareWithBrain(product, keyword, workspaceId) {
             where: { workspaceId, isActive: true },
             orderBy: { createdAt: 'desc' },
         }),
+        getContextForAI(workspaceId, `${product.title} ${keyword}`, { maxChars: 600, topK: 4 }),
     ]);
 
     const brainLines = memories.length > 0
@@ -339,6 +415,8 @@ async function _compareWithBrain(product, keyword, workspaceId) {
     const seoLines = seoKb?.content
         ? seoKb.content.slice(0, 400)
         : '(SEO KB boş)';
+
+    const academyLines = academyContext || '(Academy henüz boş)';
 
     const prompt = `Sen deneyimli bir Etsy POD stratejisti ve tasarımcısısın.
 
@@ -356,6 +434,9 @@ ${brainLines}
 SEO BİLGİSİ:
 ${seoLines}
 
+ACADEMY KURALLARI (Strateji / Kurallar / SEO Taktikleri — BUNLARA AYKIRI HİÇBİR ŞEY ÖNERME):
+${academyLines}
+
 SORU: BİZ bu nişte daha iyi/farklı bir ürün yapabilir miyiz?
 
 Değerlendirme kriterleri:
@@ -369,10 +450,11 @@ SADECE JSON döndür:
   "confidence": <0-100>,
   "reasoning": "<Türkçe, max 2 cümle, neden bu skoru verdik>",
   "designSuggestion": "<Türkçe, 1 net cümle, ne yapmalıyız?>",
+  "designPrompt": "<İngilizce, Fal.ai için optimize edilmiş prompt — stil, renkler, teknik detaylar dahil, ör: 'minimalist patriotic poster, bold typography, navy blue + gold, clean white background, high contrast, printable wall art quality'>",
+  "competitiveEdge": "<Türkçe — 'Rakip şunu yapmış: [X]. Biz [Y] eklersek daha iyi satarız çünkü [Z].' formatında, 2 cümle max>",
   "niche": "<tek kelime>",
   "targetKeywords": ["<en iyi 3 Etsy keyword>"],
-  "colorPalette": "<önerilen renk paleti, ör: navy blue + gold + cream>",
-  "competitiveEdge": "<bizim rakibe karşı avantajımız, 1 cümle>"
+  "colorPalette": "<önerilen renk paleti, ör: navy blue + gold + cream>"
 }`;
 
     try {
@@ -433,10 +515,12 @@ function _buildActionCard(product, keyword, brainResult, { isInstant = false } =
         : (td.salesDelta >= TRENDING_DELTA_MIN || td.salesCount >= 30) ? 'HIGH' : 'NORMAL';
 
     return {
-        headline:              isInstant ? 'IMMEDIATE ACTION' : 'POTENTIAL WINNER',
+        headline:              isInstant ? 'HOT NOW' : 'POTENTIAL WINNER',
         actionType:            isInstant ? 'IMMEDIATE_ACTION' : 'TREND_ACTION',
+        hotNow:                isInstant || !!(td?.isHotNow),
         competitorAnalysis:    `RAKİP ANALİZİ: ${salesLine} Mağaza: ${product.shopName}.`,
         designSuggestion:      `TASARIM ÖNERİSİ: ${designLine}`,
+        designPrompt:          brainResult.designPrompt ?? null,
         action:                `EYLEM: ${collectionAction}`,
         collection:            collection?.name  ?? null,
         event:                 collection?.event ?? null,
@@ -447,7 +531,7 @@ function _buildActionCard(product, keyword, brainResult, { isInstant = false } =
         confidence:            brainResult.confidence,
         priority,
         instantSignals:        isInstant ? (product._instantSignals || []) : [],
-        autoSendToFactory:     isInstant,   // approve anında fabrikaya otomatik gider
+        autoSendToFactory:     isInstant,
     };
 }
 
@@ -483,6 +567,7 @@ async function _saveWinner(workspaceId, product, keyword, brainResult, actionCar
                     imageUrl:   product.imageUrl,
                     listingUrl: product.listingUrl,
                     shopName:   product.shopName,
+                    category:   product.category ?? null,
                 },
                 trendData:      product.trendData,
                 brainComparison: brainResult,
@@ -492,6 +577,180 @@ async function _saveWinner(workspaceId, product, keyword, brainResult, actionCar
         },
     });
     return record;
+}
+
+// ─── Per-keyword scanner (Promise.allSettled ile paralel çalışır) ─────────────
+
+/**
+ * Tek bir keyword için tam WPI pipeline'ı çalıştırır.
+ * scan() tarafından Promise.allSettled ile paralel olarak çağrılır.
+ * Her keyword kendi sonuçlarını döndürür — global state paylaşımı yok.
+ */
+async function _scanSingleKeyword(workspaceId, keyword, kwIdx, {
+    saveWinners, maxPerKeyword, onKeywordStart, onKeywordDone, onProgress,
+}) {
+    if (typeof onKeywordStart === 'function') await onKeywordStart(keyword, kwIdx);
+    console.log(`[WPI] Scanning keyword: "${keyword}"`);
+
+    const kwResult = {
+        keyword,
+        productsScraped: 0,
+        trendingCount:   0,
+        winnersFound:    0,
+        actionCards:     [],
+        error:           null,
+        timedOut:        false,
+        isBaseline:      false,
+    };
+    const processedUrls = new Set(); // local dedup — instant + trending arasında tekrar önle
+
+    try {
+        // ── 1. Scrape ─────────────────────────────────────────────────────────
+        const rawProducts = await scrapeEtsyProducts(keyword, maxPerKeyword);
+        console.log(`[WPI]   ↳ ${rawProducts.length} products scraped`);
+
+        // ── 1b. Kategorize + NON_POD filtrele ─────────────────────────────────
+        const categorizedRaw = rawProducts.map(p => ({ ...p, category: _categorizeProduct(p) }));
+        const podProducts    = categorizedRaw.filter(p => p.category !== 'NON_POD');
+        const filteredOut    = rawProducts.length - podProducts.length;
+        if (filteredOut > 0) console.log(`[WPI]   ↳ ${filteredOut} NON_POD ürün elendi.`);
+        kwResult.productsScraped = podProducts.length;
+        if (onProgress) await onProgress(keyword, { phase: 'filtering', aiDone: 0, aiTotal: 0 });
+
+        // ── 2. Snapshot + trending detection ──────────────────────────────────
+        const [prevSnapshot] = await Promise.all([
+            _loadPreviousSnapshot(workspaceId, keyword),
+            saveWinners ? _saveSnapshot(workspaceId, keyword, podProducts) : Promise.resolve(),
+        ]);
+
+        const products   = _detectTrending(podProducts, prevSnapshot);
+        const isBaseline = !prevSnapshot;
+        const trending   = products.filter(p => p.trendData.isTrending);
+        kwResult.trendingCount = trending.length;
+        kwResult.isBaseline    = isBaseline;
+
+        if (isBaseline) {
+            const hotNowCount = products.filter(p => p.trendData.isHotNow).length;
+            console.log(`[WPI]   ↳ BASELINE — ${podProducts.length} ürün. ${hotNowCount} HOT NOW sinyal.`);
+        } else {
+            console.log(`[WPI]   ↳ ${trending.length} trending ürün`);
+        }
+
+        // ── 3. Instant candidates ─────────────────────────────────────────────
+        const instantCandidates = _detectInstantWinners(podProducts);
+        console.log(`[WPI]   ↳ ${instantCandidates.length} instant winner aday`);
+
+        // ── PRE-FILTER: trending → sadece sales > AI_MIN_SALES ───────────────
+        const trendingForAI = trending.filter(p =>
+            (p.sales ?? p.trendData?.salesCount ?? 0) > AI_MIN_SALES
+        );
+        const skippedPreFilter = trending.length - trendingForAI.length;
+        if (skippedPreFilter > 0)
+            console.log(`[WPI]   ↳ Pre-filter: ${skippedPreFilter} trending ürün elendi`);
+
+        const instantSlice = instantCandidates.slice(0, MAX_WINNERS_PER_KW);
+        const aiTotal      = instantSlice.length + Math.min(trendingForAI.length, MAX_WINNERS_PER_KW);
+        let   aiDone       = 0;
+        if (onProgress) await onProgress(keyword, { phase: 'ai_analysis', aiDone: 0, aiTotal });
+
+        let winnersThisKw = 0;
+
+        // ── 3a. Parallel instant brain analysis ───────────────────────────────
+        const instantResults = await _processChunks(instantSlice, AI_CHUNK_SIZE, async (product) => {
+            if (!product.trendData) {
+                product.trendData = {
+                    salesCount: product.sales || 0, salesDelta: 0,
+                    trendPeriod: 'INSTANT', isTrending: false, isBaseline, trendScore: product.sales || 0,
+                };
+            }
+            const productKey  = product.listingUrl || product.url || '';
+            const cached      = await _getCachedBrain(productKey, keyword);
+            const brainResult = cached || await _compareWithBrainInstant(product, keyword, workspaceId);
+            if (!cached && brainResult.confidence > 0) await _setCachedBrain(productKey, keyword, brainResult);
+            aiDone++;
+            if (onProgress) await onProgress(keyword, { phase: 'ai_analysis', aiDone, aiTotal });
+            console.log(`[WPI-Instant]   ↳ "${product.title.slice(0, 40)}" ${brainResult.confidence}%${cached ? ' [cache]' : ''}`);
+            return { product, brainResult };
+        });
+
+        for (const { product, brainResult } of instantResults) {
+            if (winnersThisKw >= MAX_WINNERS_PER_KW) break;
+            if (brainResult.confidence < BRAIN_CONFIDENCE_MIN) continue;
+            const url = product.listingUrl || product.url || '';
+            if (processedUrls.has(url)) continue;
+            processedUrls.add(url);
+
+            const actionCard = _buildActionCard(product, keyword, brainResult, { isInstant: true });
+            const entry = {
+                keyword,
+                product: {
+                    title: product.title, price: product.price, sales: product.sales || 0, salesDelta: 0,
+                    imageUrl: product.imageUrl, listingUrl: product.listingUrl, shopName: product.shopName,
+                    category: product.category ?? null, isBestSeller: product.isBestSeller,
+                    inCartCount: product.inCartCount, isPopularNow: product.isPopularNow,
+                },
+                trendData: product.trendData, brainComparison: brainResult, actionCard,
+            };
+            if (saveWinners) {
+                const record = await _saveWinner(workspaceId, product, keyword, brainResult, actionCard);
+                entry.id = record.id;
+            }
+            kwResult.actionCards.push(entry);
+            winnersThisKw++;
+        }
+
+        // ── 4. Parallel trending brain analysis ───────────────────────────────
+        const trendingSlice = trendingForAI
+            .filter(p => !processedUrls.has(p.listingUrl || p.url || ''))
+            .slice(0, MAX_WINNERS_PER_KW - winnersThisKw);
+
+        const trendingResults = await _processChunks(trendingSlice, AI_CHUNK_SIZE, async (product) => {
+            const productKey  = product.listingUrl || product.url || '';
+            const cached      = await _getCachedBrain(productKey, keyword);
+            const brainResult = cached || await _compareWithBrain(product, keyword, workspaceId);
+            if (!cached && brainResult.confidence > 0) await _setCachedBrain(productKey, keyword, brainResult);
+            aiDone++;
+            if (onProgress) await onProgress(keyword, { phase: 'ai_analysis', aiDone, aiTotal });
+            console.log(`[WPI]   ↳ Brain "${product.title.slice(0, 40)}": ${brainResult.confidence}%${cached ? ' [cache]' : ''}`);
+            return { product, brainResult };
+        });
+
+        for (const { product, brainResult } of trendingResults) {
+            if (winnersThisKw >= MAX_WINNERS_PER_KW) break;
+            if (brainResult.confidence < BRAIN_CONFIDENCE_MIN) continue;
+            const url = product.listingUrl || product.url || '';
+            if (processedUrls.has(url)) continue;
+            processedUrls.add(url);
+
+            const actionCard = _buildActionCard(product, keyword, brainResult);
+            const entry = {
+                keyword,
+                product: {
+                    title: product.title, price: product.price,
+                    sales: product.trendData.salesCount, salesDelta: product.trendData.salesDelta,
+                    imageUrl: product.imageUrl, listingUrl: product.listingUrl,
+                    shopName: product.shopName, category: product.category ?? null,
+                },
+                trendData: product.trendData, brainComparison: brainResult, actionCard,
+            };
+            if (saveWinners) {
+                const record = await _saveWinner(workspaceId, product, keyword, brainResult, actionCard);
+                entry.id = record.id;
+            }
+            kwResult.actionCards.push(entry);
+            winnersThisKw++;
+        }
+
+        kwResult.winnersFound = kwResult.actionCards.length;
+    } catch (err) {
+        console.error(`[WPI] Error scanning "${keyword}": ${err.message}`);
+        kwResult.error    = err.message;
+        kwResult.timedOut = err.message?.toLowerCase().includes('timeout') ||
+                            err.message?.toLowerCase().includes('timed-out');
+    }
+
+    if (typeof onKeywordDone === 'function') await onKeywordDone(keyword, kwIdx, { timedOut: kwResult.timedOut });
+    return kwResult;
 }
 
 // ─── Main scan entry point ─────────────────────────────────────────────────────
@@ -512,6 +771,7 @@ async function scan(workspaceId, keywords = [], options = {}) {
         maxPerKeyword  = MAX_PRODUCTS_PER_KW,
         onKeywordStart = null,
         onKeywordDone  = null,
+        onProgress     = null,   // (keyword, { phase, aiDone, aiTotal }) → void
     } = options;
     const scanId = `wpi_${Date.now()}`;
 
@@ -520,151 +780,28 @@ async function scan(workspaceId, keywords = [], options = {}) {
     const allActionCards = [];
     const byKeyword      = {};
     const errors         = [];
+    const callbackOpts   = { saveWinners, maxPerKeyword, onKeywordStart, onKeywordDone, onProgress };
 
-    for (let _kwIdx = 0; _kwIdx < keywords.length; _kwIdx++) {
-        const keyword = keywords[_kwIdx];
-        if (typeof onKeywordStart === 'function') onKeywordStart(keyword, _kwIdx);
-        console.log(`[WPI] Scanning keyword: "${keyword}"`);
-        const kwResult = {
-            keyword,
-            productsScraped: 0,
-            trendingCount:   0,
-            winnersFound:    0,
-            actionCards:     [],
-            error:           null,
-        };
+    // KEYWORD_CONCURRENCY keyword'ü paralel tara — bir batch biterken diğeri başlar
+    for (let i = 0; i < keywords.length; i += KEYWORD_CONCURRENCY) {
+        const batch   = keywords.slice(i, i + KEYWORD_CONCURRENCY);
+        const settled = await Promise.allSettled(
+            batch.map((kw, j) => _scanSingleKeyword(workspaceId, kw, i + j, callbackOpts))
+        );
 
-        try {
-            // ── 1. Scrape live Etsy products ──────────────────────────────────
-            const rawProducts = await scrapeEtsyProducts(keyword, maxPerKeyword);
-            kwResult.productsScraped = rawProducts.length;
-            console.log(`[WPI]   ↳ ${rawProducts.length} products scraped`);
-
-            // ── 2. Load previous snapshot + detect trending ───────────────────
-            const [prevSnapshot] = await Promise.all([
-                _loadPreviousSnapshot(workspaceId, keyword),
-                saveWinners ? _saveSnapshot(workspaceId, keyword, rawProducts) : Promise.resolve(),
-            ]);
-
-            const products   = _detectTrending(rawProducts, prevSnapshot);
-            const isBaseline = !prevSnapshot;
-            const trending   = isBaseline ? [] : products.filter(p => p.trendData.isTrending);
-            kwResult.trendingCount = trending.length;
-            kwResult.isBaseline    = isBaseline;
-
-            if (isBaseline) {
-                console.log(`[WPI]   ↳ BASELINE tarama — ${rawProducts.length} ürün snapshot'a kaydedildi.`);
+        for (const [j, outcome] of settled.entries()) {
+            const kw = batch[j];
+            if (outcome.status === 'fulfilled') {
+                byKeyword[kw] = outcome.value;
+                allActionCards.push(...outcome.value.actionCards);
             } else {
-                console.log(`[WPI]   ↳ ${trending.length} trending ürün (salesDelta ≥ ${TRENDING_DELTA_MIN})`);
+                const errMsg = outcome.reason?.message || 'Bilinmeyen hata';
+                const timedOut = errMsg.toLowerCase().includes('timeout') || errMsg.toLowerCase().includes('timed');
+                byKeyword[kw] = { keyword: kw, productsScraped: 0, trendingCount: 0, winnersFound: 0, actionCards: [], error: errMsg, timedOut };
+                errors.push({ keyword: kw, error: errMsg, timedOut });
+                if (typeof onKeywordDone === 'function') await onKeywordDone(kw, i + j, { timedOut });
             }
-
-            // ── 3. INSTANT INTELLIGENCE — Baseline'da bile çalışır ───────────
-            const instantCandidates = _detectInstantWinners(rawProducts);
-            console.log(`[WPI]   ↳ ${instantCandidates.length} instant winner aday (best_seller/in_cart/popular)`);
-
-            let winnersThisKw = 0;
-
-            for (const product of instantCandidates.slice(0, MAX_WINNERS_PER_KW)) {
-                if (winnersThisKw >= MAX_WINNERS_PER_KW) break;
-
-                // Trenddata olmayabilir (baseline) — dummy ekle
-                if (!product.trendData) {
-                    product.trendData = {
-                        salesCount:  product.sales || 0,
-                        salesDelta:  0,
-                        trendPeriod: 'INSTANT',
-                        isTrending:  false,
-                        isBaseline:  isBaseline,
-                        trendScore:  product.sales || 0,
-                    };
-                }
-
-                const brainResult = await _compareWithBrainInstant(product, keyword, workspaceId);
-                console.log(`[WPI-Instant]   ↳ "${product.title.slice(0, 40)}" competitive edge confidence: ${brainResult.confidence}%`);
-
-                if (brainResult.confidence < BRAIN_CONFIDENCE_MIN) continue;
-
-                const actionCard = _buildActionCard(product, keyword, brainResult, { isInstant: true });
-                const entry = {
-                    keyword,
-                    product: {
-                        title:        product.title,
-                        price:        product.price,
-                        sales:        product.sales || 0,
-                        salesDelta:   0,
-                        imageUrl:     product.imageUrl,
-                        listingUrl:   product.listingUrl,
-                        shopName:     product.shopName,
-                        isBestSeller: product.isBestSeller,
-                        inCartCount:  product.inCartCount,
-                        isPopularNow: product.isPopularNow,
-                    },
-                    trendData:       product.trendData,
-                    brainComparison: brainResult,
-                    actionCard,
-                };
-
-                if (saveWinners) {
-                    const record = await _saveWinner(workspaceId, product, keyword, brainResult, actionCard);
-                    entry.id = record.id;
-                }
-
-                kwResult.actionCards.push(entry);
-                allActionCards.push(entry);
-                winnersThisKw++;
-            }
-
-            // ── 4. Brain comparison for TRENDING products (non-baseline) ─────
-            for (const product of trending.slice(0, MAX_WINNERS_PER_KW - winnersThisKw)) {
-                if (winnersThisKw >= MAX_WINNERS_PER_KW) break;
-
-                // Instant winner olarak zaten işlenmediyse
-                const alreadyProcessed = allActionCards.some(
-                    c => c.product.listingUrl === (product.listingUrl || product.url)
-                );
-                if (alreadyProcessed) continue;
-
-                const brainResult = await _compareWithBrain(product, keyword, workspaceId);
-                console.log(`[WPI]   ↳ Brain confidence for "${product.title.slice(0, 40)}": ${brainResult.confidence}%`);
-
-                if (brainResult.confidence < BRAIN_CONFIDENCE_MIN) continue;
-
-                const actionCard = _buildActionCard(product, keyword, brainResult);
-                const entry = {
-                    keyword,
-                    product: {
-                        title:      product.title,
-                        price:      product.price,
-                        sales:      product.trendData.salesCount,
-                        salesDelta: product.trendData.salesDelta,
-                        imageUrl:   product.imageUrl,
-                        listingUrl: product.listingUrl,
-                        shopName:   product.shopName,
-                    },
-                    trendData:       product.trendData,
-                    brainComparison: brainResult,
-                    actionCard,
-                };
-
-                if (saveWinners) {
-                    const record = await _saveWinner(workspaceId, product, keyword, brainResult, actionCard);
-                    entry.id = record.id;
-                }
-
-                kwResult.actionCards.push(entry);
-                allActionCards.push(entry);
-                winnersThisKw++;
-            }
-
-            kwResult.winnersFound = kwResult.actionCards.length;
-        } catch (err) {
-            console.error(`[WPI] Error scanning "${keyword}": ${err.message}`);
-            kwResult.error = err.message;
-            errors.push({ keyword, error: err.message });
         }
-
-        byKeyword[keyword] = kwResult;
-        if (typeof onKeywordDone === 'function') onKeywordDone(keyword, _kwIdx);
     }
 
     const summary = {
@@ -745,21 +882,24 @@ async function approveActionCard(workspaceId, cardId, { sendToFactory = false } 
 
     let jobId = null;
     if (shouldFactory) {
-        const kw  = record.analysisResult?.keyword || '';
-        const bc  = record.analysisResult?.brainComparison ?? {};
+        const kw           = record.analysisResult?.keyword || '';
+        const bc           = record.analysisResult?.brainComparison ?? {};
+        const designPrompt = bc.designPrompt || ac.designPrompt || '';
+        const style        = [ac.colorPalette, designPrompt].filter(Boolean).join(' | ');
+
         const job = await prisma.designJob.create({
             data: {
                 workspaceId,
                 status:        'PENDING',
-                mode:          'etsy',
+                mode:          'wpi',          // WPI kaynaklı iş — Factory'de "Ready to Generate" görünür
                 keyword:       kw,
-                niche:         bc.niche            || ac.differentiationAngle || '',
-                style:         ac.colorPalette     || '',
+                niche:         bc.niche                  || ac.differentiationAngle || '',
+                style,
                 originalImage: record.analysisResult?.product?.imageUrl || '',
             },
         });
         jobId = job.id;
-        console.log(`[WPI] ✅ ${isImmediate ? 'IMMEDIATE ACTION' : 'Trend'} kart fabrikaya gönderildi — JobID: ${jobId}`);
+        console.log(`[WPI] ✅ ${isImmediate ? 'HOT NOW' : 'Trend'} kart fabrikaya gönderildi — JobID: ${jobId}`);
     }
 
     return { approved: true, cardId, jobId, sentToFactory: shouldFactory, isImmediate };
@@ -789,11 +929,67 @@ async function rejectActionCard(workspaceId, cardId, reason = '') {
     return { rejected: true, cardId };
 }
 
+// ─── Niche Scout altyapısı (ileride Pinterest/Google Trends verisiyle dolacak) ─
+
+/**
+ * _suggestNiches — Google/Pinterest trend verilerinden Etsy mikro-niş önerileri üretir.
+ *
+ * @param {string[]} trendTopics  — dış kaynaktan gelen trend konuları
+ * @param {string}   workspaceId
+ * @returns {Promise<Array<{ niche, keyword, reasoning, confidence }>>}
+ *
+ * TODO: scout.service.js tarafından çağrılır; şu an stub.
+ */
+async function _suggestNiches(trendTopics = [], workspaceId, academyContext = '') {
+    if (!trendTopics.length) return [];
+
+    const academyBlock = academyContext
+        ? `\nACADEMY KURALLARI (BUNLARA AYKIRI HİÇBİR NİŞ ÖNERME):\n${academyContext}\n`
+        : '';
+
+    const prompt = `Sen bir Etsy POD pazar analisti ve niş uzmanısın.
+Aşağıdaki güncel trend konularından yola çıkarak Etsy'de RekAbeti DÜŞÜK ama talebi YÜKSEK 5 MICRO-NICHE üret.
+
+TREND KONULARI:
+${trendTopics.slice(0, 20).map((t, i) => `${i + 1}. ${t}`).join('\n')}
+${academyBlock}
+Her micro-niche için:
+- POD ürünlerine (tişört, duvar sanatı, kupa, poster) uygun olsun
+- Çok geniş (halloween) veya çok dar (sadece tek şehir) olmasın
+- 2026 yılına özgü fırsatları tercih et
+
+SADECE JSON döndür:
+{"niches":[
+  {
+    "niche": "<micro-niche adı, Türkçe>",
+    "keyword": "<Etsy'de aranacak İngilizce keyword>",
+    "reasoning": "<Türkçe, 1 cümle, neden fırsat>",
+    "confidence": <50-100>
+  }
+]}`;
+
+    try {
+        const res = await anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001', max_tokens: 800,
+            messages: [{ role: 'user', content: prompt }],
+        });
+        const raw   = res.content[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (!match) return [];
+        const { niches = [] } = JSON.parse(match[0]);
+        return niches;
+    } catch (err) {
+        console.warn('[WPI _suggestNiches] AI hatası:', err.message);
+        return [];
+    }
+}
+
 module.exports = {
     scan,
     listActionCards,
     approveActionCard,
     rejectActionCard,
+    _suggestNiches,
     BRAIN_CONFIDENCE_MIN,
     COLLECTIONS_2026,
 };

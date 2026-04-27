@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const agentService = require('../services/autonomous-manager.service');
+const agentOrchestrator = require('../services/agent.service');
 
 /**
  * POST /api/agent/audit
@@ -40,6 +41,65 @@ router.post('/execute-action', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// ─── Agentic Pipeline ────────────────────────────────────────────────────────
+
+/**
+ * POST /api/agent/pipeline
+ * Mevcut PENDING WPI kartlarını SEO ile paketler → READY yapar.
+ * Body: { forceRepackage?: boolean }
+ */
+router.post('/pipeline', async (req, res) => {
+    try {
+        const result = await agentOrchestrator.runAgentPipeline(
+            req.workspaceId,
+            { forceRepackage: req.body?.forceRepackage ?? false }
+        );
+        res.json({ success: true, ...result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/agent/full-scan
+ * Scout + WPI taraması + SEO paketleme (yavaş ~2-5dk).
+ * Hemen başlar, background'da çalışır. Client SSE ile takip edebilir.
+ */
+router.post('/full-scan', async (req, res) => {
+    // Hemen 202 döndür, pipeline arka planda çalışsın
+    res.status(202).json({ success: true, message: 'Tam tarama başlatıldı.' });
+    agentOrchestrator.triggerFullScan(req.workspaceId, { forceScout: req.body?.forceScout ?? false })
+        .then(r => console.log('[Agent] Full scan tamamlandı:', JSON.stringify(r)))
+        .catch(e => console.error('[Agent] Full scan hatası:', e.message));
+});
+
+/**
+ * GET /api/agent/packages
+ * READY paketleri listele.
+ */
+router.get('/packages', async (req, res) => {
+    try {
+        const limit    = parseInt(req.query.limit || '10', 10);
+        const packages = await agentOrchestrator.listAgentPackages(req.workspaceId, limit);
+        res.json({ success: true, packages, count: packages.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/agent/packages/:cardId/prepare
+ * One-click: görsel üret + SEO döndür.
+ */
+router.post('/packages/:cardId/prepare', async (req, res) => {
+    try {
+        const result = await agentOrchestrator.preparePackage(req.workspaceId, req.params.cardId);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 module.exports = router;

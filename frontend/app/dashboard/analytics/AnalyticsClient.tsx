@@ -23,7 +23,7 @@ function resolveUrl(url: string | null | undefined): string {
 
 type SortDir = 'asc' | 'desc';
 
-export function AnalyticsClient() {
+export function AnalyticsClient({ onSendToBrainstorm }: { onSendToBrainstorm?: (nicheOrTitle: string) => void }) {
     const queryClient = useQueryClient();
     const [uploading, setUploading] = useState(false);
     const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -304,6 +304,15 @@ export function AnalyticsClient() {
                                                 >
                                                     <TrendingUp className="w-3 h-3" /> Scale Winner
                                                 </a>
+                                            )}
+                                            {(p.score < 50 || p.flag === 'LOSER') && onSendToBrainstorm && (
+                                                <button
+                                                    onClick={() => onSendToBrainstorm(p.sku || p.imageId)}
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-400 text-xs rounded-lg transition-colors ml-auto w-fit border border-red-500/20"
+                                                    title="Send to Brainstorm as Negative Constraint"
+                                                >
+                                                    <ArrowDown className="w-3 h-3" /> Exclude
+                                                </button>
                                             )}
                                         </td>
                                     </tr>

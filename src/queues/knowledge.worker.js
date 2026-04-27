@@ -1,4 +1,4 @@
-const { Worker } = require('bullmq');
+const { Worker, UnrecoverableError } = require('bullmq');
 const redisConnection = require('../config/redis');
 const fs = require('fs');
 const path = require('path');
@@ -128,6 +128,57 @@ async function _saveStrategicRules(rules, workspaceId, sourceTitle) {
     return saved;
 }
 
+// ─── Robust YouTube ID Extractor ─────────────────────────────────────────────
+// Tüm YouTube URL formatlarını destekler:
+//   • youtube.com/watch?v=ID          (standart)
+//   • youtu.be/ID                     (kısaltılmış)
+//   • youtube.com/embed/ID            (gömülü)
+//   • youtube.com/live/ID             (canlı yayın)
+//   • youtube.com/shorts/ID           (Shorts)
+//   • youtube.com/v/ID                (eski /v/ formatı)
+//   • youtube.com/watch?...&v=ID      (ek parametreli)
+//   • music.youtube.com/watch?v=ID    (YouTube Music)
+const YT_ID_PATTERNS = [
+    /[?&]v=([a-zA-Z0-9_-]{11})/,               // watch?v= ve &v=
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,           // youtu.be/
+    /youtube\.com\/(?:embed|live|shorts|v)\/([a-zA-Z0-9_-]{11})/, // embed/live/shorts/v
+];
+
+function extractVideoId(url) {
+    if (!url || typeof url !== 'string') return null;
+    for (const rx of YT_ID_PATTERNS) {
+        const m = url.match(rx);
+        if (m?.[1]) return m[1];
+    }
+    return null;
+}
+
+/**
+ * YouTube video yayın tarihini sayfa HTML'inden çeker.
+ * API key gerektirmez — ytInitialPlayerResponse JSON-LD'den okur.
+ */
+async function _fetchYouTubePublishDate(videoId) {
+    try {
+        const fetch = require('node-fetch');
+        const res   = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+            headers: {
+                'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+            timeout: 8000,
+        });
+        const html = await res.text();
+
+        // YouTube, tarihi "publishDate" veya "datePublished" alanında gömer
+        const m = html.match(/"publishDate"\s*:\s*"([^"]+)"/)
+               || html.match(/"datePublished"\s*:\s*"([^"]+)"/);
+        return m ? m[1] : null; // örn. "2025-11-14"
+    } catch (err) {
+        console.warn(`[KnowledgeWorker] YouTube tarih çekme başarısız (${videoId}):`, err.message);
+        return null;
+    }
+}
+
 async function processKnowledge(job) {
     const { type, filePath, url, originalName, workspaceId = 'default-workspace' } = job.data;
     console.log(`[KnowledgeWorker] İşlenen tip: ${type} | JobID: ${job.id}`);
@@ -175,6 +226,155 @@ async function processKnowledge(job) {
             return;
         }
 
+        // ── YouTube Smart: transcript → otomatik çoklu kategorize → ingestText ──
+        if (type === 'YOUTUBE_SMART') {
+            // ── 1. Video ID doğrulama — bozuk URL'yi anında işaretle, retry etme ──
+            const videoId = extractVideoId(url);
+            if (!videoId) {
+                console.error(`[KnowledgeWorker] Bozuk URL Atlandı: ${url}`);
+                throw new UnrecoverableError(`Bozuk URL Atlandı: ${url} — geçerli bir YouTube video URL'si değil`);
+            }
+
+            await job.updateProgress(10);
+
+            // ── Deep Scavenger: API → yt-dlp auto-subs fallback ──────────────
+            const { fetchTranscriptWithFallback } = require('../services/youtube.service');
+            let transcript, transcriptSource;
+            try {
+                const result = await fetchTranscriptWithFallback(videoId, url);
+                transcript      = result.transcript;
+                transcriptSource = result.source;
+                console.log(`[KnowledgeWorker] Transcript (${transcriptSource}): ${transcript.length} karakter`);
+            } catch (fetchErr) {
+                console.error(`[KnowledgeWorker] Transcript alınamadı: ${fetchErr.message}`);
+                throw new UnrecoverableError(`Transcript bulunamadı: ${url} — ${fetchErr.message}`);
+            }
+
+            // ── Quality Check — sessiz / müzik / bilgisiz içerik tespiti ─────
+            const NOISE_RX = /^\[?(music|müzik|applause|alkış|laughter|gülüş|noise|gürültü|♪|🎵|🎶)\]?$/i;
+            const meaningfulWords = transcript.split(/\s+/).filter(w => w.length > 3 && !NOISE_RX.test(w));
+
+            if (transcript.length < 150 || meaningfulWords.length < 20) {
+                console.warn(`[KnowledgeWorker] Bilgi içermeyen içerik: ${url} (${transcript.length} kar, ${meaningfulWords.length} anlamlı kelime)`);
+                await prisma.corporateMemory.create({
+                    data: {
+                        workspaceId,
+                        type:     'YOUTUBE_SMART',
+                        title:    `[Bilgi İçermeyen İçerik] ${originalName || url}`,
+                        content:  'Bu video analiz edildi ancak işlenebilir metin içeriği bulunamadı. Muhtemelen müzik videosu veya sessiz içerik.',
+                        category: 'MANAGEMENT',
+                        isActive: false,
+                        analysisResult: {
+                            videoId, source: 'youtube', transcriptSource,
+                            transcriptLength: transcript.length,
+                            meaningfulWordCount: meaningfulWords.length,
+                            reason: 'insufficient_content',
+                            skippedAt: new Date().toISOString(),
+                        },
+                    }
+                });
+                throw new UnrecoverableError(`Bilgi İçermeyen İçerik: ${url} — transcript çok kısa veya yalnızca gürültü/müzik`);
+            }
+
+            // Video yayın tarihini çek (AI güvenilirlik skoru için)
+            const videoPublishedAt = await _fetchYouTubePublishDate(videoId);
+            if (videoPublishedAt) {
+                console.log(`[KnowledgeWorker] Video tarihi: ${videoPublishedAt}`);
+            }
+            await job.updateProgress(30);
+
+            // Claude Haiku — hangi kategoriler var tespit et, her biri için ayrı içerik çıkar
+            const categorizationPrompt = `Sen Etsy POD uzmanısın. Aşağıdaki YouTube video transcript'ini analiz et.
+
+Bu kategorilerden hangilerinde anlamlı içerik var, tespit et ve her biri için Türkçe madde madde bilgi çıkar:
+
+Kategoriler:
+- STRATEGY: iş stratejileri, niche seçimi, büyüme taktikleri, fiyatlandırma, kâr marjı, rakip analizi
+- RULES: yasaklar, Etsy politikaları, risk içeren uygulamalar, kesinlikle yapılmaması gerekenler
+- SEO_TACTICS: title formülleri, tag seçimi, long-tail keyword, arama sıralaması taktikleri, listing optimizasyonu
+- SEO: genel SEO prensipleri, algoritma anlayışı, impressions/CTR iyileştirme
+- VISUAL: tasarım ilkeleri, renk paleti, mockup kalitesi, görsel trendler, font seçimi
+- MANAGEMENT: mağaza yönetimi, sipariş süreci, müşteri ilişkileri, zaman yönetimi, araç önerileri
+
+Video: "${originalName || url}"
+
+TRANSCRIPT:
+${transcript.slice(0, 10000)}
+
+KURALLAR:
+- Yalnızca transcript'te gerçekten bahsedilen kategorileri dahil et — boş kategori ekleme
+- Her madde maksimum 2 cümle, somut ve uygulanabilir
+- Genel lafları ve tanıtım cümlelerini atla
+- Türkçe yaz
+
+SADECE aşağıdaki JSON formatında çıktı ver, başka hiçbir metin ekleme:
+{"categories":[{"category":"STRATEGY","content":"## Başlık\\n- madde\\n- madde"},{"category":"RULES","content":"## Başlık\\n- madde"}]}`;
+
+            const categRes = await anthropic.messages.create({
+                model:      'claude-haiku-4-5-20251001',
+                max_tokens: 2500,
+                messages:   [{ role: 'user', content: categorizationPrompt }],
+            });
+
+            const rawJson = categRes.content[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+            let detectedCategories = [];
+            try {
+                const parsed = JSON.parse(rawJson);
+                detectedCategories = (parsed.categories || []).filter(c => c.category && c.content && c.content.trim().length > 20);
+            } catch (_) {
+                // JSON parse başarısız — tek blok olarak STRATEGY'e kaydet
+                detectedCategories = [{ category: 'STRATEGY', content: rawJson }];
+            }
+
+            console.log(`[KnowledgeWorker] ${detectedCategories.length} kategori tespit edildi: ${detectedCategories.map(c => c.category).join(', ')}`);
+            await job.updateProgress(60);
+
+            // Her kategori için ayrı ingestText çağrısı (video tarihi metadata olarak geçiyor)
+            const { ingestText, detectAndResolveContradictions } = require('../services/knowledge.service');
+            const videoMeta = { videoPublishedAt, videoId, source: 'youtube', transcriptSource };
+            let totalChunks = 0;
+            const allSavedEntries = [];
+
+            for (const cat of detectedCategories) {
+                const saved = await ingestText(
+                    workspaceId,
+                    `[YouTube] ${originalName || url} — ${cat.category}`,
+                    cat.content,
+                    cat.category,
+                    videoMeta
+                );
+                totalChunks += saved.length;
+                allSavedEntries.push(...saved.map(s => ({ ...s, category: cat.category, content: cat.content })));
+            }
+            console.log(`[KnowledgeWorker] ✓ YOUTUBE_SMART → ${totalChunks} chunk, ${detectedCategories.length} kategori kaydedildi`);
+            await job.updateProgress(80);
+
+            // Çelişki tespiti: yeni kayıtların eski kayıtlarla çelişip çelişmediğini kontrol et
+            try {
+                for (const entry of allSavedEntries) {
+                    await detectAndResolveContradictions(
+                        workspaceId,
+                        entry.content,
+                        entry.category,
+                        entry.id
+                    );
+                }
+            } catch (_) {}
+
+            // Stratejik kurallar: tüm kategorilerin içeriğini birleştirerek çıkar
+            try {
+                const allContent = detectedCategories.map(c => c.content).join('\n\n');
+                const { rules = [] } = await _extractStrategicRules(allContent, originalName || url);
+                if (rules.length > 0) {
+                    const saved2 = await _saveStrategicRules(rules, workspaceId, originalName || url);
+                    console.log(`[KnowledgeWorker] ✓ ${saved2} stratejik kural ek olarak kaydedildi`);
+                }
+            } catch (_) {}
+
+            await job.updateProgress(100);
+            return;
+        }
+
         if (type === 'FILE') {
             const ext = path.extname(filePath).toLowerCase();
             metadata.filename = originalName;
@@ -190,16 +390,66 @@ async function processKnowledge(job) {
                 content = fs.readFileSync(filePath, 'utf-8');
             }
         } else if (type === 'YOUTUBE') {
+            const legacyVideoId = extractVideoId(url);
+            if (!legacyVideoId) {
+                console.error(`[KnowledgeWorker] Bozuk URL Atlandı: ${url}`);
+                throw new UnrecoverableError(`Bozuk URL Atlandı: ${url}`);
+            }
             const { pathToFileURL } = require('url');
             const ytEsmPath = path.join(
                 path.dirname(require.resolve('youtube-transcript/package.json')),
                 'dist/youtube-transcript.esm.js'
             );
             const { YoutubeTranscript } = await import(pathToFileURL(ytEsmPath).href);
-            const transcripts = await YoutubeTranscript.fetchTranscript(url);
+            let transcripts;
+            try { transcripts = await YoutubeTranscript.fetchTranscript(legacyVideoId); }
+            catch {
+                throw new UnrecoverableError(`Transcript bulunamadı: ${url}`);
+            }
             content = transcripts.map(t => t.text).join(' ');
             metadata.url = url;
             metadata.filename = 'YouTube Video';
+        } else if (type === 'SOCIAL_MEDIA') {
+            try {
+                const fetch = (...args) => import('node-fetch').then(m => m.default(...args));
+                const response = await fetch(url, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' },
+                    signal: AbortSignal.timeout(15000),
+                });
+                const html = await response.text();
+                content = html
+                    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+                    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .slice(0, 15000);
+                metadata.url = url;
+                metadata.filename = originalName || url;
+            } catch (fetchErr) {
+                throw new UnrecoverableError(`Sayfa çekilemedi: ${url} — ${fetchErr.message}`);
+            }
+        } else if (type === 'RADAR_TREND') {
+            try {
+                const fetch = (...args) => import('node-fetch').then(m => m.default(...args));
+                const response = await fetch(url, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' },
+                    signal: AbortSignal.timeout(15000),
+                });
+                const html = await response.text();
+                content = html
+                    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+                    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .slice(0, 15000);
+                metadata.url = url;
+                metadata.filename = originalName || url;
+                job.data.category = 'STRATEGY';
+            } catch (fetchErr) {
+                throw new UnrecoverableError(`Trend sayfası çekilemedi: ${url} — ${fetchErr.message}`);
+            }
         }
 
         if (content.trim()) {

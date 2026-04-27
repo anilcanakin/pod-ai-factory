@@ -1,4 +1,23 @@
 require('dotenv').config();
+
+// ── In-memory log ring buffer (console'u override et, son 100 log'u tut) ─────
+const LOG_BUFFER = [];
+const LOG_MAX    = 100;
+const _origLog   = console.log.bind(console);
+const _origWarn  = console.warn.bind(console);
+const _origError = console.error.bind(console);
+const _push = (level, args) => {
+    const msg = args.map(a =>
+        (a instanceof Error) ? a.stack || a.message :
+        (typeof a === 'object' && a !== null) ? JSON.stringify(a) : String(a)
+    ).join(' ');
+    LOG_BUFFER.push({ ts: Date.now(), level, msg });
+    if (LOG_BUFFER.length > LOG_MAX) LOG_BUFFER.shift();
+};
+console.log   = (...a) => { _origLog(...a);   _push('info',  a); };
+console.warn  = (...a) => { _origWarn(...a);  _push('warn',  a); };
+console.error = (...a) => { _origError(...a); _push('error', a); };
+
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -62,6 +81,9 @@ require('./queues/asset.worker');
 // SEO Knowledge Base weekly auto-updater
 require('./jobs/seo-knowledge-updater').startCron();
 
+// Autonomous Radar: Etsy/Google Trends/Pinterest — every 12h
+require('./jobs/radar-worker').startCron();
+
 // Storage asset explicit workspace scoped protection
 app.use('/assets/outputs/:filename', async (req, res, next) => {
   if (!req.workspaceId) return res.status(401).send('Unauthorized');
@@ -79,6 +101,13 @@ app.use('/assets', express.static(path.join(__dirname, '../assets')));
 // Health Check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'POD AI Factory is running' });
+});
+
+// ─── Recent backend logs (ring buffer) ────────────────────────────────────────
+app.get('/api/logs/recent', (req, res) => {
+    const n = Math.min(parseInt(req.query.n || '20', 10), 100);
+    res.set('Cache-Control', 'no-store');
+    res.json({ logs: LOG_BUFFER.slice(-n) });
 });
 
 // ─── Fal health check cache (60s TTL) ─────────────────────────
@@ -368,10 +397,14 @@ app.use('/api/agent', require('./routes/agent.routes'));
 app.use('/api/radar', require('./routes/radar.routes'));
 app.use('/api/apify', require('./routes/apify.routes'));
 app.use('/api/wpi',   require('./routes/wpi.routes'));
+app.use('/api/scout', require('./routes/scout.routes'));
 app.use('/api/fulfillment', require('./routes/fulfillment.routes'));
 app.use('/api/knowledge', require('./routes/knowledge.routes'));
 app.use('/api/tasks', require('./routes/task.routes'));
 app.use('/api/hq', require('./routes/hq.routes'));
+app.use('/api/finance', require('./routes/finance.routes'));
+app.use('/api/batch',  require('./routes/batch.routes'));
+app.use('/api/styles', require('./routes/style.routes'));
 
 
 app.use((err, req, res, next) => {
@@ -395,7 +428,8 @@ const server = app.listen(PORT, async () => {
     require('./queues/asset.worker');
     require('./queues/mockup.worker');
     require('./queues/knowledge.worker');
-    console.log('[Workers] Asset, Mockup ve Knowledge başlatıldı.');
+    require('./queues/batch.worker');
+    console.log('[Workers] Asset, Mockup, Knowledge ve Batch başlatıldı.');
   } catch (err) {
     console.error('[Workers] Worker başlatma hatama:', err.message);
   }

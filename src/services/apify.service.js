@@ -466,6 +466,7 @@ async function researchEtsyKeywords(keywords, countryCode = 'US') {
 async function savePinterestTrendsToKnowledge(trends, workspaceId, keyword) {
     console.log(`[Apify] ${Math.min(trends.length, 15)} Pinterest trend analiz ediliyor: ${keyword}`);
     let saved = 0;
+    const enrichedTrends = [];
 
     await prisma.workspace.upsert({
         where:  { id: workspaceId },
@@ -474,27 +475,44 @@ async function savePinterestTrendsToKnowledge(trends, workspaceId, keyword) {
     });
 
     for (const pin of trends.slice(0, 15)) {
-        if (!pin.imageUrl) continue;
+        const enriched = { ...pin, visionInsight: null, designPrompt: null };
+
+        if (!pin.imageUrl) {
+            enrichedTrends.push(enriched);
+            continue;
+        }
 
         let visualInsight = `Pinterest trend pin: "${pin.title}" — ${pin.repins} repin.`;
+        let designPrompt  = null;
 
         try {
             const response = await anthropic.messages.create({
-                model: 'claude-haiku-4-5-20251001', max_tokens: 300,
+                model: 'claude-haiku-4-5-20251001', max_tokens: 400,
                 messages: [{
                     role: 'user',
                     content: [
                         { type: 'image', source: { type: 'url', url: pin.imageUrl } },
-                        { type: 'text', text: `Bu Pinterest trend görselini Etsy POD perspektifinden analiz et.
-Şunları belirt: renk paleti, kompozisyon stili, metin/grafik oranı, ürün tipi uyumu (duvar sanatı/tişört/kuppa vb.), öne çıkan tasarım öğeleri.
-Maksimum 2 cümle. Türkçe yaz, teknik terimleri (mockup, color palette vb.) koru.` },
+                        { type: 'text', text: `Bu Pinterest trend görselini Etsy POD perspektifinden analiz et ve JSON döndür.
+
+{"vision":"<2 Türkçe cümle: renk paleti, kompozisyon stili, ürün tipi uyumu (duvar sanatı/tişört/kuppa vb.), öne çıkan tasarım öğeleri>","prompt":"<1 İngilizce Flux/Ideogram generation prompt — bu görselin tasarım dilini Etsy POD ürününe uyarlayan sahne/stil/renk tarifi>"}` },
                     ],
                 }],
             });
-            visualInsight = response.content[0].text;
+
+            const raw   = response.content[0].text;
+            const match = raw.match(/\{[\s\S]*\}/);
+            if (match) {
+                const parsed = JSON.parse(match[0]);
+                visualInsight = parsed.vision  || visualInsight;
+                designPrompt  = parsed.prompt  || null;
+            }
         } catch (visionErr) {
             console.warn('[Apify] Vision analiz hatası:', visionErr.message);
         }
+
+        enriched.visionInsight = visualInsight;
+        enriched.designPrompt  = designPrompt;
+        enrichedTrends.push(enriched);
 
         try {
             await prisma.corporateMemory.create({
@@ -502,13 +520,13 @@ Maksimum 2 cümle. Türkçe yaz, teknik terimleri (mockup, color palette vb.) ko
                     workspaceId,
                     type:     'STRATEGIC_RULE',
                     title:    `[VISUAL_TRENDS] ${keyword} — ${pin.title.slice(0, 80)}`,
-                    content:  visualInsight,
+                    content:  `${visualInsight}${designPrompt ? `\n\nÖnerilen prompt: ${designPrompt}` : ''}`,
                     category: 'VISUAL',
                     isActive: true,
                     analysisResult: {
                         ruleCategory: 'VISUAL_TRENDS', domain: 'VISUAL', priority: 'NORMAL',
                         keyword, pinUrl: pin.pinUrl, imageUrl: pin.imageUrl,
-                        repins: pin.repins, extractedAt: new Date().toISOString(),
+                        repins: pin.repins, designPrompt, extractedAt: new Date().toISOString(),
                     },
                 },
             });
@@ -519,13 +537,13 @@ Maksimum 2 cümle. Türkçe yaz, teknik terimleri (mockup, color palette vb.) ko
     }
 
     console.log(`[Apify] ✓ ${saved} VISUAL_TRENDS kaydedildi: ${keyword}`);
-    return saved;
+    return { saved, trends: enrichedTrends };
 }
 
 async function scrapePinterestTrendsAndSave(keyword, workspaceId, maxResults = 30) {
     const trends = await scrapePinterestTrends(keyword, maxResults);
-    const saved  = await savePinterestTrendsToKnowledge(trends, workspaceId, keyword);
-    return { trends, saved };
+    const { saved, trends: enriched } = await savePinterestTrendsToKnowledge(trends, workspaceId, keyword);
+    return { trends: enriched, saved };
 }
 
 // ─── 5. Canlı Rakip Bağlamı (Audit için) ─────────────────────────────────────

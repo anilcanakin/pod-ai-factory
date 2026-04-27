@@ -240,8 +240,11 @@ router.post('/test-knowledge', async (req, res) => {
         const knowledgeContext = memories
             .map(m => {
                 const ar = m.analysisResult;
-                if (!ar) return '';
-                return ar.synthesis || (ar.actionableRules?.map(r => `IF ${r.condition} THEN ${r.action}`).join('\n')) || '';
+                const structured = ar?.synthesis
+                    || (ar?.actionableRules?.map(r => `IF ${r.condition} THEN ${r.action}`).join('\n'))
+                    || null;
+                // YOUTUBE_SMART ve diğer kayıtlar içeriği doğrudan m.content'te saklar
+                return structured || m.content || '';
             })
             .filter(Boolean)
             .join('\n\n---\n\n');
@@ -250,15 +253,16 @@ router.post('/test-knowledge', async (req, res) => {
         const response = await client.messages.create({
             model: 'claude-haiku-4-5-20251001',
             max_tokens: 1000,
-            system: `You are an Etsy POD business expert assistant.
-Answer questions based ONLY on the knowledge base provided below.
-If the knowledge base doesn't contain relevant information, say so clearly.
-Be specific and actionable in your answers.
+            system: `Sen bir Etsy POD iş uzmanısın. Aşağıdaki bilgi tabanına dayanarak soruları yanıtla.
+Bilgi tabanında ilgili bilgi varsa onu kullan; yoksa bunu açıkça belirt.
+Yanıtların somut ve uygulanabilir olsun.
+Bilgi tabanındaki Türkçe içerikleri de analiz et ve kullanıcıya Türkçe yanıt ver.
+Sorunun dilinde yanıt ver (Türkçe soruysa Türkçe, İngilizce soruysa İngilizce).
 
-KNOWLEDGE BASE (${memories.length} entries):
+BİLGİ TABANI (${memories.length} kayıt):
 ${knowledgeContext.slice(0, 4000)}
 
-SEO KNOWLEDGE:
+SEO BİLGİSİ:
 ${seoKnowledge.slice(0, 2000)}`,
             messages: [{ role: 'user', content: question }]
         });
@@ -362,6 +366,180 @@ router.get('/summary', async (req, res) => {
     }
 });
 
+// ─── POST /api/brain/strategic-audit — Analyze rules → 3 winner niches ──────
+router.post('/strategic-audit', async (req, res) => {
+    try {
+        const workspaceId = req.workspaceId || 'default-workspace';
+        const Anthropic = require('@anthropic-ai/sdk');
+
+        // 1. Fetch all strategic rules for this workspace
+        const rules = await prisma.corporateMemory.findMany({
+            where: { workspaceId, type: 'STRATEGIC_RULE', isActive: true },
+            orderBy: { createdAt: 'desc' },
+            take: 60,
+        });
+
+        if (rules.length < 3) {
+            return res.status(400).json({
+                error: `En az 3 stratejik kural gerekli. Mevcut: ${rules.length}. Brain'e daha fazla video/belge yükle.`
+            });
+        }
+
+        const rulesText = rules.map((r, i) => {
+            const ar = r.analysisResult || {};
+            const cat   = ar.ruleCategory || r.category || 'GENERAL';
+            const ev    = ar.evidence     ? ` (kanıt: "${ar.evidence}")` : '';
+            const pri   = ar.priority === 'HIGH' ? ' ★HIGH' : '';
+            return `${i + 1}. [${cat}${pri}] ${r.content}${ev}`;
+        }).join('\n');
+
+        // 2. Claude Sonnet: analyze rules → 3 winner niches + slogans + prompts
+        const client  = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const prompt  = `Sen 2026 Etsy POD pazar uzmanısın. Aşağıdaki ${rules.length} adet stratejik kurala %100 uyan 3 adet "Winner Niş" belirle.
+
+STRATEJİK KURALLAR:
+${rulesText}
+
+Seçim kriterleri:
+• Her SEO, görsel, fiyatlandırma ve trend kuralına eksiksiz uymalı
+• ★HIGH PRIORITY kurallar varsa o nişleri önceliklendir (2026 etkinlikleri: 4th of July 250th, FIFA World Cup, Mother's Day, Father's Day, Halloween, Christmas)
+• Rekabetin orta/yüksek ama talebin daha yüksek olduğu nişler tercih et
+• Her niş birbirinden tamamen farklı olmalı
+
+Her niş için üret:
+• 10 adet İngilizce t-shirt sloganı (max 8 kelime, baskıya uygun, güçlü)
+• 10 adet görsel üretim promptu (Flux/Ideogram için, İngilizce, detaylı: stil + kompozisyon + renk + konu)
+
+SADECE JSON döndür, başka metin ekleme:
+{"winners":[{"niche":"Niche Name","nicheScore":97,"reason":"Neden tüm kurallara uyuyor (Türkçe, 2 cümle)","matchedRuleCount":${rules.length},"slogans":["s1","s2","s3","s4","s5","s6","s7","s8","s9","s10"],"visualPrompts":["p1","p2","p3","p4","p5","p6","p7","p8","p9","p10"]}]}`;
+
+        const aiRes   = await client.messages.create({
+            model:      'claude-sonnet-4-6',
+            max_tokens: 5000,
+            messages:   [{ role: 'user', content: prompt }],
+        });
+
+        const raw = aiRes.content[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+        let winners;
+        try {
+            winners = JSON.parse(raw).winners;
+        } catch {
+            const m = raw.match(/\{[\s\S]*\}/);
+            if (m) winners = JSON.parse(m[0]).winners;
+            else throw new Error('AI yanıtı parse edilemedi');
+        }
+        if (!Array.isArray(winners) || winners.length === 0) throw new Error('Winner niş üretilemedi');
+
+        // 3. Save each winner as ACTION_CARD in CorporateMemory
+        const savedCards = [];
+        for (const w of winners.slice(0, 3)) {
+            const card = await prisma.corporateMemory.create({
+                data: {
+                    workspaceId,
+                    type:     'ACTION_CARD',
+                    title:    `[ACTION CARD] ${w.niche}`,
+                    content:  [
+                        `Winner Niş: ${w.niche}`,
+                        `Skor: ${w.nicheScore}/100`,
+                        `Neden seçildi: ${w.reason}`,
+                        '',
+                        'SLOGANLAR:',
+                        ...w.slogans.map((s, i) => `${i + 1}. ${s}`),
+                        '',
+                        'GÖRSEL PROMPTLAR:',
+                        ...w.visualPrompts.map((p, i) => `${i + 1}. ${p}`),
+                    ].join('\n'),
+                    category: 'STRATEGY',
+                    isActive: true,
+                    tags:     ['action-card', 'winner', '2026', 'ready-to-produce'],
+                    analysisResult: {
+                        status:           'READY_TO_PRODUCE',
+                        nicheName:        w.niche,
+                        nicheScore:       w.nicheScore,
+                        reason:           w.reason,
+                        matchedRuleCount: w.matchedRuleCount || rules.length,
+                        slogans:          w.slogans,
+                        visualPrompts:    w.visualPrompts,
+                        rulesAnalyzed:    rules.length,
+                        generatedAt:      new Date().toISOString(),
+                    },
+                },
+            });
+            savedCards.push(card);
+        }
+
+        res.json({ success: true, count: savedCards.length, rulesAnalyzed: rules.length, cards: savedCards });
+    } catch (err) {
+        console.error('[Brain StrategicAudit]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── GET /api/brain/action-cards — List saved action cards ───────────────────
+router.get('/action-cards', async (req, res) => {
+    try {
+        const workspaceId = req.workspaceId || 'default-workspace';
+        const cards = await prisma.corporateMemory.findMany({
+            where: { workspaceId, type: 'ACTION_CARD', isActive: true },
+            orderBy: { createdAt: 'desc' },
+        });
+        res.json(cards);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── POST /api/brain/action-cards/:id/produce — Mark as IN_PRODUCTION + create Ideas ──
+router.post('/action-cards/:id/produce', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const workspaceId = req.workspaceId || 'default-workspace';
+
+        const card = await prisma.corporateMemory.findFirst({
+            where: { id, workspaceId, type: 'ACTION_CARD' },
+        });
+        if (!card) return res.status(404).json({ error: 'Action Card bulunamadı' });
+
+        const ar = card.analysisResult || {};
+        if (!ar.slogans?.length) return res.status(400).json({ error: 'Slogan bulunamadı' });
+
+        // Create Idea records from slogans so they appear in the Ideas page
+        const ideas = await Promise.all(
+            ar.slogans.map((slogan, i) =>
+                prisma.idea.create({
+                    data: {
+                        workspaceId,
+                        niche:       ar.nicheName || card.title,
+                        mainKeyword: slogan,
+                        persona:     'POD Customer',
+                        hook:        slogan,
+                        iconFamily:  {},
+                        styleEnum:   'minimalist',
+                        status:      'READY_TO_PRODUCE',
+                    },
+                })
+            )
+        );
+
+        // Update card status
+        await prisma.corporateMemory.update({
+            where: { id },
+            data: {
+                analysisResult: {
+                    ...ar,
+                    status:   'IN_PRODUCTION',
+                    sentAt:   new Date().toISOString(),
+                    ideaIds:  ideas.map(i => i.id),
+                },
+            },
+        });
+
+        res.json({ success: true, nicheName: ar.nicheName, ideasCreated: ideas.length, ideaIds: ideas.map(i => i.id) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── DELETE /api/brain/:id — Soft-delete a memory ────────────────────────────
 router.delete('/:id', async (req, res) => {
     try {
@@ -375,4 +553,34 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// ─── POST /api/brain/brainstorm — AI-Powered Product Idea Generator ──────────
+router.post('/brainstorm', async (req, res) => {
+    try {
+        const workspaceId = req.workspaceId || 'default-workspace';
+        const { count = 3, focusNiche = '', season = '', excludeNiches = [] } = req.body || {};
+
+        const { brainstorm } = require('../services/brainstorm.service');
+        const result = await brainstorm(workspaceId, { count, focusNiche, season, excludeNiches });
+
+        res.json(result);
+    } catch (error) {
+        console.error('[Brain] Brainstorm error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ─── POST /api/brain/brainstorm/update/:id — Re-score an Idea ───────────────
+router.post('/brainstorm/update/:id', async (req, res) => {
+    try {
+        const workspaceId = req.workspaceId || 'default-workspace';
+        const { updateIdea } = require('../services/brainstorm.service');
+        const updatedAnalysisResult = await updateIdea(req.params.id, workspaceId);
+        res.json({ success: true, updatedData: updatedAnalysisResult });
+    } catch (error) {
+        console.error('[Brain] Update Idea error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;
+

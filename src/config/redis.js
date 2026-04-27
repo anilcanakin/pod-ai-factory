@@ -1,19 +1,35 @@
 const Redis = require('ioredis');
 
-// Upstash varsa kullan, yoksa Docker/yerel Redis'e düş
-const connection = process.env.REDIS_URL
-    ? new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null })
-    : new Redis({
-          host: process.env.REDIS_HOST || '127.0.0.1',
-          port: Number(process.env.REDIS_PORT) || 6379,
-          maxRetriesPerRequest: null,
-      });
+// Bağlantı önceliği:
+//   1. NODE_ENV=development + LOCAL_REDIS_URL → yerel Redis (dev)
+//   2. REDIS_URL                              → Upstash / prod Redis
+//   3. REDIS_HOST + REDIS_PORT                → Docker / fallback
+const isDev      = process.env.NODE_ENV === 'development';
+const localUrl   = process.env.LOCAL_REDIS_URL;
+const remoteUrl  = process.env.REDIS_URL;
+
+let _connectTarget;
+let connection;
+
+if (isDev && localUrl) {
+    // Geliştirme: yerel Redis — Upstash kotasını harcama
+    connection     = new Redis(localUrl, { maxRetriesPerRequest: null });
+    _connectTarget = localUrl.replace(/:\/\/[^@]+@/, '://<credentials>@');
+} else if (remoteUrl) {
+    // Prod / Upstash
+    connection     = new Redis(remoteUrl, { maxRetriesPerRequest: null });
+    _connectTarget = remoteUrl.replace(/:\/\/[^@]+@/, '://<credentials>@');
+} else {
+    // Docker / manuel host:port
+    const host     = process.env.REDIS_HOST || '127.0.0.1';
+    const port     = Number(process.env.REDIS_PORT) || 6379;
+    connection     = new Redis({ host, port, maxRetriesPerRequest: null });
+    _connectTarget = `${host}:${port}`;
+}
 
 connection.on('connect', () => {
-    const target = process.env.REDIS_URL
-        ? process.env.REDIS_URL.replace(/:\/\/[^@]+@/, '://<credentials>@')
-        : `${process.env.REDIS_HOST || '127.0.0.1'}:${process.env.REDIS_PORT || 6379}`;
-    console.log(`[Redis] ✔ Bağlandı → ${target}`);
+    const mode = (isDev && localUrl) ? '[DEV-LOCAL]' : (remoteUrl ? '[UPSTASH]' : '[LOCAL]');
+    console.log(`[Redis] ✔ Bağlandı ${mode} → ${_connectTarget}`);
 });
 
 connection.on('error', (err) => {

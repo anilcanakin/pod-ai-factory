@@ -340,6 +340,19 @@ class GenerationService {
                         cost: totalCost
                     }
                 });
+
+                // Mali kayıt — non-blocking, hata üretimi engellenmez
+                if (job.workspaceId && totalCost > 0) {
+                    const { recordExpense } = require('./finance.service');
+                    recordExpense(job.workspaceId, {
+                        imageId:     img.id,
+                        jobId:       jobId,
+                        amount:      totalCost,
+                        provider:    'falai',
+                        description: `${modelId.split('/').pop()} generation + RMBG + upscale`,
+                    }).catch(() => {});
+                }
+
                 return { success: true, img: updated, cost: totalCost };
 
             } catch (err) {

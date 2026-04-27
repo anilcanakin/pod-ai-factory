@@ -13,7 +13,10 @@
     "start": "concurrently -c \"cyan.bold,magenta.bold\" -n \"BACKEND,FRONTEND\" \"npm run start:backend\" \"npm run start:frontend\"",
     "start:backend": "node src/index.js",
     "start:frontend": "npm run start --prefix frontend",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "ingest": "node src/scripts/bulk-ingest.js",
+    "ingest:dry": "node src/scripts/bulk-ingest.js --dry-run",
+    "ingest:reset": "node src/scripts/bulk-ingest.js --reset"
   },
   "keywords": [],
   "author": "",

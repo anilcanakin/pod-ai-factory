@@ -287,4 +287,82 @@ router.get('/config', (req, res) => {
     });
 });
 
+// ─── Autonomous Radar ─────────────────────────────────────────────────────────
+
+const { PrismaClient } = require('@prisma/client');
+const _prisma = new PrismaClient();
+
+/**
+ * GET /api/wpi/radar-discoveries
+ * Query: hours=<number>  (default 24)
+ *
+ * Son N saatte otonom olarak keşfedilmiş HOT_DISCOVERY kayıtlarını döner.
+ * Score'a göre azalan sırada sıralanır.
+ */
+router.get('/radar-discoveries', async (req, res) => {
+    try {
+        const workspaceId = req.workspaceId || 'default-workspace';
+        const hours       = Math.min(parseInt(req.query.hours || '24', 10), 168); // max 1 hafta
+        const cutoff      = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+        const entries = await _prisma.corporateMemory.findMany({
+            where:   { workspaceId, type: 'HOT_DISCOVERY', createdAt: { gte: cutoff } },
+            orderBy: { createdAt: 'desc' },
+            take:    50,
+            select:  { id: true, title: true, content: true, createdAt: true, analysisResult: true },
+        });
+
+        // Son çalışma zamanını Redis'ten al (opsiyonel — worker'ın son çalışmasını izlemek için)
+        let lastRunAt = null;
+        let nextRunAt = null;
+        try {
+            const ts = await redis.get('radar:lastRunAt');
+            if (ts) {
+                lastRunAt = new Date(parseInt(ts, 10)).toISOString();
+                nextRunAt = new Date(parseInt(ts, 10) + 12 * 60 * 60 * 1000).toISOString();
+            }
+        } catch { /* Redis yoksa sessizce geç */ }
+
+        const discoveries = entries.map(e => ({
+            id:                    e.id,
+            niche:                 e.analysisResult?.niche || e.title.replace('[Radar] ', ''),
+            discoveryScore:        e.analysisResult?.discoveryScore || 0,
+            reasoning:             e.analysisResult?.reasoning || '',
+            suggestedKeywords:     e.analysisResult?.suggestedKeywords || [],
+            productRecommendation: e.analysisResult?.productRecommendation || '',
+            urgency:               e.analysisResult?.urgency || 'medium',
+            source:                e.analysisResult?.source || 'etsy',
+            discoveredAt:          e.analysisResult?.discoveredAt || e.createdAt.toISOString(),
+            isCritical:            e.analysisResult?.isCritical || false,
+        })).sort((a, b) => b.discoveryScore - a.discoveryScore);
+
+        res.json({ success: true, count: discoveries.length, discoveries, lastRunAt, nextRunAt });
+    } catch (err) {
+        console.error('[WPI radar-discoveries]', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/wpi/radar-trigger
+ * Manuel olarak otonom radar taraması başlatır (arka planda çalışır).
+ */
+router.post('/radar-trigger', async (req, res) => {
+    try {
+        const workspaceId = req.workspaceId || 'default-workspace';
+        res.json({ success: true, message: 'Radar taraması başlatıldı — arka planda çalışıyor.' });
+
+        // Arka planda çalıştır
+        const { runRadarScan } = require('../jobs/radar-worker');
+        runRadarScan().catch(err => console.error('[WPI radar-trigger] Scan failed:', err.message));
+
+        // Son çalışma zamanını kaydet
+        redis.set('radar:lastRunAt', Date.now().toString()).catch(() => {});
+        console.log(`[WPI] radar-trigger: Manuel tarama başlatıldı — workspace: ${workspaceId}`);
+    } catch (err) {
+        console.error('[WPI radar-trigger]', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;

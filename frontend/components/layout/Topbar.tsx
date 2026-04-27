@@ -15,10 +15,11 @@ const FAL_CONFIG: Record<FalStatus, { label: string; color: string; dotClass: st
 };
 
 const TYPE_COLORS: Record<string, string> = {
-    success: 'text-success',
-    error: 'text-danger',
-    warn: 'text-warn',
-    info: 'text-accent',
+    success:  'text-success',
+    error:    'text-danger',
+    warn:     'text-warn',
+    info:     'text-accent',
+    critical: 'text-red-400 font-bold',
 };
 
 function timeAgo(dateStr: string): string {
@@ -155,7 +156,10 @@ export function Topbar() {
                     >
                         <Bell className="w-4 h-4" />
                         {unreadCount > 0 && (
-                            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-accent text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                            <span className={cn(
+                                'absolute -top-1 -right-1 min-w-[16px] h-4 px-1 text-white text-[9px] font-bold rounded-full flex items-center justify-center',
+                                notifications.some(n => !n.read && n.type === 'critical') ? 'bg-red-500 animate-pulse' : 'bg-accent'
+                            )}>
                                 {unreadCount > 9 ? '9+' : unreadCount}
                             </span>
                         )}

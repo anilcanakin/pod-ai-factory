@@ -2,14 +2,15 @@
 
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { apiFactory, apiGallery, apiTools, apiSeo } from '@/lib/api';
+import { apiFactory, apiGallery, apiTools, apiSeo, apiWpi } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
     Loader2, ArrowRight, Upload, X, Sparkles, Wand2,
     Zap, CheckCircle, Image as ImageIcon, Cpu, Eye, Palette,
     Brush, Layers, ChevronDown, ChevronUp, Pencil, Trash2,
-    Scissors, ZoomIn, Download, RotateCcw, Tag, Copy, Clock
+    Scissors, ZoomIn, Download, RotateCcw, Tag, Copy, Clock,
+    Flame, Target
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -412,13 +413,84 @@ export function FactoryClient() {
 
     const selectedCount = variations.filter(v => v.selected).length || (mainPrompt.trim() ? 1 : 0);
 
+    // ── WPI Factory Queue ────────────────────────────────────────
+    const { data: wpiQueueData } = useQuery({
+        queryKey: ['wpi-factory-queue'],
+        queryFn: apiWpi.factoryQueue,
+        refetchInterval: 30_000,
+        staleTime: 15_000,
+    });
+    const wpiJobs = wpiQueueData?.jobs ?? [];
+    const [wpiQueueOpen, setWpiQueueOpen] = useState(true);
+
     // ── Render ─────────────────────────────────────────────────
     return (
         <div className="animate-fade-in">
-            <div className="mb-6">
+            <div className="mb-4">
                 <h1 className="text-2xl font-bold text-text-primary">AI Design Generator</h1>
                 <p className="text-sm text-text-secondary mt-1">Create POD-ready designs with AI-powered generation</p>
             </div>
+
+            {/* ── WPI Ready-to-Generate Queue ── */}
+            {wpiJobs.length > 0 && (
+                <div className="mb-5 rounded-xl border border-orange-500/30 bg-orange-500/5 overflow-hidden">
+                    <button
+                        onClick={() => setWpiQueueOpen(v => !v)}
+                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-orange-500/5 transition-colors"
+                    >
+                        <div className="flex items-center gap-2">
+                            <Flame className="w-4 h-4 text-orange-400" />
+                            <span className="text-sm font-semibold text-orange-300">WPI — Ready to Generate</span>
+                            <span className="px-1.5 py-0.5 rounded-full bg-orange-500/30 text-orange-300 text-[10px] font-bold">
+                                {wpiJobs.length}
+                            </span>
+                        </div>
+                        {wpiQueueOpen
+                            ? <ChevronUp className="w-4 h-4 text-orange-400/60" />
+                            : <ChevronDown className="w-4 h-4 text-orange-400/60" />
+                        }
+                    </button>
+                    {wpiQueueOpen && (
+                        <div className="px-4 pb-3 flex gap-2 overflow-x-auto">
+                            {wpiJobs.map(job => (
+                                <div
+                                    key={job.id}
+                                    className="flex-shrink-0 w-52 rounded-lg border border-orange-500/20 bg-bg-elevated p-2.5 space-y-1.5"
+                                >
+                                    <div className="flex items-start gap-2">
+                                        {job.previewUrl ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={job.previewUrl} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                                        ) : (
+                                            <div className="w-10 h-10 rounded bg-slate-700/50 flex items-center justify-center flex-shrink-0">
+                                                <Target className="w-4 h-4 text-slate-500" />
+                                            </div>
+                                        )}
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-semibold text-text-primary truncate">{job.keyword}</p>
+                                            {job.niche && <p className="text-[9px] text-text-tertiary truncate">{job.niche}</p>}
+                                        </div>
+                                    </div>
+                                    {job.designPrompt && (
+                                        <p className="text-[9px] text-text-tertiary font-mono line-clamp-2 leading-relaxed">
+                                            {job.designPrompt}
+                                        </p>
+                                    )}
+                                    <button
+                                        onClick={() => {
+                                            if (job.designPrompt) setMainPrompt(job.designPrompt);
+                                        }}
+                                        className="w-full flex items-center justify-center gap-1 py-1.5 rounded-md bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 text-[10px] font-semibold border border-orange-500/20 transition-all"
+                                    >
+                                        <Sparkles className="w-3 h-3" />
+                                        Prompt&apos;u Yükle
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="flex gap-0 min-h-[calc(100vh-180px)]">
                 {/* ── LEFT PANEL ─────────────────────────────── */}
@@ -948,7 +1020,7 @@ export function FactoryClient() {
 
                                                 {/* To Remove BG */}
                                                 <button
-                                                    onClick={() => router.push(`/dashboard/remove-bg?imageUrl=${encodeURIComponent(displayUrl)}`)}
+                                                    onClick={() => router.push(`/dashboard/tools?tab=remove-bg&imageUrl=${encodeURIComponent(displayUrl)}`)}
                                                     className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs rounded-[6px] border border-border-default transition-colors"
                                                 >
                                                     <Scissors className="w-3 h-3" />

@@ -23,7 +23,7 @@ export function SEOClient() {
 
     const processFile = (file: File) => {
         if (!file.type.startsWith('image/')) {
-            toast.error('Please upload an image file.');
+            toast.error('Lütfen bir görsel dosyası yükleyin.');
             return;
         }
         const reader = new FileReader();
@@ -58,7 +58,7 @@ export function SEOClient() {
     };
 
     const generate = async (hint?: string) => {
-        if (!sourceImage) return toast.error('Please upload an image first.');
+        if (!sourceImage) return toast.error('Önce bir görsel yükleyin.');
         setIsGenerating(true);
         setResult(null);
         try {
@@ -66,9 +66,9 @@ export function SEOClient() {
             const data = await apiSeo.generate(sourceImage, kw);
             setResult(data);
             setVariationHint(null);
-            toast.success('SEO content generated!');
+            toast.success('SEO içeriği üretildi!');
         } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : 'Generation failed');
+            toast.error(err instanceof Error ? err.message : 'Üretim başarısız');
         } finally {
             setIsGenerating(false);
         }
@@ -112,13 +112,13 @@ export function SEOClient() {
             });
             const data = await response.json();
             if (data.success) {
-                setPublishResult('Draft created on Etsy!');
-                toast.success('Draft listing created on Etsy!');
+                setPublishResult('Etsy\'de taslak oluşturuldu!');
+                toast.success('Etsy\'de taslak ilan oluşturuldu!');
             } else {
-                toast.error(data.error || 'Failed to create draft');
+                toast.error(data.error || 'Taslak oluşturulamadı');
             }
         } catch (err: unknown) {
-            toast.error('Failed to connect to browser automation');
+            toast.error('Tarayıcı otomasyonuna bağlanılamadı');
         } finally {
             setPublishing(false);
         }
@@ -130,7 +130,7 @@ export function SEOClient() {
         await navigator.clipboard.writeText(text);
         setCopied('all');
         setTimeout(() => setCopied(null), 2000);
-        toast.success('All copied!');
+        toast.success('Tümü kopyalandı!');
     };
 
     return (
@@ -141,7 +141,7 @@ export function SEOClient() {
                     Etsy SEO Generator
                 </h1>
                 <p className="text-sm text-text-secondary mt-1">
-                    Upload your design → get optimized title, description & 13 tags
+                    Tasarımını yükle → optimize edilmiş başlık, açıklama ve 13 etiket al
                 </p>
             </div>
 
@@ -169,7 +169,7 @@ export function SEOClient() {
                             onChange={e => e.target.files?.[0] && processFile(e.target.files[0])}
                         />
                         <Upload className="w-8 h-8 text-text-tertiary mx-auto mb-2" />
-                        <p className="text-sm font-medium text-text-primary mb-1">Upload design</p>
+                        <p className="text-sm font-medium text-text-primary mb-1">Tasarım Yükle</p>
                         <p className="text-xs text-text-tertiary">JPG, PNG, WEBP</p>
                     </div>
                 ) : (
@@ -188,17 +188,17 @@ export function SEOClient() {
                 <div className="space-y-3">
                     <div>
                         <label className="text-xs font-medium text-text-secondary block mb-1.5">
-                            Focus Keyword <span className="text-text-tertiary">(optional)</span>
+                            Odak Kelime <span className="text-text-tertiary">(opsiyonel)</span>
                         </label>
                         <input
                             type="text"
                             value={keyword}
                             onChange={e => setKeyword(e.target.value)}
-                            placeholder="e.g. vintage eagle shirt, patriotic gift"
+                            placeholder="örn. vintage kartal tişört, vatanseverlik hediyesi"
                             className="w-full bg-bg-elevated border border-border-default rounded-[8px] px-3 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent transition-colors"
                         />
                         <p className="text-[10px] text-text-tertiary mt-1">
-                            Adding a keyword helps target specific buyer searches
+                            Anahtar kelime eklemek alıcı aramalarını hedeflemeye yardımcı olur
                         </p>
                     </div>
 
@@ -208,9 +208,9 @@ export function SEOClient() {
                         className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-white px-4 py-3 rounded-[10px] font-medium text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         {isGenerating ? (
-                            <><Loader2 className="w-4 h-4 animate-spin" /> Generating SEO...</>
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Üretiliyor...</>
                         ) : (
-                            <><Sparkles className="w-4 h-4" /> Generate SEO Content</>
+                            <><Sparkles className="w-4 h-4" /> SEO İçeriği Üret</>
                         )}
                     </button>
 
@@ -221,8 +221,8 @@ export function SEOClient() {
                                 className="w-full flex items-center justify-center gap-2 bg-bg-elevated hover:bg-bg-overlay text-text-primary px-4 py-2.5 rounded-[10px] text-sm border border-border-default transition-colors"
                             >
                                 {copied === 'all'
-                                    ? <><Check className="w-4 h-4 text-success" /> Copied!</>
-                                    : <><Copy className="w-4 h-4" /> Copy All (Etsy format)</>
+                                    ? <><Check className="w-4 h-4 text-success" /> Kopyalandı!</>
+                                    : <><Copy className="w-4 h-4" /> Tümünü Kopyala (Etsy formatı)</>
                                 }
                             </button>
 
@@ -250,8 +250,8 @@ export function SEOClient() {
                                 className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all disabled:opacity-40"
                             >
                                 {publishing
-                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Opening Etsy...</>
-                                    : <>🛒 Publish to Etsy (Draft)</>
+                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Etsy Açılıyor...</>
+                                    : <>🛒 Etsy'de Yayınla (Taslak)</>
                                 }
                             </button>
                             {publishResult && (
@@ -318,7 +318,7 @@ export function SEOClient() {
                                         Live Etsy Data
                                     </span>
                                     <span className="text-xs text-text-tertiary">
-                                        Real searches from Etsy buyers
+                                        Etsy alıcılarından gerçek aramalar
                                     </span>
                                 </div>
                             </div>
@@ -340,7 +340,7 @@ export function SEOClient() {
                                     ))}
                                 </div>
                                 <p className="text-[10px] text-text-tertiary mt-2">
-                                    These are real searches from Etsy's autocomplete — use them in your listings
+                                    Bunlar Etsy'nin otomatik tamamlama aramaları — ilanlarında kullan
                                 </p>
                             </div>
                         </div>
@@ -364,7 +364,7 @@ export function SEOClient() {
                                 className="flex items-center gap-1.5 text-xs text-text-tertiary hover:text-accent transition-colors"
                             >
                                 {copied === 'title' ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-                                Copy
+                                Kopyala
                             </button>
                         </div>
                         <div className="p-4">
@@ -421,7 +421,7 @@ export function SEOClient() {
                                 ))}
                             </div>
                             <p className="text-[10px] text-text-tertiary mt-3">
-                                Click any tag to copy individually
+                                Tek tek kopyalamak için etikete tıkla
                             </p>
                         </div>
                     </div>

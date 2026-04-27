@@ -355,7 +355,7 @@ export function MockupsClient() {
                                                 <p className="text-[10px] text-slate-400 truncate">{r.templateName}</p>
                                                 <button
                                                     onClick={async () => {
-                                                        const url = resolveUrl(r.url);
+                                                        const url = resolveUrl(r.url!);
                                                         try {
                                                             const res = await fetch(url);
                                                             const blob = await res.blob();

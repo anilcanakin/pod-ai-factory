@@ -465,6 +465,9 @@ export interface CorporateMemory {
         sourceType?: string;
         source?: string;
         seoUpdated?: boolean;
+        displayTitle?: string;
+        videoPublishedAt?: string;
+        videoId?: string;
     } | null;
     createdAt: string;
 }
@@ -524,7 +527,64 @@ export const apiBrain = {
             body: JSON.stringify({ title, content, source, category })
         }),
     delete: (id: string) => request<{ success: boolean }>(`/brain/${id}`, { method: 'DELETE' }),
+    strategicAudit: () =>
+        request<{ success: boolean; count: number; rulesAnalyzed: number; cards: ActionCard[] }>(
+            '/brain/strategic-audit', { method: 'POST' }
+        ),
+    getActionCards: () =>
+        request<ActionCard[]>('/brain/action-cards'),
+    produceActionCard: (id: string) =>
+        request<{ success: boolean; nicheName: string; ideasCreated: number; ideaIds: string[] }>(
+            `/brain/action-cards/${id}/produce`, { method: 'POST' }
+        ),
+    brainstorm: (options?: { count?: number; focusNiche?: string; season?: string; excludeNiches?: string[] }) =>
+        request<BrainstormResult>('/brain/brainstorm', {
+            method: 'POST',
+            body: JSON.stringify(options || {}),
+        }),
+    updateIdea: (id: string) =>
+        request<{ success: boolean; updatedData: Partial<BrainstormIdea> }>(`/brain/brainstorm/update/${id}`, { method: 'POST' }),
 };
+
+export interface BrainstormIdea {
+    title:          string;
+    niche:          string;
+    productType:    string;
+    designBrief:    string;
+    targetAudience: string;
+    keyTags:        string[];
+    estimatedScore: number;
+    reasoning:      string;
+    basedOnRules:   { id: string; title: string }[];
+}
+
+export interface BrainstormResult {
+    ideas:       BrainstormIdea[];
+    rulesUsed:   number;
+    totalRules:  number;
+    generatedAt: string;
+}
+
+export interface ActionCard {
+    id:              string;
+    title:           string;
+    content:         string;
+    category:        string;
+    createdAt:       string;
+    analysisResult?: {
+        status:           'READY_TO_PRODUCE' | 'IN_PRODUCTION' | 'DONE';
+        nicheName:        string;
+        nicheScore:       number;
+        reason:           string;
+        matchedRuleCount: number;
+        slogans:          string[];
+        visualPrompts:    string[];
+        rulesAnalyzed:    number;
+        generatedAt:      string;
+        sentAt?:          string;
+        ideaIds?:         string[];
+    };
+}
 
 // ─── AI Autonomous Manager (Store Agent) ───────────────────
 export interface AgentAction {
@@ -545,6 +605,19 @@ export const apiAgent = {
         method: 'POST',
         body: JSON.stringify(action)
     }),
+
+    // ── Agentic Pipeline (agent.service.js) ──────────────────────────────────
+    runPipeline: (forceRepackage = false) =>
+        request<{ success: boolean; packagesCreated: number; message: string }>('/agent/pipeline', {
+            method: 'POST',
+            body:   JSON.stringify({ forceRepackage }),
+        }),
+    triggerFullScan: () =>
+        request<{ success: boolean; message: string }>('/agent/full-scan', { method: 'POST' }),
+    getPackages: (limit = 10) =>
+        request<{ success: boolean; packages: AgentPackage[]; count: number }>(`/agent/packages?limit=${limit}`),
+    preparePackage: (cardId: string) =>
+        request<PrepareResult & { success: boolean }>(`/agent/packages/${cardId}/prepare`, { method: 'POST' }),
 };
 
 // ─── Etsy Operations (Browser Agent) ─────────────────────────
@@ -790,7 +863,34 @@ export const apiWpi = {
             `/wpi/action-cards/${cardId}/seo-optimize`,
             { method: 'POST' }
         ),
+
+    radarDiscoveries: (hours = 24) =>
+        request<{
+            success: boolean;
+            count: number;
+            discoveries: RadarDiscovery[];
+            lastRunAt: string | null;
+            nextRunAt: string | null;
+        }>(`/wpi/radar-discoveries?hours=${hours}`),
+
+    radarTrigger: () =>
+        request<{ success: boolean; message: string }>(
+            '/wpi/radar-trigger', { method: 'POST' }
+        ),
 };
+
+export interface RadarDiscovery {
+    id: string;
+    niche: string;
+    discoveryScore: number;
+    reasoning: string;
+    suggestedKeywords: string[];
+    productRecommendation: string;
+    urgency: 'high' | 'medium' | 'low';
+    source: 'etsy' | 'google_trends' | 'pinterest';
+    discoveredAt: string;
+    isCritical: boolean;
+}
 
 export interface WpiSeoPackage {
     title: string;
@@ -829,7 +929,30 @@ export interface KnowledgeEntry {
     createdAt: string;
 }
 
+export interface ChannelVideo {
+    videoId:     string;
+    title:       string;
+    url:         string;
+    viewCount:   number | null;
+    uploadDate:  string | null;
+    duration:    number | null;
+    thumbnail:   string;
+    channelName: string | null;
+}
+
 export const apiKnowledge = {
+    extractChannel: (url: string, maxResults?: number) =>
+        request<{ success: boolean; videos: ChannelVideo[]; channelName: string | null; totalCount: number }>(
+            '/knowledge/channel-extract',
+            { method: 'POST', body: JSON.stringify({ url, maxResults: maxResults ?? 50 }) }
+        ),
+
+    queueCleanup: (opts?: { jobIds?: string[]; cleanFailed?: boolean; cleanCompleted?: boolean }) =>
+        request<{ success: boolean; removed: string[]; errors: {id: string; error: string}[]; failedCleaned: number; completedCleaned: number }>(
+            '/knowledge/queue-cleanup',
+            { method: 'POST', body: JSON.stringify(opts ?? { cleanFailed: true }) }
+        ),
+
     ingestText: (title: string, content: string, category: string) =>
         request<{ success: boolean; saved: number; chunks: string[] }>('/knowledge/ingest-text', {
             method: 'POST',
@@ -851,4 +974,355 @@ export const apiKnowledge = {
     },
     delete: (id: string) =>
         request<{ success: boolean }>(`/knowledge/entries/${id}`, { method: 'DELETE' }),
+
+    submitYoutubeBulk: (urls: Array<string | { url: string; title?: string; category?: string }>) =>
+        request<{ success: boolean; jobs: IngestJob[] }>('/knowledge/youtube-bulk', {
+            method: 'POST',
+            body: JSON.stringify({ urls }),
+        }),
+
+    getIngestJobs: () =>
+        request<{ success: boolean; jobs: IngestJob[] }>('/knowledge/ingest-jobs'),
+
+    getJobStatus: (jobId: string) =>
+        request<{ jobId: string; state: string; progress: number; name: string; failedReason: string | null }>(
+            `/knowledge/status/${jobId}`
+        ),
+
+    retryFailed: (opts?: { jobIds?: string[]; fromId?: number; toId?: number }) =>
+        request<{ success: boolean; retried: number; jobs: Array<{ oldJobId: string; newJobId: string; url: string }> }>(
+            '/knowledge/retry-failed',
+            { method: 'POST', body: JSON.stringify(opts || {}) }
+        ),
+
+    getQueueStats: () => request<QueueStats>('/knowledge/queue-stats'),
+
+    ingest: (body: { source: 'youtube' | 'social' | 'radar'; urls: Array<string | { url: string; title?: string }>; platform?: string; originalName?: string }) =>
+        request<{ success: boolean; jobs: IngestJob[] }>('/knowledge/ingest', {
+            method: 'POST',
+            body: JSON.stringify(body),
+        }),
+
+    uploadFile: (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const base = (process.env.NEXT_PUBLIC_API_BASE_URL ?? '') + '/api';
+        return fetch(`${base}/knowledge/upload`, { method: 'POST', credentials: 'include', body: formData })
+            .then(async r => {
+                if (!r.ok) { const t = await r.text(); throw new Error(t); }
+                return r.json() as Promise<{ message: string; jobId: string; file: string }>;
+            });
+    },
+};
+
+export interface IngestJob {
+    jobId: string;
+    state: 'waiting' | 'active' | 'completed' | 'failed' | 'delayed' | string;
+    progress: number;
+    url: string;
+    title: string;
+    category: string;
+    failedReason: string | null;
+    timestamp?: number;
+    sourceType?: string;
+    platform?: string | null;
+}
+
+export interface QueueStats {
+    total:     number;
+    indexed:   number;
+    inQueue:   number;
+    failed:    number;
+    completed: number;
+    active:    number;
+    waiting:   number;
+}
+
+// ─── Logs ─────────────────────────────────────────────────────────────────────
+
+export interface LogEntry {
+    ts:    number;
+    level: 'info' | 'warn' | 'error';
+    msg:   string;
+}
+
+export const apiLogs = {
+    getRecent: (n = 20) =>
+        request<{ logs: LogEntry[] }>(`/logs/recent?n=${n}`),
+};
+
+// ─── Batch Factory ────────────────────────────────────────────────────────────
+
+export interface BatchRule {
+    id:              string;
+    title:           string;
+    content:         string;
+    category:        string;
+    createdAt:       string;
+    analysisResult?: Record<string, unknown>;
+}
+
+export interface BatchImage {
+    id:       string;
+    status:   string;
+    imageUrl: string | null;
+    slogan:   string;
+    seed:     string | null;
+}
+
+export interface StylePresetColor {
+    name: string;
+    hex:  string;
+}
+
+export interface StylePreset {
+    id:                string;
+    label:             string;
+    emoji:             string;
+    promptFragment:    string;
+    colorPalette:      StylePresetColor[];
+    preferredModelKey: FinalRenderModelKey;
+    styleGuide:        string;
+}
+
+export interface LockedDNA {
+    sourceTitle:    string;
+    modelKey:       FinalRenderModelKey;
+    stylePresetId?: string;
+    seed?:          number;
+    designBrief:    string;
+    referenceImageUrl?: string;
+    profileId?:     string;
+}
+
+export interface BatchStatus {
+    batchJobId: string;
+    status:     string;
+    niche:      string;
+    total:      number;
+    completed:  number;
+    failed:     number;
+    pending:    number;
+    progress:   number;
+    totalCost:  number;
+    images:     BatchImage[];
+}
+
+export type FinalRenderModelKey = 'PREMIUM_GOOGLE' | 'PREMIUM_OPENAI' | 'PREMIUM_SD';
+
+export const FINAL_RENDER_MODELS: Record<FinalRenderModelKey, { label: string; desc: string; cost: number; color: string }> = {
+    PREMIUM_GOOGLE: { label: 'Nano Banana 2',       desc: 'Sanatsal & stabil',           cost: 0.060, color: 'text-yellow-400'  },
+    PREMIUM_OPENAI: { label: 'GPT Image 2',          desc: 'Semantik & detaylı',          cost: 0.080, color: 'text-emerald-400' },
+    PREMIUM_SD:     { label: 'Stable Diffusion v3',  desc: 'Vektörel & grafik kontrolü',  cost: 0.040, color: 'text-blue-400'    },
+};
+
+export const apiBatch = {
+    getRules: () =>
+        request<{ success: boolean; rules: BatchRule[] }>('/batch/rules'),
+
+    startFromRule: (body: {
+        ruleId?: string; ruleTitle?: string; ruleContent?: string;
+        count?: number; engine?: string; style?: string;
+    }) =>
+        request<{ success: boolean; batchJobId: string; queueJobId: string; imageCount: number; projectedCost: number }>(
+            '/batch/from-rule', { method: 'POST', body: JSON.stringify(body) }
+        ),
+
+    generate: (body: { niche: string; count?: number; engine?: string; style?: string }) =>
+        request<{ success: boolean; batchJobId: string; queueJobId: string; imageCount: number; projectedCost: number; niche: string; engine: string }>(
+            '/batch/generate', { method: 'POST', body: JSON.stringify(body) }
+        ),
+
+    draft: (body: {
+        niche?: string; designBrief: string; productType?: string; ideaTitle?: string;
+        seed?: number; referenceImageUrl?: string; stylePresetId?: string; styleProfileId?: string;
+    }) =>
+        request<{ success: boolean; batchJobId: string; queueJobId: string; imageCount: number; niche: string }>(
+            '/batch/draft', { method: 'POST', body: JSON.stringify(body) }
+        ),
+
+    finalRender: (body: {
+        draftImageId?: string; modelKey: FinalRenderModelKey; designBrief: string;
+        niche?: string; variantLabel?: string; seed?: number; stylePresetId?: string; styleProfileId?: string;
+    }) =>
+        request<{ success: boolean; batchJobId: string; queueJobId: string; imageCount: number; projectedCost: number; modelKey: string; modelLabel: string }>(
+            '/batch/final-render', { method: 'POST', body: JSON.stringify(body) }
+        ),
+
+    getStatus: (batchJobId: string) =>
+        request<{ success: boolean } & BatchStatus>(`/batch/status/${batchJobId}`),
+
+    getStyles: () =>
+        request<{ success: boolean; presets: StylePreset[] }>('/batch/styles'),
+};
+
+// ─── Style Profiles ───────────────────────────────────────────────────────────
+
+export interface StyleProfile {
+    id:               string;
+    workspaceId:      string;
+    name:             string;
+    emoji:            string;
+    baseModel:        string;
+    promptPrefix:     string | null;
+    promptSuffix:     string | null;
+    negativePrompt:   string | null;
+    referenceImageUrl: string | null;
+    colorPalette:     StylePresetColor[] | null;
+    sourcePresetId:   string | null;
+    sourceSeed:       string | null;
+    isDefault:        boolean;
+    createdAt:        string;
+}
+
+export const apiStyles = {
+    list: () =>
+        request<{ success: boolean; profiles: StyleProfile[] }>('/styles'),
+
+    create: (body: {
+        name: string; emoji?: string; baseModel?: string;
+        promptPrefix?: string; promptSuffix?: string; negativePrompt?: string;
+        referenceImageUrl?: string; colorPalette?: StylePresetColor[];
+    }) =>
+        request<{ success: boolean; profile: StyleProfile }>(
+            '/styles', { method: 'POST', body: JSON.stringify(body) }
+        ),
+
+    update: (id: string, body: Partial<{
+        name: string; emoji: string; baseModel: string;
+        promptPrefix: string; promptSuffix: string; negativePrompt: string;
+        referenceImageUrl: string; colorPalette: StylePresetColor[];
+    }>) =>
+        request<{ success: boolean; profile: StyleProfile }>(
+            `/styles/${id}`, { method: 'PATCH', body: JSON.stringify(body) }
+        ),
+
+    delete: (id: string) =>
+        request<{ success: boolean }>(`/styles/${id}`, { method: 'DELETE' }),
+
+    setDefault: (id: string) =>
+        request<{ success: boolean; profile: StyleProfile }>(
+            `/styles/${id}/set-default`, { method: 'POST' }
+        ),
+
+    fromLockedDNA: (body: LockedDNA) =>
+        request<{ success: boolean; profile: StyleProfile }>(
+            '/styles/from-locked-dna', { method: 'POST', body: JSON.stringify(body) }
+        ),
+};
+
+// ─── Finance ──────────────────────────────────────────────────────────────────
+
+export interface FinancialSummary {
+    totalIncome:   number;
+    totalExpenses: number;
+    netProfit:     number;
+    burnRate24h:   number;
+    byProvider:    Array<{ provider: string; total: number }>;
+    aiHistory:     Array<{ day: string; expense: number; income: number }>;
+    roi: {
+        avgCostPerImage: number;
+        listingPrice:    number;
+        roiMultiple:     number | null;
+        approvedCount:   number;
+    };
+}
+
+// ─── Agent ────────────────────────────────────────────────────────────────────
+
+export interface AgentPackage {
+    id:               string;
+    title:            string;
+    keyword:          string;
+    confidence:       number;
+    priority:         'IMMEDIATE' | 'HIGH' | 'NORMAL';
+    hotNow:           boolean;
+    designSuggestion: string;
+    competitiveEdge:  string;
+    colorPalette:     string;
+    targetKeywords:   string[];
+    designPrompt:     string;
+    collection:       string | null;
+    event:            string | null;
+    seoPackage: {
+        title:       string;
+        description: string;
+        tags:        string[];
+    };
+    product: {
+        title:      string;
+        price:      number;
+        sales:      number;
+        imageUrl:   string | null;
+        listingUrl: string | null;
+        shopName:   string;
+    };
+    packagedAt: string | null;
+    createdAt:  string;
+}
+
+export interface PrepareResult {
+    imageUrl:     string;
+    designPrompt: string;
+    keyword:      string;
+    seo: {
+        title:       string;
+        description: string;
+        tags:        string[];
+    };
+    card: {
+        id:             string;
+        title:          string;
+        confidence:     number;
+        colorPalette:   string;
+        targetKeywords: string[];
+    };
+}
+
+export interface NicheROIItem {
+    niche:            string;
+    jobCount:         number;
+    imageCount:       number;
+    totalCost:        number;
+    approvedCount:    number;
+    estimatedRevenue: number;
+    roi:              number | null;
+}
+
+export const apiFinance = {
+    getSummary: () =>
+        request<FinancialSummary>('/finance/summary'),
+
+    recordIncome: (amount: number, description: string, imageId?: string) =>
+        request<{ success: boolean }>('/finance/income', {
+            method: 'POST',
+            body: JSON.stringify({ amount, description, imageId }),
+        }),
+
+    getNicheROI: () =>
+        request<{ niches: NicheROIItem[]; listingPrice: number }>('/finance/niche-roi'),
+};
+
+
+// ─── Pinterest / Apify Visual Intelligence ──────────────────────────────────
+
+export interface PinterestTrend {
+    title:         string;
+    imageUrl:      string;
+    pinUrl:        string;
+    description:   string;
+    repins:        number;
+    visionInsight: string | null;
+    designPrompt:  string | null;
+}
+
+export const apiApify = {
+    pinterestTrends: (keyword: string, maxResults?: number, save?: boolean) =>
+        request<{ success: boolean; count: number; savedToKnowledge?: number; trends: PinterestTrend[] }>(
+            '/apify/pinterest-trends',
+            {
+                method: 'POST',
+                body: JSON.stringify({ keyword, maxResults: maxResults ?? 12, save: save ?? false }),
+            }
+        ),
 };

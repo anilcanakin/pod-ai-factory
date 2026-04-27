@@ -322,9 +322,7 @@ pod-ai-factory/
 | `/dashboard/factory` | FactoryClient.tsx | Main pipeline: upload → vision → prompt → generate. History dropdown, "To Mockup"/"To Remove BG" buttons |
 | `/dashboard/gallery` | GalleryClient.tsx | Image history, approve/reject, bulk ops, one-click pipeline modal with BG model selector |
 | `/dashboard/mockups` | MockupsClient.tsx | Template picker + Konva placement editor + bulk render. Dark/light toggle, save to gallery, pin to Pinterest |
-| `/dashboard/remove-bg` | RemoveBgClient.tsx | Batch BG removal (up to 5 images), gallery picker, URL param preload |
-| `/dashboard/upscale` | UpscaleClient.tsx | Image upscaling (ESRGAN/AuraSR/Ideogram, 1x–8x) |
-| `/dashboard/vector` | VectorClient.tsx | PNG → SVG vector conversion, before/after display |
+| `/dashboard/tools` | ToolsClient.tsx | Unified tools hub with 3 tabs: BG Kaldır (up to 5 images), Upscale (1x–8x), Vektör (Recraft v3). Tab persisted via `?tab=` URL param. Old individual pages still exist for backwards compat. |
 | `/dashboard/seo` | SeoClient.tsx | Etsy SEO generator with checklist, copy helper, "Publish to Etsy" button |
 | `/dashboard/etsy-mode` | EtsyModeClient.tsx | Keyword → niche → style → generation workflow |
 | `/dashboard/etsy-listings` | EtsyListingsClient.tsx | Scrape shop listings, per-listing SEO optimization with before/after |
@@ -527,23 +525,12 @@ User selects template + design in Mockups page
 
 | # | Location | Bug | Severity |
 |---|----------|-----|----------|
-| 1 | `src/services/listing-assembler.service.js:27` | `prisma.sEOContent` — model does not exist, should be `prisma.sEOData`. Crashes on every `/api/etsy-browser/dispatch` call. | **Critical** |
-| 2 | `src/index.js:45` | CORS origin hardcoded to `http://localhost:3001` — will reject all production traffic | **Deploy blocker** |
-| 3 | `src/index.js:305` | `avgGenerationTime: null` hardcoded in /api/dashboard response | Minor |
-| 4 | `src/services/fulfillment.service.js:60` | `syncEtsyOrders()` returns 1 hardcoded mock order regardless of workspace | Minor (expected) |
-| 5 | `src/services/billing.service.js:121,198` | Checkout + portal return mock `localhost:3001` URLs when Stripe not configured | Minor (dev only) |
+| 1 | `src/index.js:45` | CORS origin hardcoded to `http://localhost:3001` — will reject all production traffic | **Deploy blocker** |
+| 2 | `src/services/fulfillment.service.js:60` | `syncEtsyOrders()` returns 1 hardcoded mock order regardless of workspace | Minor (expected) |
+| 3 | `src/services/billing.service.js:121,198` | Checkout + portal return mock `localhost:3001` URLs when Stripe not configured | Minor (dev only) |
 
-**Fix for Bug #1:**
-```js
-// In listing-assembler.service.js line 27, change:
-const seoContent = await prisma.sEOContent.findFirst({
-  where: { jobId: image.jobId }, orderBy: { createdAt: 'desc' }
-});
-// To:
-const seoContent = await prisma.sEOData.findFirst({
-  where: { imageId: image.id }
-});
-```
+*Previously documented Bug #1 (listing-assembler prisma.sEOContent) — already fixed in the codebase.*
+*Previously documented Bug #3 (avgGenerationTime null) — already fixed in the codebase.*
 
 ---
 

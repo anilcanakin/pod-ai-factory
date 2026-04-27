@@ -1,32 +1,80 @@
 /**
- * Knowledge Service — RAG / Semantic Search Layer
+ * Knowledge Service — RAG / Semantic Search + Freshness + Contradiction Detection
  *
- * Mevcut knowledge.worker.js chunk+embed yazar. Bu servis OKUMA katmanını sağlar:
- *   getContextForAI()  — WPI/Scout prompt'larına enjekte edilecek context string
- *   searchSimilar()    — Cosine similarity ile en alakalı kayıtlar
- *   ingestText()       — Küçük metinler için doğrudan (kuyruğsuz) kayıt
+ *  ingestText()                 — chunk → embed → kaydet (publishedAt metadata destekli)
+ *  searchSimilar()              — cosine sim × freshness × confidence ağırlıklı sıralama
+ *  getContextForAI()            — prompt'a enjekte edilecek string (yaş etiketi dahil)
+ *  detectAndResolveContradictions() — yeni bilgiyle çelişen eskileri devre dışı bırak
  *
- * Storage: CorporateMemory.vectorEmbedding (Json? — float array)
- * Similarity: JS cosine (pgvector kurulumu gerekmez)
+ * Freshness ağırlıkları  (publishedAt veya createdAt'a göre):
+ *   0–3 ay   → ×2.0   (çok taze)
+ *   3–6 ay   → ×1.5
+ *   6–12 ay  → ×1.0   (nötr)
+ *   12–18 ay → ×0.7
+ *   18+ ay   → ×0.4   (eski)
+ *
+ * Confidence decay: confidence = 0.85^(monthsOld/3)  — minimum 0.10
+ * Entries with confidence < MIN_CONFIDENCE are excluded from context entirely.
  */
 
 const { OpenAI }       = require('openai');
 const { PrismaClient } = require('@prisma/client');
+const Anthropic        = require('@anthropic-ai/sdk');
 
-const openai  = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const prisma  = new PrismaClient();
+const openai    = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const prisma    = new PrismaClient();
 
-// ─── Config ────────────────────────────────────────────────────────────────────
-const EMBED_MODEL    = 'text-embedding-3-small';
-const CHUNK_SIZE     = 800;
-const CHUNK_OVERLAP  = 100;
-const SIM_THRESHOLD  = 0.30;   // min cosine similarity
-const MAX_FETCH      = 500;    // DB'den çekilecek maksimum kayıt
+// ─── Config ──────────────────────────────────────────────────────────────────
+const EMBED_MODEL             = 'text-embedding-3-small';
+const CHUNK_SIZE              = 800;
+const CHUNK_OVERLAP           = 100;
+const SIM_THRESHOLD           = 0.30;
+const MAX_FETCH               = 500;
+const CONTRADICTION_THRESHOLD = 0.78;  // cosine sim bu değerin üstündeyse çelişki kontrolü yap
+const CONFIDENCE_DECAY        = 0.85;  // 3 aylık dönemde çarpan
+const MIN_CONFIDENCE          = 0.10;  // bu değerin altında → context'e dahil etme
 
-// Academy kategorileri
 const ACADEMY_CATEGORIES = ['STRATEGY', 'RULES', 'SEO_TACTICS', 'SEO', 'VISUAL', 'MANAGEMENT'];
 
-// ─── Utilities ─────────────────────────────────────────────────────────────────
+// ─── Freshness & Confidence ──────────────────────────────────────────────────
+
+function _monthsAgo(dateStr) {
+    if (!dateStr) return 0;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 0;
+    return Math.max(0, (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 30));
+}
+
+/** Kayıtın referans tarihi: publishedAt (video tarihi) → ingestedAt → createdAt */
+function _refDate(entry) {
+    const ar = entry.analysisResult || {};
+    return ar.videoPublishedAt || ar.publishedAt || ar.ingestedAt || entry.createdAt;
+}
+
+function _computeConfidence(entry) {
+    const months = _monthsAgo(_refDate(entry));
+    return Math.max(MIN_CONFIDENCE, Math.pow(CONFIDENCE_DECAY, months / 3));
+}
+
+function _freshnessMultiplier(entry) {
+    const months = _monthsAgo(_refDate(entry));
+    if (months <= 3)  return 2.0;
+    if (months <= 6)  return 1.5;
+    if (months <= 12) return 1.0;
+    if (months <= 18) return 0.7;
+    return 0.4;
+}
+
+function _ageLabel(entry) {
+    const months = Math.round(_monthsAgo(_refDate(entry)));
+    if (months < 1)  return 'bu ay';
+    if (months === 1) return '1ay';
+    if (months < 12) return `${months}ay`;
+    return `${Math.round(months / 12)}yıl`;
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 function _cosineSim(a, b) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return 0;
@@ -50,8 +98,6 @@ function chunkText(text, size = CHUNK_SIZE, overlap = CHUNK_OVERLAP) {
     return chunks;
 }
 
-// ─── Embedding (OpenAI text-embedding-3-small) ─────────────────────────────────
-
 async function embed(text) {
     const res = await openai.embeddings.create({
         model: EMBED_MODEL,
@@ -60,19 +106,48 @@ async function embed(text) {
     return res.data[0].embedding;
 }
 
-// ─── Ingest (kuyruğsuz, küçük metinler için) ───────────────────────────────────
+// ─── Smart Display Title ──────────────────────────────────────────────────────
 
 /**
- * Metni chunk'lar, embed eder ve CorporateMemory'ye kaydeder.
- * knowledge.routes.js /ingest-text endpoint'i tarafından çağrılır.
- *
+ * Ham başlık + içerikten max 40 karakterlik okunabilir bir başlık üretir.
+ * Kayıt UI'da bu displayTitle ile gösterilir — chunk numarası / URL görünmez.
+ */
+function _generateDisplayTitle(rawTitle, content) {
+    // [YouTube] / kategori / chunk suffix temizle
+    let t = rawTitle
+        .replace(/^\[YouTube\]\s*/i, '')
+        .replace(/\s*—\s*(STRATEGY|RULES|SEO_TACTICS|SEO|VISUAL|MANAGEMENT)\s*$/i, '')
+        .replace(/\s*\[\d+\/\d+\]\s*$/i, '')
+        .trim();
+
+    // URL ise veya hâlâ çok uzunsa içerikten ilk anlamlı satırı al
+    if (t.startsWith('http') || t.length > 60) {
+        const firstLine = content
+            .split('\n')
+            .map(l => l.replace(/^#+\s*/, '').replace(/^[-*•]\s*/, '').trim())
+            .find(l => l.length > 8 && !l.startsWith('http')) || t;
+        t = firstLine;
+    }
+
+    // 40 karakterde kelime sınırında kes
+    if (t.length > 40) {
+        const cut = t.slice(0, 38).replace(/\s+\S*$/, '');
+        t = (cut || t.slice(0, 38)) + '…';
+    }
+
+    return t;
+}
+
+// ─── Ingest ───────────────────────────────────────────────────────────────────
+
+/**
  * @param {string} workspaceId
  * @param {string} title
  * @param {string} content
- * @param {'STRATEGY'|'RULES'|'SEO_TACTICS'} category
+ * @param {string} category
+ * @param {object} metadata  — { videoPublishedAt?, videoId?, source? }
  */
-async function ingestText(workspaceId, title, content, category = 'STRATEGY') {
-    // Workspace upsert — güvenli
+async function ingestText(workspaceId, title, content, category = 'STRATEGY', metadata = {}) {
     await prisma.workspace.upsert({
         where:  { id: workspaceId },
         update: {},
@@ -99,35 +174,133 @@ async function ingestText(workspaceId, title, content, category = 'STRATEGY') {
                 content:  chunk,
                 category,
                 isActive: true,
-                tags:     [category.toLowerCase(), 'academy', 'manual'],
+                tags:     [category.toLowerCase(), 'academy', metadata.source || 'manual'],
                 analysisResult: {
-                    source:      'academy_brain',
+                    source:           metadata.source || 'academy_brain',
                     category,
-                    chunkIndex:  i,
-                    totalChunks: chunks.length,
-                    ingestedAt:  new Date().toISOString(),
+                    chunkIndex:       i,
+                    totalChunks:      chunks.length,
+                    ingestedAt:       new Date().toISOString(),
+                    videoPublishedAt: metadata.videoPublishedAt || null,
+                    videoId:          metadata.videoId || null,
+                    displayTitle:     _generateDisplayTitle(title, chunk),
                 },
                 ...(vectorEmbedding ? { vectorEmbedding } : {}),
             },
         });
         saved.push(record);
-        console.log(`[Knowledge] Chunk ${i + 1}/${chunks.length} kaydedildi → ${record.id}`);
     }
 
+    console.log(`[Knowledge] ${chunks.length} chunk kaydedildi → ${title}`);
     return saved;
 }
 
-// ─── Semantic search ────────────────────────────────────────────────────────────
+// ─── Contradiction Detection ──────────────────────────────────────────────────
 
 /**
- * Query embedding ile CorporateMemory kayıtlarına cosine similarity uygular.
+ * Yeni kaydedilen entry'lerle aynı kategorideki eski kayıtları karşılaştırır.
+ * Gerçek çelişki varsa eskiyi devre dışı bırakır (isActive: false + OUTDATED tag).
  *
- * @param {string}   workspaceId
- * @param {string}   query        — doğal dil sorgusu
- * @param {object}   opts
- * @param {number}   opts.topK    — döndürülecek max kayıt sayısı
- * @param {string}   opts.category — belirli kategoriyle sınırla (opsiyonel)
- * @returns {Array}  En alakalı kayıtlar (score alanıyla)
+ * @param {string} workspaceId
+ * @param {string} newContent    — yeni eklenen içerik (ilk chunk yeterli)
+ * @param {string} category
+ * @param {string} newEntryId    — yeni kaydın ID'si (kendisiyle kıyaslamamak için)
+ */
+async function detectAndResolveContradictions(workspaceId, newContent, category, newEntryId) {
+    let queryVec;
+    try {
+        queryVec = await embed(newContent.slice(0, 1000));
+    } catch (_) { return; }
+
+    const existing = await prisma.corporateMemory.findMany({
+        where: {
+            workspaceId,
+            isActive:  true,
+            category,
+            NOT: [{ id: newEntryId }, { vectorEmbedding: null }],
+        },
+        select: {
+            id:              true,
+            title:           true,
+            content:         true,
+            vectorEmbedding: true,
+            analysisResult:  true,
+            createdAt:       true,
+            tags:            true,
+        },
+        take: MAX_FETCH,
+    });
+
+    const highSimilar = existing
+        .map(r => ({
+            ...r,
+            score: _cosineSim(queryVec, Array.isArray(r.vectorEmbedding) ? r.vectorEmbedding : []),
+        }))
+        .filter(r => r.score > CONTRADICTION_THRESHOLD && r.content.length > 80)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+
+    if (highSimilar.length === 0) return;
+
+    const comparePrompt = `Sen bir Etsy POD bilgi yönetimi asistanısın.
+
+YENİ BİLGİ (${category}):
+${newContent.slice(0, 500)}
+
+ESKİ BİLGİLER:
+${highSimilar.map((r, i) => `[${i}] ID:${r.id}\n${r.content.slice(0, 300)}`).join('\n---\n')}
+
+GÖREV: Hangi ESKİ bilgiler, YENİ bilgiyle DOĞRUDAN ÇELİŞİYOR?
+- Aynı konuya farklı bakış açısı → çelişki DEĞİL
+- "X yapma" vs "X yap" gibi tam zıt tavsiye → çelişki
+- Sadece gerçek, somut çelişkileri listele
+
+SADECE JSON çıktısı ver:
+{"contradicting":["id1","id2"]}`;
+
+    let contradicting = [];
+    try {
+        const res = await anthropic.messages.create({
+            model:      'claude-haiku-4-5-20251001',
+            max_tokens: 200,
+            messages:   [{ role: 'user', content: comparePrompt }],
+        });
+        const raw = res.content[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(raw);
+        contradicting = parsed.contradicting || [];
+    } catch (_) { return; }
+
+    if (contradicting.length === 0) return;
+
+    for (const id of contradicting) {
+        try {
+            const entry = await prisma.corporateMemory.findUnique({ where: { id } });
+            if (!entry) continue;
+            await prisma.corporateMemory.update({
+                where: { id },
+                data: {
+                    isActive: false,
+                    tags:     [...(entry.tags || []), 'OUTDATED'],
+                    analysisResult: {
+                        ...((entry.analysisResult) || {}),
+                        outdatedBy: newEntryId,
+                        outdatedAt: new Date().toISOString(),
+                        reason:     'contradiction_detected',
+                    },
+                },
+            });
+            console.log(`[Knowledge] ⚠ Çelişen eski kayıt devre dışı: ${id}`);
+        } catch (_) {}
+    }
+
+    console.log(`[Knowledge] Çelişki tespiti: ${contradicting.length} eski kayıt devre dışı bırakıldı`);
+}
+
+// ─── Semantic Search ──────────────────────────────────────────────────────────
+
+/**
+ * Freshness × Confidence × Cosine similarity ile sıralar.
+ * MIN_CONFIDENCE altındaki kayıtlar döndürülmez.
  */
 async function searchSimilar(workspaceId, query, { topK = 6, category = null } = {}) {
     let queryVec;
@@ -150,6 +323,7 @@ async function searchSimilar(workspaceId, query, { topK = 6, category = null } =
             category:        true,
             type:            true,
             vectorEmbedding: true,
+            analysisResult:  true,
             createdAt:       true,
         },
         take:    MAX_FETCH,
@@ -157,29 +331,24 @@ async function searchSimilar(workspaceId, query, { topK = 6, category = null } =
     });
 
     const scored = records
-        .map(r => ({
-            ...r,
-            score: _cosineSim(queryVec, Array.isArray(r.vectorEmbedding) ? r.vectorEmbedding : null),
-        }))
-        .filter(r => r.score > SIM_THRESHOLD)
+        .map(r => {
+            const cosine     = _cosineSim(queryVec, Array.isArray(r.vectorEmbedding) ? r.vectorEmbedding : []);
+            const confidence = _computeConfidence(r);
+            const freshness  = _freshnessMultiplier(r);
+            return { ...r, score: cosine * freshness * confidence, confidence, freshness };
+        })
+        .filter(r => r.score > SIM_THRESHOLD && r.confidence >= MIN_CONFIDENCE)
         .sort((a, b) => b.score - a.score)
         .slice(0, topK);
 
     return scored;
 }
 
-// ─── Context for AI prompts ─────────────────────────────────────────────────────
+// ─── Context for AI Prompts ───────────────────────────────────────────────────
 
 /**
- * WPI/Scout prompt'larına enjekte edilecek context string üretir.
- * Tüm kategoriler arasında arama yapar — RULES/SEO_TACTICS/STRATEGY öncelikli.
- *
- * @param {string} workspaceId
- * @param {string} query        — keyword veya ürün başlığı
- * @param {object} opts
- * @param {number} opts.maxChars — max karakter (token limiti için)
- * @param {number} opts.topK     — kaç kayıt
- * @returns {string}   Prompt'a enjekte edilecek metin (boş olabilir)
+ * Prompt'a enjekte edilecek string.
+ * Her satırda kategori + yaş etiketi var: "[RULES][3ay] ..."
  */
 async function getContextForAI(workspaceId, query, { maxChars = 1200, topK = 6 } = {}) {
     try {
@@ -187,8 +356,9 @@ async function getContextForAI(workspaceId, query, { maxChars = 1200, topK = 6 }
         if (!results.length) return '';
 
         const lines = results.map(r => {
-            const tag = r.category ? `[${r.category}]` : '';
-            return `${tag} ${r.content.slice(0, 200).replace(/\n+/g, ' ')}`;
+            const cat = r.category ? `[${r.category}]` : '';
+            const age = `[${_ageLabel(r)}]`;
+            return `${cat}${age} ${r.content.slice(0, 200).replace(/\n+/g, ' ')}`;
         });
 
         return lines.join('\n').slice(0, maxChars);
@@ -198,4 +368,12 @@ async function getContextForAI(workspaceId, query, { maxChars = 1200, topK = 6 }
     }
 }
 
-module.exports = { embed, chunkText, ingestText, searchSimilar, getContextForAI, ACADEMY_CATEGORIES };
+module.exports = {
+    embed,
+    chunkText,
+    ingestText,
+    searchSimilar,
+    getContextForAI,
+    detectAndResolveContradictions,
+    ACADEMY_CATEGORIES,
+};

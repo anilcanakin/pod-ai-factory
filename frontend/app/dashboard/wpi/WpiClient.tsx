@@ -12,7 +12,7 @@ import {
 import {
     apiWpi, apiScout, WpiCard, WpiScanResult, WpiCollection,
     WpiScanProgress, WpiProductCategory, ScoutNiche, WpiKeywordStatus,
-    WpiSeoPackage
+    WpiSeoPackage, RadarDiscovery
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -525,6 +525,267 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
     );
 }
 
+// ─── Radar Auto-Pilot Panel ───────────────────────────────────────────────────
+
+const SOURCE_CONFIG = {
+    etsy:          { label: 'Etsy',          color: 'bg-orange-500/15 text-orange-300 border-orange-500/25' },
+    google_trends: { label: 'Google Trends', color: 'bg-blue-500/15 text-blue-300 border-blue-500/25' },
+    pinterest:     { label: 'Pinterest',     color: 'bg-pink-500/15 text-pink-300 border-pink-500/25' },
+};
+
+const URGENCY_COLOR = {
+    high:   'text-red-400',
+    medium: 'text-yellow-400',
+    low:    'text-green-400',
+};
+
+function RadarAutoPilot({
+    discoveries, isLoading, isTriggering, lastRunAt, nextRunAt,
+    onTrigger, onAnalyzeInWpi, onDirectFactory,
+}: {
+    discoveries: RadarDiscovery[];
+    isLoading: boolean;
+    isTriggering: boolean;
+    lastRunAt: string | null;
+    nextRunAt: string | null;
+    onTrigger: () => void;
+    onAnalyzeInWpi: (d: RadarDiscovery) => void;
+    onDirectFactory: (d: RadarDiscovery) => void;
+}) {
+    const [collapsed, setCollapsed] = useState(false);
+    const criticalList  = discoveries.filter(d => d.isCritical);
+    const hotList       = discoveries.filter(d => !d.isCritical && d.discoveryScore >= 75);
+
+    const fmtTime = (iso: string | null) => {
+        if (!iso) return null;
+        const d = new Date(iso);
+        const diffMin = Math.round((Date.now() - d.getTime()) / 60000);
+        if (diffMin < 60) return `${diffMin}dk önce`;
+        const diffH = Math.round(diffMin / 60);
+        return `${diffH}s önce`;
+    };
+
+    return (
+        <div className={cn(
+            'rounded-xl border overflow-hidden transition-all',
+            criticalList.length > 0
+                ? 'border-red-500/50 shadow-[0_0_30px_rgba(239,68,68,0.10)]'
+                : 'border-border-default'
+        )}>
+            {/* Header */}
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setCollapsed(v => !v)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setCollapsed(v => !v); }}
+                className="w-full flex items-center justify-between px-4 py-3 bg-bg-elevated hover:bg-white/2 transition-colors cursor-pointer select-none"
+            >
+                <div className="flex items-center gap-2.5">
+                    <div className={cn(
+                        'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold',
+                        criticalList.length > 0
+                            ? 'bg-red-500/20 text-red-300 border border-red-500/40 animate-pulse'
+                            : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                    )}>
+                        <div className={cn('w-1.5 h-1.5 rounded-full', criticalList.length > 0 ? 'bg-red-400' : 'bg-emerald-400')} />
+                        {criticalList.length > 0 ? 'CRITICAL HOT NOW' : 'Auto-Pilot'}
+                    </div>
+                    <span className="text-sm font-semibold text-text-primary">Radar: Auto-Pilot</span>
+                    <span className="text-[10px] text-text-tertiary font-normal">Etsy · Google Trends · Pinterest</span>
+                    {discoveries.length > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-accent/20 text-accent text-[10px] font-bold">
+                            {discoveries.length} keşif
+                        </span>
+                    )}
+                </div>
+                <div className="flex items-center gap-2">
+                    {lastRunAt && (
+                        <span className="text-[10px] text-text-tertiary">Son tarama: {fmtTime(lastRunAt)}</span>
+                    )}
+                    <button
+                        onClick={e => { e.stopPropagation(); onTrigger(); }}
+                        disabled={isTriggering}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent text-[11px] font-semibold border border-accent/20 transition-colors disabled:opacity-50"
+                    >
+                        {isTriggering
+                            ? <><Loader2 className="w-3 h-3 animate-spin" /> Taranıyor...</>
+                            : <><RotateCcw className="w-3 h-3" /> Şimdi Tara</>
+                        }
+                    </button>
+                    {collapsed
+                        ? <ChevronRight className="w-4 h-4 text-text-tertiary" />
+                        : <ChevronDown className="w-4 h-4 text-text-tertiary" />
+                    }
+                </div>
+            </div>
+
+            {!collapsed && (
+                <div className="border-t border-border-subtle bg-bg-base">
+                    {isLoading ? (
+                        <div className="flex items-center justify-center py-8 gap-2 text-text-tertiary text-sm">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Keşifler yükleniyor...
+                        </div>
+                    ) : discoveries.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 gap-2 text-text-tertiary">
+                            <Telescope className="w-8 h-8 opacity-30" />
+                            <p className="text-sm">Henüz keşif yok — &quot;Şimdi Tara&quot; butonuna bas.</p>
+                            {nextRunAt && (
+                                <p className="text-[11px] opacity-60">Sonraki otomatik tarama: {new Date(nextRunAt).toLocaleTimeString('tr-TR')}</p>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="p-4 space-y-3">
+                            {/* CRITICAL section */}
+                            {criticalList.length > 0 && (
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-1.5">
+                                        <Flame className="w-3.5 h-3.5 text-red-400" />
+                                        <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">
+                                            CRITICAL HOT NOW ({criticalList.length})
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                                        {criticalList.map(d => (
+                                            <RadarDiscoveryCard
+                                                key={d.id}
+                                                discovery={d}
+                                                isCritical
+                                                onAnalyzeInWpi={onAnalyzeInWpi}
+                                                onDirectFactory={onDirectFactory}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* HOT discoveries */}
+                            {hotList.length > 0 && (
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-1.5">
+                                        <TrendingUp className="w-3.5 h-3.5 text-violet-400" />
+                                        <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">
+                                            AI Brain Onaylı Adaylar ({hotList.length})
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                                        {hotList.map(d => (
+                                            <RadarDiscoveryCard
+                                                key={d.id}
+                                                discovery={d}
+                                                isCritical={false}
+                                                onAnalyzeInWpi={onAnalyzeInWpi}
+                                                onDirectFactory={onDirectFactory}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {nextRunAt && (
+                                <p className="text-[10px] text-text-tertiary text-center pt-1">
+                                    Sonraki otomatik tarama: {new Date(nextRunAt).toLocaleString('tr-TR')}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function RadarDiscoveryCard({
+    discovery: d, isCritical, onAnalyzeInWpi, onDirectFactory,
+}: {
+    discovery: RadarDiscovery;
+    isCritical: boolean;
+    onAnalyzeInWpi: (d: RadarDiscovery) => void;
+    onDirectFactory: (d: RadarDiscovery) => void;
+}) {
+    const srcCfg = SOURCE_CONFIG[d.source] ?? SOURCE_CONFIG.etsy;
+
+    return (
+        <div className={cn(
+            'rounded-xl border p-3 space-y-2 transition-all',
+            isCritical
+                ? 'border-red-500/40 bg-red-500/5 shadow-[0_0_12px_rgba(239,68,68,0.08)]'
+                : 'border-border-subtle bg-bg-elevated hover:border-border-default'
+        )}>
+            {/* Score + Source */}
+            <div className="flex items-center justify-between gap-2">
+                <span className={cn(
+                    'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                    srcCfg.color
+                )}>
+                    {srcCfg.label}
+                </span>
+                <div className={cn(
+                    'text-sm font-black tabular-nums',
+                    d.discoveryScore >= 90 ? 'text-red-400' : d.discoveryScore >= 80 ? 'text-violet-400' : 'text-amber-400'
+                )}>
+                    {d.discoveryScore}
+                    <span className="text-[9px] font-normal text-text-tertiary">/100</span>
+                </div>
+            </div>
+
+            {/* Niche name */}
+            <h3 className="text-xs font-semibold text-text-primary leading-snug">{d.niche}</h3>
+
+            {/* Product + Urgency */}
+            <div className="flex items-center gap-2 flex-wrap">
+                {d.productRecommendation && (
+                    <span className="text-[10px] text-text-tertiary bg-bg-overlay px-2 py-0.5 rounded-full border border-border-subtle">
+                        {d.productRecommendation}
+                    </span>
+                )}
+                <span className={cn('text-[10px] font-semibold', URGENCY_COLOR[d.urgency])}>
+                    ↑ {d.urgency}
+                </span>
+            </div>
+
+            {/* Reasoning (trimmed) */}
+            {d.reasoning && (
+                <p className="text-[10px] text-text-tertiary leading-relaxed line-clamp-2">{d.reasoning}</p>
+            )}
+
+            {/* Keywords */}
+            {d.suggestedKeywords.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                    {d.suggestedKeywords.slice(0, 3).map(kw => (
+                        <span key={kw} className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                            {kw}
+                        </span>
+                    ))}
+                </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-1.5 pt-0.5">
+                <button
+                    onClick={() => onAnalyzeInWpi(d)}
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent text-[11px] font-semibold border border-accent/20 transition-colors"
+                >
+                    <Brain className="w-3 h-3" />
+                    WPI&apos;da Analiz Et
+                </button>
+                <button
+                    onClick={() => onDirectFactory(d)}
+                    className={cn(
+                        'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors',
+                        isCritical
+                            ? 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30'
+                            : 'bg-green-600/10 hover:bg-green-600/20 text-green-400 border-green-500/20'
+                    )}
+                >
+                    <Factory className="w-3 h-3" />
+                    Hemen Üret
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ─── Scan paneli ──────────────────────────────────────────────────────────────
 
 const SUGGESTED_KEYWORDS = [
@@ -765,6 +1026,13 @@ export function WpiClient() {
 
     const [collections, setCollections]     = useState<WpiCollection[]>([]);
 
+    // ── Autonomous Radar state ──
+    const [radarDiscoveries, setRadarDiscoveries] = useState<RadarDiscovery[]>([]);
+    const [radarLoading, setRadarLoading]         = useState(true);
+    const [radarTriggering, setRadarTriggering]   = useState(false);
+    const [radarLastRun, setRadarLastRun]         = useState<string | null>(null);
+    const [radarNextRun, setRadarNextRun]         = useState<string | null>(null);
+
     // ── Niche Scout state ──
     const [scoutOpen, setScoutOpen]         = useState(false);
     const [scoutLoading, setScoutLoading]   = useState(false);
@@ -782,7 +1050,39 @@ export function WpiClient() {
         }
     }, [statusFilter]);
 
+    const loadRadarDiscoveries = useCallback(async () => {
+        setRadarLoading(true);
+        try {
+            const res = await apiWpi.radarDiscoveries(24);
+            setRadarDiscoveries(res.discoveries);
+            setRadarLastRun(res.lastRunAt);
+            setRadarNextRun(res.nextRunAt);
+        } catch { /* silent */ }
+        finally { setRadarLoading(false); }
+    }, []);
+
+    const triggerRadar = async () => {
+        setRadarTriggering(true);
+        try {
+            await apiWpi.radarTrigger();
+            setTimeout(() => loadRadarDiscoveries(), 3000); // 3s sonra yenile
+        } catch { /* silent */ }
+        finally { setRadarTriggering(false); }
+    };
+
+    const handleRadarAnalyzeInWpi = (d: RadarDiscovery) => {
+        addKeyword(d.niche);
+        if (d.suggestedKeywords.length > 0) addKeyword(d.suggestedKeywords[0]);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleRadarDirectFactory = (d: RadarDiscovery) => {
+        const prompt = `${d.niche}${d.productRecommendation ? ` ${d.productRecommendation}` : ''}, ${d.suggestedKeywords.slice(0, 2).join(', ')}`;
+        window.location.href = `/dashboard/factory?prompt=${encodeURIComponent(prompt)}`;
+    };
+
     useEffect(() => { loadCards(); }, [loadCards]);
+    useEffect(() => { loadRadarDiscoveries(); }, [loadRadarDiscoveries]);
     useEffect(() => {
         apiWpi.collections().then(r => setCollections(r.collections)).catch(() => {});
         apiScout.list().then(r => setScoutSuggestions(r.suggestions)).catch(() => {});
@@ -891,6 +1191,14 @@ export function WpiClient() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
+                    {radarDiscoveries.filter(d => d.isCritical).length > 0 && (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 border border-red-500/50 rounded-lg animate-pulse">
+                            <Flame className="w-3.5 h-3.5 text-red-400" />
+                            <span className="text-xs font-black text-red-300 uppercase tracking-wide">
+                                {radarDiscoveries.filter(d => d.isCritical).length} CRITICAL
+                            </span>
+                        </div>
+                    )}
                     {immediateCount > 0 && (
                         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/15 border border-orange-500/40 rounded-lg animate-pulse">
                             <Flame className="w-3.5 h-3.5 text-orange-400" />
@@ -911,6 +1219,18 @@ export function WpiClient() {
                     )}
                 </div>
             </div>
+
+            {/* ── Autonomous Radar Panel ── */}
+            <RadarAutoPilot
+                discoveries={radarDiscoveries}
+                isLoading={radarLoading}
+                isTriggering={radarTriggering}
+                lastRunAt={radarLastRun}
+                nextRunAt={radarNextRun}
+                onTrigger={triggerRadar}
+                onAnalyzeInWpi={handleRadarAnalyzeInWpi}
+                onDirectFactory={handleRadarDirectFactory}
+            />
 
             {/* ── Scan Paneli (collapsible) ── */}
             <ScanPanel

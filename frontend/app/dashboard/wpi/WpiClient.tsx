@@ -1076,7 +1076,13 @@ export function WpiClient() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleRadarDirectFactory = (d: RadarDiscovery) => {
+    const handleRadarDirectFactory = async (d: RadarDiscovery) => {
+        try {
+            await apiWpi.radarSendFactory(d.id);
+            toast.success(`Draft Task oluşturuldu: "${d.niche.slice(0, 45)}"`);
+        } catch {
+            toast.error('Draft Task oluşturulamadı — yine de Factory\'ye yönlendiriliyor');
+        }
         const prompt = `${d.niche}${d.productRecommendation ? ` ${d.productRecommendation}` : ''}, ${d.suggestedKeywords.slice(0, 2).join(', ')}`;
         window.location.href = `/dashboard/factory?prompt=${encodeURIComponent(prompt)}`;
     };

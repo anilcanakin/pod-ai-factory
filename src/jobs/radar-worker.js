@@ -12,15 +12,16 @@
 
 const fetch       = require('node-fetch');
 const { PrismaClient } = require('@prisma/client');
-const { scoreDiscovery } = require('../services/ai-brain.service');
+const { evaluateNiche } = require('../services/ai-brain.service');
 const { getEtsyAutocomplete } = require('../services/keyword-research.service');
 const { logNotification } = require('../routes/notification.routes');
 const redis       = require('../config/redis');
 
 const prisma = new PrismaClient();
 
-const DISCOVERY_THRESHOLD = 75;   // min score to save as HOT_DISCOVERY
-const CRITICAL_THRESHOLD  = 90;   // min score to fire CRITICAL notification
+// Eşik değerleri ai-brain.service.js/evaluateNiche içinde yönetiliyor (MIN_HOT_SCORE=75).
+// Bildirim için isCritical bayrağı evaluateNiche tarafından score>=90 durumunda set edilir.
+const CRITICAL_THRESHOLD = 90; // yalnızca loglama referansı için
 const INTERVAL_MS         = 12 * 60 * 60 * 1000; // 12 saat
 const INITIAL_DELAY_MS    = 5  * 60 * 1000;       // sunucu başlangıcından 5dk sonra
 
@@ -177,46 +178,25 @@ async function runRadarScan() {
             if (existingSet.has(titleKey)) continue;
 
             try {
-                const result = await scoreDiscovery(workspaceId, niche, { source });
-                console.log(`[Radar] "${niche}" (${source}) → score:${result.score}`);
+                // evaluateNiche: scoreDiscovery + DB save (score >= 75) hepsini yapar
+                const discovery = await evaluateNiche(workspaceId, niche, { source });
 
-                if (result.score >= DISCOVERY_THRESHOLD) {
-                    const isCritical = result.score >= CRITICAL_THRESHOLD;
-
-                    await prisma.corporateMemory.create({
-                        data: {
-                            workspaceId,
-                            type:     'HOT_DISCOVERY',
-                            title:    `[Radar] ${niche}`,
-                            content:  `${source.toUpperCase()} kaynaklı | Score: ${result.score} | ${result.reasoning.slice(0, 300)}`,
-                            category: 'STRATEGY',
-                            isActive: true,
-                            analysisResult: {
-                                niche,
-                                discoveryScore:        result.score,
-                                reasoning:             result.reasoning,
-                                suggestedKeywords:     result.keywords,
-                                productRecommendation: result.productRecommendation,
-                                urgency:               result.urgency,
-                                source,
-                                discoveredAt:          new Date().toISOString(),
-                                isCritical,
-                            },
-                        },
-                    });
-
+                if (discovery) {
                     existingSet.add(titleKey);
                     hotCount++;
+                    console.log(`[Radar] HOT ✓  "${niche}" (${source}) → score:${discovery.discoveryScore}`);
 
-                    if (isCritical) {
+                    if (discovery.isCritical) {
                         criticalCount++;
                         logNotification(
                             workspaceId,
                             'critical',
-                            `🔥 CRITICAL HOT NOW: "${niche}" — Discovery Score: ${result.score}/100`,
-                            { score: result.score, niche, source, type: 'HOT_DISCOVERY', isCritical: true }
+                            `🔥 CRITICAL HOT NOW: "${niche}" — Discovery Score: ${discovery.discoveryScore}/100`,
+                            { score: discovery.discoveryScore, niche, source, type: 'HOT_DISCOVERY', isCritical: true }
                         );
                     }
+                } else {
+                    console.log(`[Radar] SKIP  "${niche}" (${source}) — eşik altı`);
                 }
 
                 // AI rate limit arasında 500ms bekle

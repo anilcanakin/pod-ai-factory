@@ -877,6 +877,12 @@ export const apiWpi = {
         request<{ success: boolean; message: string }>(
             '/wpi/radar-trigger', { method: 'POST' }
         ),
+
+    radarSendFactory: (id: string) =>
+        request<{ success: boolean; jobId: string; niche: string; keyword: string }>(
+            `/wpi/radar-discoveries/${id}/send-factory`,
+            { method: 'POST' }
+        ),
 };
 
 export interface RadarDiscovery {

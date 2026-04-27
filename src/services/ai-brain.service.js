@@ -127,4 +127,60 @@ SADECE aşağıdaki JSON formatında yanıt ver, başka hiçbir şey yazma:
     }
 }
 
-module.exports = { scoreDiscovery };
+// ─── evaluateNiche ────────────────────────────────────────────────────────────
+
+const MIN_HOT_SCORE = 75;
+
+/**
+ * Bir nişi değerlendirir: puan < 75 → null döner (atla).
+ * Puan ≥ 75 → CorporateMemory'e HOT_DISCOVERY kaydeder ve sonucu döner.
+ * Radar worker bu fonksiyonu her trend için çağırır.
+ *
+ * @param {string} workspaceId
+ * @param {string} niche
+ * @param {{ source?: string, relatedKeywords?: string[] }} opts
+ * @returns {Promise<{ id, discoveryScore, niche, reasoning, keywords, urgency, productRecommendation, isCritical } | null>}
+ */
+async function evaluateNiche(workspaceId, niche, { source = 'etsy', relatedKeywords = [] } = {}) {
+    const result = await scoreDiscovery(workspaceId, niche, { source, relatedKeywords });
+
+    if (result.score < MIN_HOT_SCORE) return null;
+
+    const isCritical = result.score >= 90;
+
+    const entry = await prisma.corporateMemory.create({
+        data: {
+            workspaceId,
+            type:     'HOT_DISCOVERY',
+            title:    `[Radar] ${niche.slice(0, 120)}`,
+            content:  `${source.toUpperCase()} kaynaklı | Score: ${result.score} | ${result.reasoning.slice(0, 300)}`,
+            category: 'STRATEGY',
+            tags:     result.keywords,
+            isActive: true,
+            analysisResult: {
+                niche,
+                discoveryScore:        result.score,
+                reasoning:             result.reasoning,
+                suggestedKeywords:     result.keywords,
+                productRecommendation: result.productRecommendation,
+                urgency:               result.urgency,
+                source,
+                discoveredAt:          new Date().toISOString(),
+                isCritical,
+            },
+        },
+    });
+
+    return {
+        id:                    entry.id,
+        discoveryScore:        result.score,
+        niche,
+        reasoning:             result.reasoning,
+        keywords:              result.keywords,
+        urgency:               result.urgency,
+        productRecommendation: result.productRecommendation,
+        isCritical,
+    };
+}
+
+module.exports = { scoreDiscovery, evaluateNiche };

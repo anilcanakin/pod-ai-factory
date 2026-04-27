@@ -365,4 +365,46 @@ router.post('/radar-trigger', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/wpi/radar-discoveries/:id/send-factory
+ * HOT_DISCOVERY'yi Factory modülüne Draft Task olarak gönderir.
+ * CorporateMemory'den niş bilgisini okur, DesignJob (mode='wpi') kaydı oluşturur.
+ */
+router.post('/radar-discoveries/:id/send-factory', async (req, res) => {
+    try {
+        const workspaceId = req.workspaceId || 'default-workspace';
+
+        const entry = await _prisma.corporateMemory.findFirst({
+            where: { id: req.params.id, workspaceId, type: 'HOT_DISCOVERY' },
+            select: { id: true, analysisResult: true },
+        });
+
+        if (!entry) {
+            return res.status(404).json({ error: 'HOT_DISCOVERY bulunamadı' });
+        }
+
+        const ar = entry.analysisResult || {};
+        const niche   = ar.niche   || '';
+        const keyword = (ar.suggestedKeywords || [])[0] || niche;
+
+        const job = await _prisma.designJob.create({
+            data: {
+                workspaceId,
+                status:        'PENDING',
+                mode:          'wpi',
+                niche,
+                keyword,
+                style:         ar.productRecommendation || '',
+                originalImage: '',
+            },
+        });
+
+        console.log(`[WPI] Draft Task oluşturuldu — jobId: ${job.id} | niche: "${niche}"`);
+        res.json({ success: true, jobId: job.id, niche, keyword });
+    } catch (err) {
+        console.error('[WPI radar send-factory]', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;

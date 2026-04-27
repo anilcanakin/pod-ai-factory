@@ -1,6 +1,5 @@
 const { autoUpdateKnowledge } = require('../services/seo-knowledge.service');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 async function runWeeklyUpdate() {
     console.log('[SEO Cron] Weekly knowledge update starting...');

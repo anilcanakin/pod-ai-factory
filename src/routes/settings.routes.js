@@ -41,8 +41,7 @@ router.delete('/keys/:provider', async (req, res) => {
     const workspaceId = req.workspaceId;
     if (!workspaceId) return res.status(400).json({ error: 'No workspace' });
 
-    const { PrismaClient } = require('@prisma/client');
-    const prisma = new PrismaClient();
+        const prisma = require('../lib/prisma');
     try {
         await prisma.workspaceApiKey.deleteMany({
             where: { workspaceId, provider: req.params.provider }

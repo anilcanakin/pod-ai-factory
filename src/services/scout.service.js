@@ -9,11 +9,10 @@
 
 const fetch       = require('node-fetch');
 const anthropic   = require('../lib/anthropic');
-const { PrismaClient } = require('@prisma/client');
 const { _suggestNiches } = require('./wpi.service');
 const { getContextForAI } = require('./knowledge.service');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // Google Trends Daily RSS (US) — ücretsiz, auth yok
 const GOOGLE_TRENDS_RSS = 'https://trends.google.com/trends/trendingsearches/daily/rss?geo=US';

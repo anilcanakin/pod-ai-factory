@@ -1,11 +1,10 @@
-const { PrismaClient } = require('@prisma/client');
 const promptService = require('./prompt.service');
 const variationService = require('./variation.service');
 const generationService = require('./generation.service');
 const logService = require('./log.service');
 const { assetQueue } = require('../queues/index');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 /**
  * Etsy Seller Mode Orchestrator

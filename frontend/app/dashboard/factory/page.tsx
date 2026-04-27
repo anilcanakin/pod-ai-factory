@@ -1,5 +1,10 @@
+import { Suspense } from 'react';
 import { FactoryClient } from './FactoryClient';
 
 export default function FactoryWizardPage() {
-    return <FactoryClient />;
+    return (
+        <Suspense>
+            <FactoryClient />
+        </Suspense>
+    );
 }

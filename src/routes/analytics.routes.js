@@ -4,10 +4,9 @@ const multer = require('multer');
 const upload = multer({ dest: 'assets/uploads/' });
 const csv = require('csv-parser');
 const fs = require('fs');
-const { PrismaClient } = require('@prisma/client');
 const analyticsService = require('../services/analytics.service');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // POST /api/analytics/import
 // Accepts Etsy CSV analytics

@@ -11,13 +11,12 @@
  */
 
 const fetch       = require('node-fetch');
-const { PrismaClient } = require('@prisma/client');
 const { evaluateNiche } = require('../services/ai-brain.service');
 const { getEtsyAutocomplete } = require('../services/keyword-research.service');
 const { logNotification } = require('../routes/notification.routes');
 const redis       = require('../config/redis');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // Eşik değerleri ai-brain.service.js/evaluateNiche içinde yönetiliyor (MIN_HOT_SCORE=75).
 // Bildirim için isCritical bayrağı evaluateNiche tarafından score>=90 durumunda set edilir.

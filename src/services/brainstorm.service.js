@@ -22,9 +22,8 @@
  */
 
 const anthropic    = require('../lib/anthropic');
-const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 const MODEL    = 'claude-haiku-4-5-20251001';
 const MAX_RULES = 40;   // prompt'a enjekte edilecek max kural sayısı

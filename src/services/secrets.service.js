@@ -7,10 +7,9 @@
  * MVP: keys stored plain text in DB.
  * To add encryption: replace get/set with encrypted versions — callers unchanged.
  */
-const { PrismaClient } = require('@prisma/client');
 const crypto = require('crypto');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 const ALGORITHM = 'aes-256-gcm';
 // Ensure we always have exactly 32 bytes for the key

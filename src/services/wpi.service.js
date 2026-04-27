@@ -13,10 +13,9 @@
  *   type: 'WPI_WINNER'   — pending action card awaiting approval
  */
 
-const { PrismaClient } = require('@prisma/client');
 const { scrapeEtsyProducts, ApifyPaymentError } = require('./apify.service');
 
-const prisma    = new PrismaClient();
+const prisma = require('../lib/prisma');
 const anthropic = require('../lib/anthropic');
 const redis     = require('../config/redis');
 const { getContextForAI } = require('./knowledge.service');

@@ -5,11 +5,10 @@ const path = require('path');
 const { OpenAI } = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 const ffmpeg = require('fluent-ffmpeg');
-const { PrismaClient } = require('@prisma/client');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 const TEMP_FRAME_DIR = path.join(__dirname, '../../temp_frames');
 if (!fs.existsSync(TEMP_FRAME_DIR)) fs.mkdirSync(TEMP_FRAME_DIR, { recursive: true });

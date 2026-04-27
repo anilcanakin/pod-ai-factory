@@ -1,13 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
 
 const visionService = require('../services/vision.service');
 const generationService = require('../services/generation.service');
 const logService = require('../services/log.service');
 const usageMiddleware = require('../config/usage.middleware');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // Helper: mark job FAILED and log the failure
 async function failJob(jobId, step, err) {

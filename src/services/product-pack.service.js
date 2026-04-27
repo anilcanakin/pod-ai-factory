@@ -1,9 +1,8 @@
-const { PrismaClient } = require('@prisma/client');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 const outputDir = path.join(__dirname, '../../assets/outputs');
 const templateDir = path.join(__dirname, '../../assets/pack-templates');

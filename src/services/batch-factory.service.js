@@ -6,13 +6,12 @@
  * → Projected maliyet anında FinanceService'e kaydedilir
  */
 
-const { PrismaClient } = require('@prisma/client');
 const Anthropic = require('@anthropic-ai/sdk');
 const { Queue } = require('bullmq');
 const redisConnection = require('../config/redis');
 const { recordExpense } = require('./finance.service');
 
-const prisma    = new PrismaClient();
+const prisma = require('../lib/prisma');
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const BATCH_COST_PER_IMAGE = 0.036;  // FAL Schnell + BiRefNet RMBG tahmini

@@ -1,5 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const etsyBrowser = require('./etsy-browser.service');
 const billingService = require('./billing.service');

@@ -6,10 +6,9 @@
  * Bu servis Autonomous Radar Worker tarafından kullanılır.
  */
 
-const { PrismaClient } = require('@prisma/client');
 const anthropic = require('../lib/anthropic');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const MODEL  = 'claude-haiku-4-5-20251001';
 const MAX_RULES = 30;
 const CATEGORY_PRIORITY = ['STRATEGY', 'RULES', 'SEO_TACTICS', 'SEO', 'VISUAL', 'MANAGEMENT'];

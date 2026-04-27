@@ -7,7 +7,6 @@ const upload = multer({
 });
 const csv = require('csv-parser');
 const fs = require('fs');
-const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 const { assetQueue } = require('../queues/index');
@@ -17,7 +16,7 @@ const { VISION_SCHEMA } = require('../services/vision.service');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // Canonical POD style list — fallback when VISION_SCHEMA.style has no .enum
 const FALLBACK_STYLE_OPTIONS = [

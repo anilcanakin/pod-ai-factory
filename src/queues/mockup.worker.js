@@ -1,11 +1,10 @@
 const { Worker } = require('bullmq');
-const { PrismaClient } = require('@prisma/client');
 const redisConnection = require('../config/redis');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 const outputDir = path.join(__dirname, '../../assets/outputs');
 if (!fs.existsSync(outputDir)) {

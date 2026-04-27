@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
-const { PrismaClient } = require('@prisma/client');
 const { renderMockup } = require('../services/mockup-render.service');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // POST /api/mockups/render — render a single mockup
 router.post('/render', async (req, res) => {

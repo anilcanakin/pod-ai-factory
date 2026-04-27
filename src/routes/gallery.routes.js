@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // Placeholder image for PENDING/FAILED (inline SVG as data URI)
 const PLACEHOLDER_URL = 'data:image/svg+xml;base64,' + Buffer.from(

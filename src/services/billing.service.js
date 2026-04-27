@@ -1,5 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // Guard: ApiUsage tablosu henüz migrate edilmediyse çağrıları sessizce atla
 function isApiUsageReady() {

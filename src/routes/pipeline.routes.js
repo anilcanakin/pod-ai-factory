@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
 const { assetQueue } = require('../queues/index');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // POST /api/pipeline/run — single image pipeline trigger
 router.post('/run', async (req, res) => {

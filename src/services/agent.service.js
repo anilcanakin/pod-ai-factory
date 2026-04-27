@@ -14,14 +14,13 @@
  *   preparePackage(workspaceId, cardId)  — görsel üret + SEO döndür (one-click)
  */
 
-const { PrismaClient } = require('@prisma/client');
 const { listSuggestions, runScout } = require('./scout.service');
 const { scan, listActionCards }     = require('./wpi.service');
 const { generateSeoPackage }        = require('./seo.service');
 const falProvider                   = require('./providers/fal.provider');
 const { recordExpense }             = require('./finance.service');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const PACKAGE_CONFIDENCE_MIN = 75; // WPI card confidence eşiği (agent'te biraz daha geniş)

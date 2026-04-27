@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { fal } = require('@fal-ai/client');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const { logNotification } = require('./notification.routes');
 const { uploadUrlToStorage } = require('../services/storage.service');
 

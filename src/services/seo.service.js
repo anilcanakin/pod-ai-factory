@@ -7,11 +7,10 @@
  *   3. Claude Haiku → 140-char title, 13 tags, conversion-focused description
  */
 
-const { PrismaClient } = require('@prisma/client');
 const anthropic        = require('../lib/anthropic');
 const { getContextForAI } = require('./knowledge.service');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // ─── Keyword Density Map ────────────────────────────────────────────────────────
 

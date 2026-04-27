@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const multer = require('multer');
 const upload = multer({ 
     dest: 'uploads/temp/',
@@ -219,8 +218,7 @@ router.post('/generate-auto', async (req, res) => {
  */
 router.get('/pending', async (req, res) => {
     try {
-        const { PrismaClient } = require('@prisma/client');
-        const prisma = new PrismaClient();
+                const prisma = require('../lib/prisma');
         const items = await prisma.image.findMany({
             where: { status: 'PENDING_APPROVAL' },
             include: { seoData: true, mockups: true, job: true },
@@ -238,8 +236,7 @@ router.get('/pending', async (req, res) => {
  */
 router.post('/approve/:id', async (req, res) => {
     try {
-        const { PrismaClient } = require('@prisma/client');
-        const prisma = new PrismaClient();
+                const prisma = require('../lib/prisma');
         
         await prisma.image.update({
             where: { id: req.params.id },
@@ -261,8 +258,7 @@ router.post('/approve/:id', async (req, res) => {
  */
 router.post('/reject/:id', async (req, res) => {
     try {
-        const { PrismaClient } = require('@prisma/client');
-        const prisma = new PrismaClient();
+                const prisma = require('../lib/prisma');
         
         await prisma.image.update({
             where: { id: req.params.id },
@@ -280,8 +276,7 @@ router.post('/reject/:id', async (req, res) => {
  */
 router.post('/approve-all', async (req, res) => {
     try {
-        const { PrismaClient } = require('@prisma/client');
-        const prisma = new PrismaClient();
+                const prisma = require('../lib/prisma');
         
         const items = await prisma.image.findMany({
             where: { status: 'PENDING_APPROVAL' }

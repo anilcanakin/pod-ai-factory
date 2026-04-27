@@ -1,57 +1,102 @@
 const { Worker } = require('bullmq');
-const { PrismaClient } = require('@prisma/client');
 const redisConnection = require('../config/redis');
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
+const fetch = require('node-fetch');
 const sharp = require('sharp');
-const safetyService = require('../services/safety.service');
+const safetyService  = require('../services/safety.service');
+const falProvider    = require('../services/providers/fal.provider');
+const anthropic      = require('../lib/anthropic');
+const prisma         = require('../lib/prisma');
 
-const prisma = new PrismaClient();
-
-// Mock external tool calls for the MVP
-async function simulateBGRemove(imageUrl) {
-    // In production, this would make a network call to BG_REMOVE_API_URL
-    return `${imageUrl}_nobg.png`;
-}
-
-async function simulateUpscale(imageUrl, scale, mode) {
-    // In production, this would make a network call to UPSCALER_API_URL
-    return `${imageUrl}_upscaled_${scale}x_${mode}.png`;
-}
-
-// Ensure the local output directory exists
 const outputDir = path.join(__dirname, '../../assets/outputs');
-if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-}
+if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-// Create a physical mock image file for the "masterFileUrl"
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 async function createNormalizedMaster(imageUrl, imageId) {
     const filename = `${imageId}_master_4500x5400.png`;
     const filepath = path.join(outputDir, filename);
 
-    // Creates a blank 4500x5400 transparent canvas with some text or a placeholder
-    // representing the final composited image.
-    // In production, we would download `imageUrl`, resize it to 4275x5130 (leaving 5% margin),
-    // and composite it onto the 4500x5400 transparent canvas.
-    await sharp({
-        create: {
-            width: 4500,
-            height: 5400,
-            channels: 4,
-            background: { r: 0, g: 0, b: 0, alpha: 0 } // transparent
-        }
-    })
-        .composite([{
-            input: Buffer.from(`<svg width="4000" height="4000"><rect x="0" y="0" width="4000" height="4000" fill="#333" /><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="200" fill="#fff">MOCK MASTER: ${imageId}</text></svg>`),
-            top: 700,
-            left: 250
-        }])
+    const res = await fetch(imageUrl);
+    if (!res.ok) throw new Error(`Master download failed: ${res.status}`);
+    const buf = await res.buffer();
+
+    // 5% margin on each side → design area 4275×5130
+    const designBuf = await sharp(buf)
+        .resize(4275, 5130, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png()
+        .toBuffer();
+
+    await sharp({ create: { width: 4500, height: 5400, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+        .composite([{ input: designBuf, top: 135, left: 113 }])
         .png()
         .toFile(filepath);
 
     return `assets/outputs/${filename}`;
 }
+
+async function renderWorkspaceMockups(imageUrl, imageId, workspaceId) {
+    const templates = await prisma.mockupTemplate.findMany({
+        where: { workspaceId },
+        take: 2,
+        orderBy: { createdAt: 'desc' },
+    });
+
+    if (templates.length === 0) {
+        console.log('[AssetWorker] Workspace için mockup template yok — mockup adımı atlanıyor');
+        return [];
+    }
+
+    const { renderMockup } = require('../services/mockup-render.service');
+    const results = [];
+
+    for (const template of templates) {
+        try {
+            const mockupUrl = await renderMockup({
+                designPath: imageUrl,
+                template,
+                imageId,
+                workspaceId,
+                placement: {},
+            });
+            results.push({ mockupUrl, templateId: template.id });
+            console.log(`[AssetWorker] Mockup hazır: ${template.name} → ${mockupUrl}`);
+        } catch (err) {
+            console.warn(`[AssetWorker] Mockup başarısız (${template.id}): ${err.message}`);
+        }
+    }
+
+    return results;
+}
+
+async function generateSeo(image, workspaceId) {
+    const { getSeoContext } = require('../services/knowledge-context.service');
+
+    const topic = image.job?.keyword || image.job?.niche || image.job?.basePrompt || 'POD design';
+    const knowledge = await getSeoContext(workspaceId).catch(() => '');
+
+    const response = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
+        system: `${knowledge}\n\nReturn ONLY valid JSON, no markdown fences: {"title":"...","description":"...","tags":["tag1","tag2",...,"tag13"]}`,
+        messages: [{
+            role: 'user',
+            content: `Generate Etsy SEO for a print-on-demand product. Keyword/niche: "${topic}". Title max 140 chars, exactly 13 Etsy tags.`,
+        }],
+    });
+
+    const raw = response.content[0].text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(raw);
+
+    return {
+        title:       (parsed.title || topic).slice(0, 140),
+        description: parsed.description || '',
+        tags:        (parsed.tags || []).slice(0, 13),
+    };
+}
+
+// ─── Core Worker ──────────────────────────────────────────────────────────────
 
 async function processAsset(job) {
     console.log('[AssetWorker] İş kuyruktan yakalandı! JobID:', job.id, '| imageId:', job.data.imageId);
@@ -64,102 +109,93 @@ async function processAsset(job) {
     try {
         const image = await prisma.image.findUnique({
             where: { id: imageId },
-            include: { job: true }
+            include: { job: true },
         });
 
         if (!image) throw new Error(`Image ${imageId} not found`);
         if (image.status !== 'APPROVED') {
             console.log(`Skipping image ${imageId} because status is ${image.status}, not APPROVED.`);
-            return; // Only process APPROVED
+            return;
         }
 
-        console.log(`[AssetWorker] Processing APPROVED image: ${imageId}`);
+        const workspaceId = image.job?.workspaceId || 'default-workspace';
+        console.log(`[AssetWorker] Processing APPROVED image: ${imageId} | workspace: ${workspaceId}`);
 
-        // 1. BG Remove
-        const noBgUrl = await simulateBGRemove(image.imageUrl || 'mock_url');
-        console.log(`[AssetWorker] BG Removed -> ${noBgUrl}`);
+        // 1. BG Remove (graceful fallback to original on API error)
+        let noBgUrl = image.imageUrl;
+        try {
+            const bgResult = await falProvider.removeBackground(image.imageUrl, workspaceId);
+            noBgUrl = bgResult.image_url;
+            console.log(`[AssetWorker] BG Removed -> ${noBgUrl}`);
+        } catch (err) {
+            console.warn(`[AssetWorker] BG remove başarısız (orijinal kullanılıyor): ${err.message}`);
+        }
 
-        // 2. Upscale (Scale 4, mode design)
-        const upscaledUrl = await simulateUpscale(noBgUrl, 4, 'design');
-        console.log(`[AssetWorker] Upscaled -> ${upscaledUrl}`);
+        // 2. Upscale (graceful fallback to no-bg URL)
+        let upscaledUrl = noBgUrl;
+        try {
+            const upResult = await falProvider.upscaleImage(noBgUrl, 4, workspaceId);
+            upscaledUrl = upResult.image_url;
+            console.log(`[AssetWorker] Upscaled -> ${upscaledUrl}`);
+        } catch (err) {
+            console.warn(`[AssetWorker] Upscale başarısız (no-bg görsel kullanılıyor): ${err.message}`);
+        }
 
-        // 3. Normalize & Create Master
+        // 3. Create 4500×5400 master PNG
         const masterFileUrl = await createNormalizedMaster(upscaledUrl, imageId);
-        console.log(`[AssetWorker] Master created -> ${masterFileUrl}`);
+        console.log(`[AssetWorker] Master oluşturuldu -> ${masterFileUrl}`);
 
-        // 4. Generate Mockups (Real files via Sharp)
-        console.log(`[AssetWorker] Generating Mockups...`);
-        const mockupDefinitions = [
-            { name: 'mockup1', templateId: 'flatlay_01', bgColor: '#2d2d2d', label: 'T-Shirt Flatlay' },
-            { name: 'mockup2', templateId: 'model_01', bgColor: '#1a1a2e', label: 'Model Mockup' }
-        ];
-        const mockupsData = [];
-        for (const def of mockupDefinitions) {
-            const mockupFilename = `${imageId}_${def.name}.png`;
-            const mockupFilepath = path.join(outputDir, mockupFilename);
-            await sharp({
-                create: { width: 1200, height: 1500, channels: 4, background: def.bgColor }
-            })
-                .composite([{
-                    input: Buffer.from(`<svg width="1000" height="1000"><rect x="0" y="0" width="1000" height="1000" fill="${def.bgColor}" rx="20"/><text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-size="60" fill="#fff">${def.label}</text><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="30" fill="#aaa">${imageId.substring(0, 8)}</text></svg>`),
-                    top: 250, left: 100
-                }])
-                .png()
-                .toFile(mockupFilepath);
-            mockupsData.push({ mockupUrl: `assets/outputs/${mockupFilename}`, templateId: def.templateId });
+        // 4. Render workspace mockups (empty if no templates defined)
+        const mockupsData = await renderWorkspaceMockups(upscaledUrl, imageId, workspaceId);
+        console.log(`[AssetWorker] Mockup sayısı: ${mockupsData.length}`);
+
+        // 5. SEO generation via Claude Haiku + Brain context
+        let seoData;
+        try {
+            seoData = await generateSeo(image, workspaceId);
+        } catch (err) {
+            console.warn(`[AssetWorker] SEO üretimi başarısız (fallback): ${err.message}`);
+            const fallbackTitle = (image.job?.keyword || image.job?.niche || 'Unique POD Design').slice(0, 140);
+            seoData = { title: fallbackTitle, description: '', tags: [] };
         }
 
-        // 5. Generate SEO Data (Synthetic)
-        console.log(`[AssetWorker] Generating SEO Data...`);
-        const seoData = {
-            title: "Premium Vintage Graphic T-Shirt",
-            description: "High quality graphic tee. Perfect addition to your wardrobe.",
-            tags: ["vintage", "graphic tee", "apparel", "design"]
-        };
-
-        // 6. Delete old mockups and seo to prevent constraint errors on retry
+        // 6. Delete old mockups & SEO to prevent constraint errors on retry
         await prisma.mockup.deleteMany({ where: { imageId } });
         await prisma.sEOData.deleteMany({ where: { imageId } });
 
-        // 7. LEGAL GUARD KONTROLÜ
+        // 7. Legal Guard
         const safety = await safetyService.validateLegalSafety(seoData);
 
         if (!safety.isSafe) {
             console.error(`[AssetWorker] 🚔 LEGAL GUARD UYARISI: Image ${imageId} ban riski taşıyor!`);
-            
-            // Eğer ihlal varsa: durumu 'FLAGGED' yap ve gerekçeyi yazarak iptal et
             await prisma.image.update({
                 where: { id: imageId },
                 data: {
                     masterFileUrl,
-                    status: 'FLAGGED',
+                    status:     'FLAGGED',
                     flagReason: safety.reason,
-                    seoData: { create: seoData },
-                    mockups: { create: mockupsData }
-                }
+                    seoData:    { create: seoData },
+                    mockups:    { create: mockupsData },
+                },
             });
-
             const taskService = require('../services/task.service');
             await taskService.incrementTask('GENERATION');
-            
             return { masterFileUrl, mockups: mockupsData.length, hasSeo: true, flagged: true, reason: safety.reason };
         }
 
-        // 8. Update DB with all pipeline assets (PENDING_APPROVAL)
+        // 8. Save all pipeline assets to DB
         await prisma.image.update({
             where: { id: imageId },
             data: {
                 masterFileUrl,
-                status: 'PENDING_APPROVAL',
+                status:     'PENDING_APPROVAL',
                 flagReason: null,
-                seoData: { create: seoData },
-                mockups: { create: mockupsData }
-            }
+                seoData:    { create: seoData },
+                mockups:    { create: mockupsData },
+            },
         });
 
-        console.log(`[AssetWorker] Successfully processed image ${imageId} -> PENDING_APPROVAL (Kalite Kontrol bekleniyor)`);
-        
-        // Increment Generation task progress
+        console.log(`[AssetWorker] ✅ ${imageId} → PENDING_APPROVAL`);
         const taskService = require('../services/task.service');
         await taskService.incrementTask('GENERATION');
 
@@ -167,14 +203,15 @@ async function processAsset(job) {
 
     } catch (err) {
         console.error(`[AssetWorker] Error processing image ${imageId}:`, err);
-        // Change status to FAILED as requested
         await prisma.image.update({
             where: { id: imageId },
-            data: { status: 'FAILED' }
+            data: { status: 'FAILED' },
         });
         throw err;
     }
 }
+
+// ─── BullMQ Worker ────────────────────────────────────────────────────────────
 
 const worker = new Worker('asset-processing', processAsset, {
     connection: redisConnection,

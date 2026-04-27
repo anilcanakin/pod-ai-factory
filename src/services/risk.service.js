@@ -1,36 +1,33 @@
+const { TRADEMARK_BLACKLIST } = require('../config/blacklist');
+
 class RiskService {
     constructor() {
-        // A standard list of trademarked or banned words that we should not generate ideas or SEO for.
-        // In a real application, this could be loaded from the DB or an external API.
-        this.BANNED_WORDS = [
-            'nike', 'disney', 'marvel', 'star wars', 'gucci', 'louis vuitton',
-            'chanel', 'prada', 'mickey', 'minnie', 'avengers', 'harry potter',
-            'hogwarts', 'jedi', 'sith', 'pokemon', 'pikachu', 'nintendo',
-            'playstation', 'xbox', 'rolex', 'supreme'
-        ];
+        this.BANNED_WORDS = TRADEMARK_BLACKLIST;
     }
 
     /**
-     * Checks a string against the banned words list.
-     * @param {string} text - The text to check.
-     * @returns {boolean} - Returns true if the text is safe (no banned words found), false otherwise.
+     * Returns true if text contains no banned words (word-boundary match).
+     * @param {string} text
+     * @returns {boolean}
      */
     isSafe(text) {
         if (!text) return true;
-        const normalizedText = String(text).toLowerCase();
+        const str = String(text);
 
         for (const word of this.BANNED_WORDS) {
-            // Using a simple includes check. For more robustness, regex word boundaries could be used.
-            if (normalizedText.includes(word)) {
-                console.warn(`[RiskFilter] Triggered on word: '${word}' in text: "${text}"`);
-                return false; // Not safe
+            // Escape regex-special chars in the word, then test with word boundaries
+            const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex   = new RegExp(`\\b${escaped}\\b`, 'i');
+            if (regex.test(str)) {
+                console.warn(`[RiskFilter] Triggered on word: '${word}' in text: "${str.slice(0, 80)}"`);
+                return false;
             }
         }
-        return true; // Safe
+        return true;
     }
 
     /**
-     * Helper to check multiple fields of an object.
+     * Checks multiple fields of an idea object.
      */
     isIdeaSafe(ideaObj) {
         const fieldsToCheck = [
@@ -38,13 +35,11 @@ class RiskService {
             ideaObj.mainKeyword,
             ideaObj.persona,
             ideaObj.hook,
-            ...(ideaObj.iconFamily || [])
+            ...(ideaObj.iconFamily || []),
         ];
 
         for (const field of fieldsToCheck) {
-            if (!this.isSafe(field)) {
-                return false;
-            }
+            if (!this.isSafe(field)) return false;
         }
         return true;
     }

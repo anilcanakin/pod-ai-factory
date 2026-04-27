@@ -1,6 +1,5 @@
 const fetch = require('node-fetch');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 /**
  * FulfillmentService

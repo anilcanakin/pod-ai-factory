@@ -1,9 +1,8 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
-const { PrismaClient } = require('@prisma/client');
 const billingService = require('./billing.service');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // ── Shared system prompt ──────────────────────────────────────
 const SYSTEM_PROMPT = `You are an expert POD (Print-on-Demand) designer. Analyze the reference image and write a single detailed generation prompt that captures: art style, color palette, composition, typography style, mood, and subject matter. The output design MUST be on a pure white background (#FFFFFF), perfect for t-shirt screen printing, vector-clean edges, no background scenery. Return ONLY the prompt text, no explanation, no prefix.`;

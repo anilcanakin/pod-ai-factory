@@ -1,12 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
 const { createObjectCsvWriter } = require('csv-writer');
 const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // POST /api/export/etsy
 router.post('/etsy', async (req, res) => {

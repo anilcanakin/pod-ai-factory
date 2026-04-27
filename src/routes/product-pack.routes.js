@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const productPackService = require('../services/product-pack.service');
-const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // GET /api/packs/products — list available product types
 router.get('/products', (req, res) => {

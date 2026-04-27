@@ -222,8 +222,7 @@ router.get('/collections', (req, res) => {
  */
 router.get('/factory-queue', async (req, res) => {
     try {
-        const { PrismaClient } = require('@prisma/client');
-        const prisma = new PrismaClient();
+                const prisma = require('../lib/prisma');
         const workspaceId = req.workspaceId || 'default-workspace';
 
         const jobs = await prisma.designJob.findMany({
@@ -289,8 +288,7 @@ router.get('/config', (req, res) => {
 
 // ─── Autonomous Radar ─────────────────────────────────────────────────────────
 
-const { PrismaClient } = require('@prisma/client');
-const _prisma = new PrismaClient();
+const _prisma = require('../lib/prisma');
 
 /**
  * GET /api/wpi/radar-discoveries

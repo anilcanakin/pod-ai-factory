@@ -1,5 +1,2 @@
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
-
-module.exports = prisma;
+// Backward-compat re-export — canonical singleton is src/lib/prisma.js
+module.exports = require('../lib/prisma');

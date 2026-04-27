@@ -1,5 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // DailyTask modeli veritabanında yoksa (henüz migrate edilmediyse) sessizce atla
 function isDailyTaskReady() {

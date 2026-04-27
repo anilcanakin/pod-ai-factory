@@ -4,10 +4,9 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { PrismaClient } = require('@prisma/client');
 const { detectPrintArea } = require('../services/mockup-render.service');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // Ensure base assets/mockups directory exists at startup
 const MOCKUPS_BASE = path.join(__dirname, '../../assets/mockups');

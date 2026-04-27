@@ -5,9 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const { Queue, QueueEvents } = require('bullmq');
 const redisConnection = require('../config/redis');
-const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const knowledgeQueue = new Queue('knowledge-ingestion', { connection: redisConnection });
 
 // ── Multer Yapılandırması ─────────────────────────────────────

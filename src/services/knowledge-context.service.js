@@ -1,5 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const { getKnowledge } = require('./seo-knowledge.service');
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');

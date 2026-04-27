@@ -7,10 +7,9 @@
 
 const { Worker } = require('bullmq');
 const redisConnection = require('../config/redis');
-const { PrismaClient } = require('@prisma/client');
 const { recordExpense } = require('../services/finance.service');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 const MODEL_COSTS = {
     'fal-ai/flux/schnell': 0.003,

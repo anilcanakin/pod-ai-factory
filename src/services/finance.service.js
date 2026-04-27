@@ -11,10 +11,9 @@
  *   estimateAnthropicCost(inputTokens, outputTokens, model)
  */
 
-const { PrismaClient } = require('@prisma/client');
 const { v4: uuidv4 }   = require('uuid');
 
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // ─── AI Fiyat Tablosu (1M token başına USD) ──────────────────────────────────
 const CLAUDE_PRICING = {

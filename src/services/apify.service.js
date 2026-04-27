@@ -21,11 +21,10 @@
  */
 
 const { ApifyClient }  = require('apify-client');
-const { PrismaClient } = require('@prisma/client');
 
 // APIFY_API_KEY ve APIFY_API_TOKEN her ikisini de destekle
 const apify     = new ApifyClient({ token: process.env.APIFY_API_KEY || process.env.APIFY_API_TOKEN });
-const prisma    = new PrismaClient();
+const prisma = require('../lib/prisma');
 const anthropic = require('../lib/anthropic');
 
 // ─── Actor IDs ────────────────────────────────────────────────────────────────

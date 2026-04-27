@@ -18,12 +18,11 @@
  */
 
 const { OpenAI }       = require('openai');
-const { PrismaClient } = require('@prisma/client');
 const Anthropic        = require('@anthropic-ai/sdk');
 
 const openai    = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const prisma    = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const EMBED_MODEL             = 'text-embedding-3-small';

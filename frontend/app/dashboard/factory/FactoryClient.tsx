@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFactory, apiGallery, apiTools, apiSeo, apiWpi } from '@/lib/api';
 import { toast } from 'sonner';
@@ -13,7 +13,7 @@ import {
     Flame, Target
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 const STYLE_PRESETS = [
   { 
@@ -94,11 +94,25 @@ const PROMPT_TEMPLATES = [
 ];
 
 export function FactoryClient() {
-    const router = useRouter();
+    const router       = useRouter();
+    const searchParams = useSearchParams();
 
     // ── State ──────────────────────────────────────────────────
-    const [refImages, setRefImages] = useState<string[]>([]);
-    const [mainPrompt, setMainPrompt] = useState('');
+    const [refImages, setRefImages]         = useState<string[]>([]);
+    const [mainPrompt, setMainPrompt]       = useState('');
+    const [prefillBanner, setPrefillBanner] = useState<string | null>(null);
+
+    // Pre-fill from URL params (e.g. ?prompt=... &niche=... from WPI → Factory flow)
+    useEffect(() => {
+        const prompt = searchParams.get('prompt');
+        const niche  = searchParams.get('niche');
+        if (prompt) {
+            setMainPrompt(prompt);
+            const label = niche ? `Niche: ${niche}` : 'WPI';
+            setPrefillBanner(label);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     const [variations, setVariations] = useState<{ id: string; prompt: string; selected: boolean }[]>([]);
     const [variationMode, setVariationMode] = useState<'subject' | 'style' | 'color'>('subject');
     const [variationCount, setVariationCount] = useState(4);
@@ -430,6 +444,19 @@ export function FactoryClient() {
                 <h1 className="text-2xl font-bold text-text-primary">AI Design Generator</h1>
                 <p className="text-sm text-text-secondary mt-1">Create POD-ready designs with AI-powered generation</p>
             </div>
+
+            {/* ── Pre-fill Banner (from WPI / Radar) ── */}
+            {prefillBanner && (
+                <div className="mb-4 flex items-center gap-3 rounded-lg border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-sm">
+                    <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+                    <span className="text-purple-200 flex-1">
+                        Prompt otomatik dolduruldu — <span className="font-semibold">{prefillBanner}</span>
+                    </span>
+                    <button onClick={() => setPrefillBanner(null)} className="text-purple-400 hover:text-purple-200 transition-colors">
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
 
             {/* ── WPI Ready-to-Generate Queue ── */}
             {wpiJobs.length > 0 && (

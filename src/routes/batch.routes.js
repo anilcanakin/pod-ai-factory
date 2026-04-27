@@ -3,8 +3,7 @@ const router  = express.Router();
 const { getBatchStatus, MODEL_REGISTRY } = require('../services/batch-factory.service');
 const { getAllPresets }   = require('../services/style-manager.service');
 const { batchSetupQueue } = require('../queues/index');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 const BATCH_COST_PER_IMAGE = 0.036;
 

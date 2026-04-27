@@ -22,12 +22,11 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const fetch = require('node-fetch');
-const { PrismaClient } = require('@prisma/client');
 const workspaceMiddleware = require('./config/workspace.middleware');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const prisma = new PrismaClient();
+const prisma = require('./lib/prisma');
 
 // Serve mockup assets publicly with CORS - MUST be before auth middleware
 const path = require('path');

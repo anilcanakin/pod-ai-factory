@@ -1,4 +1,10 @@
+import { Suspense } from 'react';
 import { ToolsClient } from './ToolsClient';
+
 export default function ToolsPage() {
-    return <ToolsClient />;
+    return (
+        <Suspense>
+            <ToolsClient />
+        </Suspense>
+    );
 }

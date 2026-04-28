@@ -15,6 +15,7 @@ import {
     WpiSeoPackage, RadarDiscovery
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 // ─── Category config ──────────────────────────────────────────────────────────
 

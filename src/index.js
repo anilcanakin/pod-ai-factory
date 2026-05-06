@@ -48,27 +48,25 @@ app.use('/assets/outputs', (req, res, next) => {
     next();
 }, express.static(path.join(__dirname, '../assets/outputs')));
 
-// Create Supabase Storage bucket on startup
-if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-    const { createClient } = require('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    supabase.storage.createBucket('mockup-outputs', { public: true, fileSizeLimit: 52428800 })
-        .then(({ error }) => {
-            if (!error || error.message?.includes('already exists')) {
-                console.log('[Storage] Bucket ready: mockup-outputs');
-            } else {
-                console.warn('[Storage] Bucket create warning:', error.message);
-            }
-        }).catch(() => {});
+// Serve local uploads with CORS headers
+const uploadsDir = path.join(__dirname, '../assets/uploads');
+if (!require('fs').existsSync(uploadsDir)) {
+    require('fs').mkdirSync(uploadsDir, { recursive: true });
 }
+app.use('/assets/uploads', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+}, express.static(uploadsDir));
 
 // Middleware
-// Backend :3000, Frontend :3001 portunda çalışır.
-// CORS_ORIGIN set edilmemişse frontend'in varsayılan portuna (3001) izin ver.
-// PRODUCTION: CORS_ORIGIN env değişkenine gerçek frontend URL'ini set et.
-const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3001';
-app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
-console.log(`[CORS] İzin verilen origin: ${ALLOWED_ORIGIN}`);
+// CORS_ORIGIN env değişkenine virgülle ayrılmış URL'ler girilebilir.
+// Örnek: CORS_ORIGIN=https://myfrontend.com,http://localhost:3001
+const _corsEnv      = process.env.CORS_ORIGIN || 'http://localhost:3001';
+const _corsOrigins  = _corsEnv.split(',').map(o => o.trim()).filter(Boolean);
+const _corsOption   = _corsOrigins.length === 1 ? _corsOrigins[0] : _corsOrigins;
+app.use(cors({ origin: _corsOption, credentials: true }));
+console.log(`[CORS] İzin verilen origin(ler): ${_corsOrigins.join(' | ')}`);
 app.use(cookieParser());
 app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ limit: '200mb', extended: true }));

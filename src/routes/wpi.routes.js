@@ -460,6 +460,12 @@ router.get('/niche-products', async (req, res) => {
         res.json(payload);
     } catch (err) {
         console.error('[WPI niche-products]', err.message);
+        if (err.message?.includes('memory limit') || err.message?.includes('exceed')) {
+            return res.status(503).json({
+                error: 'Apify bellek limiti doldu — aktif taramalar tamamlanınca tekrar dene (1-2 dk)',
+                retryAfter: 120,
+            });
+        }
         res.status(500).json({ error: err.message });
     }
 });

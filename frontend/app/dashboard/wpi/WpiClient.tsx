@@ -762,7 +762,12 @@ function RadarDiscoveryCard({
             const res = await apiWpi.nicheProducts(d.niche, 30);
             setProducts(res.products);
         } catch (e: any) {
-            setProductsError(e.message || 'Ürünler yüklenemedi');
+            const msg = e.message || '';
+            setProductsError(
+                msg.includes('bellek limiti') || msg.includes('memory') || msg.includes('503')
+                    ? 'Apify şu an meşgul — 1-2 dakika bekleyip tekrar dene.'
+                    : (msg || 'Ürünler yüklenemedi')
+            );
         } finally {
             setProductsLoading(false);
         }

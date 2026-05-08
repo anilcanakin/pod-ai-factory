@@ -20,8 +20,8 @@ const prisma = require('../lib/prisma');
 // Eşik değerleri ai-brain.service.js/evaluateNiche içinde yönetiliyor (MIN_HOT_SCORE=75).
 // Bildirim için isCritical bayrağı evaluateNiche tarafından score>=90 durumunda set edilir.
 const CRITICAL_THRESHOLD = 90; // yalnızca loglama referansı için
-const INTERVAL_MS         = 12 * 60 * 60 * 1000; // 12 saat
-const INITIAL_DELAY_MS    = 5  * 60 * 1000;       // sunucu başlangıcından 5dk sonra
+const INTERVAL_MS         = 7 * 24 * 60 * 60 * 1000; // haftada 1
+const INITIAL_DELAY_MS    = 5 * 60 * 1000;            // sunucu başlangıcından 5dk sonra
 
 // ─── Seed Keywords ────────────────────────────────────────────────────────────
 

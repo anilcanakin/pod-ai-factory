@@ -320,7 +320,7 @@ router.get('/radar-discoveries', async (req, res) => {
             const ts = await redis.get('radar:lastRunAt');
             if (ts) {
                 lastRunAt = new Date(parseInt(ts, 10)).toISOString();
-                nextRunAt = new Date(parseInt(ts, 10) + 12 * 60 * 60 * 1000).toISOString();
+                nextRunAt = new Date(parseInt(ts, 10) + 7 * 24 * 60 * 60 * 1000).toISOString();
             }
         } catch { /* Redis yoksa sessizce geç */ }
 

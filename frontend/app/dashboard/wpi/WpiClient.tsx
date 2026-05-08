@@ -541,6 +541,8 @@ const URGENCY_COLOR = {
     low:    'text-green-400',
 };
 
+const RADAR_PAGE_SIZE = 9;
+
 function RadarAutoPilot({
     discoveries, isLoading, isTriggering, lastRunAt, nextRunAt,
     onTrigger, onAnalyzeInWpi, onDirectFactory,
@@ -554,7 +556,8 @@ function RadarAutoPilot({
     onAnalyzeInWpi: (d: RadarDiscovery) => void;
     onDirectFactory: (d: RadarDiscovery) => void;
 }) {
-    const [collapsed, setCollapsed] = useState(false);
+    const [collapsed, setCollapsed]     = useState(false);
+    const [showAll, setShowAll]         = useState(false);
     const criticalList  = discoveries.filter(d => d.isCritical);
     const hotList       = discoveries.filter(d => !d.isCritical && d.discoveryScore >= 75);
 
@@ -638,7 +641,7 @@ function RadarAutoPilot({
                         </div>
                     ) : (
                         <div className="p-4 space-y-3">
-                            {/* CRITICAL section */}
+                            {/* CRITICAL section — her zaman tümünü göster */}
                             {criticalList.length > 0 && (
                                 <div className="space-y-2">
                                     <div className="flex items-center gap-1.5">
@@ -649,40 +652,52 @@ function RadarAutoPilot({
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                                         {criticalList.map(d => (
-                                            <RadarDiscoveryCard
-                                                key={d.id}
-                                                discovery={d}
-                                                isCritical
-                                                onAnalyzeInWpi={onAnalyzeInWpi}
-                                                onDirectFactory={onDirectFactory}
-                                            />
+                                            <RadarDiscoveryCard key={d.id} discovery={d} isCritical
+                                                onAnalyzeInWpi={onAnalyzeInWpi} onDirectFactory={onDirectFactory} />
                                         ))}
                                     </div>
                                 </div>
                             )}
 
-                            {/* HOT discoveries */}
-                            {hotList.length > 0 && (
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-1.5">
-                                        <TrendingUp className="w-3.5 h-3.5 text-violet-400" />
-                                        <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">
-                                            AI Brain Onaylı Adaylar ({hotList.length})
-                                        </span>
+                            {/* HOT discoveries — ilk 9, sonrası "Daha Fazla" */}
+                            {hotList.length > 0 && (() => {
+                                const visible = showAll ? hotList : hotList.slice(0, RADAR_PAGE_SIZE);
+                                const remaining = hotList.length - RADAR_PAGE_SIZE;
+                                return (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <TrendingUp className="w-3.5 h-3.5 text-violet-400" />
+                                            <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">
+                                                AI Brain Onaylı Adaylar ({hotList.length})
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                                            {visible.map(d => (
+                                                <RadarDiscoveryCard key={d.id} discovery={d} isCritical={false}
+                                                    onAnalyzeInWpi={onAnalyzeInWpi} onDirectFactory={onDirectFactory} />
+                                            ))}
+                                        </div>
+                                        {!showAll && remaining > 0 && (
+                                            <button
+                                                onClick={() => setShowAll(true)}
+                                                className="w-full py-2 rounded-xl border border-border-subtle bg-bg-elevated hover:bg-white/5 text-text-tertiary text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                                            >
+                                                <ChevronDown className="w-3.5 h-3.5" />
+                                                Daha Fazla Göster ({remaining} keşif daha)
+                                            </button>
+                                        )}
+                                        {showAll && hotList.length > RADAR_PAGE_SIZE && (
+                                            <button
+                                                onClick={() => setShowAll(false)}
+                                                className="w-full py-2 rounded-xl border border-border-subtle bg-bg-elevated hover:bg-white/5 text-text-tertiary text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                                            >
+                                                <ChevronUp className="w-3.5 h-3.5" />
+                                                Daha Az Göster
+                                            </button>
+                                        )}
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-                                        {hotList.map(d => (
-                                            <RadarDiscoveryCard
-                                                key={d.id}
-                                                discovery={d}
-                                                isCritical={false}
-                                                onAnalyzeInWpi={onAnalyzeInWpi}
-                                                onDirectFactory={onDirectFactory}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                                );
+                            })()}
 
                             {nextRunAt && (
                                 <p className="text-[10px] text-text-tertiary text-center pt-1">

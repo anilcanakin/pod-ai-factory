@@ -883,7 +883,33 @@ export const apiWpi = {
             `/wpi/radar-discoveries/${id}/send-factory`,
             { method: 'POST' }
         ),
+
+    nicheProducts: (niche: string, maxResults = 30) =>
+        request<{ success: boolean; count: number; niche: string; products: NicheProduct[] }>(
+            `/wpi/niche-products?niche=${encodeURIComponent(niche)}&maxResults=${maxResults}`
+        ),
 };
+
+export interface NicheProduct {
+    listingId: string;
+    title: string;
+    price: number;
+    currency: string;
+    imageUrl: string;
+    listingUrl: string;
+    sales: number;
+    rating: number | null;
+    shopName: string;
+    reviewCount: number;
+    favoriteCount: number;
+    listingDate: string | number | null;
+    listingAgeDays: number | null;
+    totalEstimatedSales: number;
+    monthlySales: number | null;
+    weeklySales: number | null;
+    isBestSeller: boolean;
+    isPopularNow: boolean;
+}
 
 export interface RadarDiscovery {
     id: string;

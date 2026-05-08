@@ -12,7 +12,7 @@ import {
 import {
     apiWpi, apiScout, WpiCard, WpiScanResult, WpiCollection,
     WpiScanProgress, WpiProductCategory, ScoutNiche, WpiKeywordStatus,
-    WpiSeoPackage, RadarDiscovery
+    WpiSeoPackage, RadarDiscovery, NicheProduct
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -741,9 +741,39 @@ function RadarDiscoveryCard({
     onDirectFactory: (d: RadarDiscovery, model: string, style: string) => void;
 }) {
     const [modalOpen, setModalOpen]         = useState(false);
+    const [modalTab, setModalTab]           = useState<'detail' | 'products'>('detail');
     const [configOpen, setConfigOpen]       = useState(false);
     const [selModel, setSelModel]           = useState('fal-ai/flux/dev');
     const [selStyle, setSelStyle]           = useState('vintage');
+    const [products, setProducts]           = useState<NicheProduct[] | null>(null);
+    const [productsLoading, setProductsLoading] = useState(false);
+    const [productsError, setProductsError] = useState<string | null>(null);
+    const [prodSortBy, setProdSortBy]       = useState<'weekly' | 'monthly' | 'total' | 'favorites' | 'newest'>('weekly');
+    const [prodMinReviews, setProdMinReviews] = useState(0);
+    const [prodMaxAge, setProdMaxAge]       = useState<number | null>(null);
+    const [prodMinPrice, setProdMinPrice]   = useState<number | null>(null);
+    const [prodMaxPrice, setProdMaxPrice]   = useState<number | null>(null);
+
+    const loadProducts = async () => {
+        if (products || productsLoading) return;
+        setProductsLoading(true);
+        setProductsError(null);
+        try {
+            const res = await apiWpi.nicheProducts(d.niche, 30);
+            setProducts(res.products);
+        } catch (e: any) {
+            setProductsError(e.message || 'Ürünler yüklenemedi');
+        } finally {
+            setProductsLoading(false);
+        }
+    };
+
+    const openProducts = (e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setModalTab('products');
+        setModalOpen(true);
+        loadProducts();
+    };
 
     const openConfig = (e?: React.MouseEvent) => {
         e?.stopPropagation();
@@ -813,18 +843,25 @@ function RadarDiscoveryCard({
                 )}
 
                 {/* Action buttons */}
-                <div className="flex gap-1.5 pt-0.5" onClick={e => e.stopPropagation()}>
+                <div className="flex gap-1.5 pt-0.5 flex-wrap" onClick={e => e.stopPropagation()}>
                     <button
                         onClick={() => onAnalyzeInWpi(d)}
                         className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent text-[11px] font-semibold border border-accent/20 transition-colors"
                     >
                         <Brain className="w-3 h-3" />
-                        WPI&apos;da Analiz Et
+                        WPI Analiz
+                    </button>
+                    <button
+                        onClick={openProducts}
+                        className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-[11px] font-semibold border border-blue-500/20 transition-colors"
+                    >
+                        <ShoppingCart className="w-3 h-3" />
+                        Etsy&apos;de Araştır
                     </button>
                     <button
                         onClick={openConfig}
                         className={cn(
-                            'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors',
+                            'w-full flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors',
                             isCritical
                                 ? 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30'
                                 : 'bg-green-600/10 hover:bg-green-600/20 text-green-400 border-green-500/20'
@@ -934,102 +971,250 @@ function RadarDiscoveryCard({
                 >
                     <div
                         className={cn(
-                            'relative w-full max-w-lg rounded-2xl border shadow-2xl p-6 space-y-4 bg-bg-elevated max-h-[90vh] overflow-y-auto',
+                            'relative w-full rounded-2xl border shadow-2xl bg-bg-elevated flex flex-col',
+                            modalTab === 'products' ? 'max-w-3xl max-h-[92vh]' : 'max-w-lg max-h-[90vh]',
                             isCritical ? 'border-red-500/50' : 'border-border-default'
                         )}
                         onClick={e => e.stopPropagation()}
                     >
-                        {/* Kapat butonu */}
-                        <button
-                            onClick={() => setModalOpen(false)}
-                            className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-white/10 text-text-tertiary transition-colors"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
-
-                        {/* Başlık */}
-                        <div className="flex items-start gap-3 pr-8">
-                            <div className={cn('text-3xl font-black tabular-nums leading-none', scoreColor)}>
-                                {d.discoveryScore}
-                                <span className="text-sm font-normal text-text-tertiary">/100</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <h2 className="text-base font-bold text-text-primary leading-snug">{d.niche}</h2>
-                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                    <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border', srcCfg.color)}>
-                                        {srcCfg.label}
-                                    </span>
-                                    <span className={cn('text-xs font-semibold', URGENCY_COLOR[d.urgency as keyof typeof URGENCY_COLOR] ?? 'text-text-tertiary')}>
-                                        Aciliyet: {d.urgency}
-                                    </span>
-                                    {isCritical && (
-                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-500/20 text-red-300 border border-red-500/40 animate-pulse">
-                                            CRITICAL
-                                        </span>
-                                    )}
+                        {/* ── Modal Header ── */}
+                        <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
+                            <div className="flex items-start gap-3 flex-1 min-w-0 pr-8">
+                                <div className={cn('text-2xl font-black tabular-nums leading-none', scoreColor)}>
+                                    {d.discoveryScore}
+                                    <span className="text-xs font-normal text-text-tertiary">/100</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h2 className="text-sm font-bold text-text-primary leading-snug truncate">{d.niche}</h2>
+                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                        <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border', srcCfg.color)}>{srcCfg.label}</span>
+                                        {isCritical && (
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-500/20 text-red-300 border border-red-500/40 animate-pulse">CRITICAL</span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
+                            <button onClick={() => setModalOpen(false)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-white/10 text-text-tertiary transition-colors">
+                                <X className="w-4 h-4" />
+                            </button>
                         </div>
 
-                        {/* Ürün önerisi */}
-                        {d.productRecommendation && (
-                            <div className="rounded-lg bg-bg-overlay border border-border-subtle p-3">
-                                <p className="text-[10px] text-text-tertiary uppercase tracking-wider font-semibold mb-1">Ürün Önerisi</p>
-                                <p className="text-sm text-text-primary font-medium">{d.productRecommendation}</p>
-                            </div>
-                        )}
-
-                        {/* AI Analizi */}
-                        {d.reasoning && (
-                            <div className="rounded-lg bg-bg-overlay border border-border-subtle p-3">
-                                <p className="text-[10px] text-text-tertiary uppercase tracking-wider font-semibold mb-1.5">AI Analizi</p>
-                                <p className="text-sm text-text-secondary leading-relaxed">{d.reasoning}</p>
-                            </div>
-                        )}
-
-                        {/* Tüm keyword'ler */}
-                        {d.suggestedKeywords.length > 0 && (
-                            <div>
-                                <p className="text-[10px] text-text-tertiary uppercase tracking-wider font-semibold mb-2">
-                                    Önerilen Keyword&apos;ler ({d.suggestedKeywords.length})
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {d.suggestedKeywords.map(kw => (
-                                        <span key={kw} className="text-xs px-2 py-1 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/20">
-                                            {kw}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Keşif tarihi */}
-                        <p className="text-[10px] text-text-tertiary">
-                            Keşfedildi: {new Date(d.discoveredAt).toLocaleString('tr-TR')}
-                        </p>
-
-                        {/* Aksiyon butonları */}
-                        <div className="flex gap-2 pt-1">
+                        {/* ── Tabs ── */}
+                        <div className="flex gap-1 px-5 pb-0 flex-shrink-0 border-b border-border-subtle">
                             <button
-                                onClick={() => { onAnalyzeInWpi(d); setModalOpen(false); }}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-accent/15 hover:bg-accent/25 text-accent text-sm font-semibold border border-accent/30 transition-colors"
+                                onClick={() => setModalTab('detail')}
+                                className={cn('px-3 py-2 text-xs font-semibold rounded-t-lg transition-colors -mb-px border-b-2',
+                                    modalTab === 'detail' ? 'text-accent border-accent' : 'text-text-tertiary border-transparent hover:text-text-secondary')}
                             >
-                                <Brain className="w-4 h-4" />
-                                WPI&apos;da Analiz Et
+                                Detaylar
                             </button>
                             <button
-                                onClick={openConfig}
-                                className={cn(
-                                    'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold border transition-colors',
-                                    isCritical
-                                        ? 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30'
-                                        : 'bg-green-600/10 hover:bg-green-600/20 text-green-400 border-green-500/20'
+                                onClick={() => { setModalTab('products'); loadProducts(); }}
+                                className={cn('px-3 py-2 text-xs font-semibold rounded-t-lg transition-colors -mb-px border-b-2 flex items-center gap-1.5',
+                                    modalTab === 'products' ? 'text-blue-400 border-blue-400' : 'text-text-tertiary border-transparent hover:text-text-secondary')}
+                            >
+                                <ShoppingCart className="w-3 h-3" />
+                                Etsy Ürünleri
+                                {products && <span className="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-full">{products.length}</span>}
+                            </button>
+                        </div>
+
+                        {/* ── Tab: Detaylar ── */}
+                        {modalTab === 'detail' && (
+                            <div className="overflow-y-auto p-5 space-y-4">
+                                {d.productRecommendation && (
+                                    <div className="rounded-lg bg-bg-overlay border border-border-subtle p-3">
+                                        <p className="text-[10px] text-text-tertiary uppercase tracking-wider font-semibold mb-1">Ürün Önerisi</p>
+                                        <p className="text-sm text-text-primary font-medium">{d.productRecommendation}</p>
+                                    </div>
                                 )}
-                            >
-                                <Factory className="w-4 h-4" />
-                                Hemen Üret
-                            </button>
-                        </div>
+                                {d.reasoning && (
+                                    <div className="rounded-lg bg-bg-overlay border border-border-subtle p-3">
+                                        <p className="text-[10px] text-text-tertiary uppercase tracking-wider font-semibold mb-1.5">AI Analizi</p>
+                                        <p className="text-sm text-text-secondary leading-relaxed">{d.reasoning}</p>
+                                    </div>
+                                )}
+                                {d.suggestedKeywords.length > 0 && (
+                                    <div>
+                                        <p className="text-[10px] text-text-tertiary uppercase tracking-wider font-semibold mb-2">Önerilen Keyword&apos;ler ({d.suggestedKeywords.length})</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {d.suggestedKeywords.map(kw => (
+                                                <span key={kw} className="text-xs px-2 py-1 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/20">{kw}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                <p className="text-[10px] text-text-tertiary">Keşfedildi: {new Date(d.discoveredAt).toLocaleString('tr-TR')}</p>
+                                <div className="flex gap-2 pt-1">
+                                    <button onClick={() => { onAnalyzeInWpi(d); setModalOpen(false); }}
+                                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-accent/15 hover:bg-accent/25 text-accent text-sm font-semibold border border-accent/30 transition-colors">
+                                        <Brain className="w-4 h-4" />WPI&apos;da Analiz Et
+                                    </button>
+                                    <button onClick={openConfig}
+                                        className={cn('flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold border transition-colors',
+                                            isCritical ? 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30' : 'bg-green-600/10 hover:bg-green-600/20 text-green-400 border-green-500/20')}>
+                                        <Factory className="w-4 h-4" />Hemen Üret
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Tab: Etsy Ürünleri ── */}
+                        {modalTab === 'products' && (
+                            <div className="flex flex-col overflow-hidden flex-1 min-h-0">
+                                {/* Filters */}
+                                <div className="px-5 py-3 border-b border-border-subtle flex flex-wrap gap-3 items-center flex-shrink-0">
+                                    {/* Sort */}
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-text-tertiary font-semibold uppercase">Sırala:</span>
+                                        {([
+                                            { id: 'weekly',    label: 'Haf. Satış' },
+                                            { id: 'monthly',   label: 'Ay. Satış' },
+                                            { id: 'total',     label: 'Toplam' },
+                                            { id: 'favorites', label: 'Favori' },
+                                            { id: 'newest',    label: 'En Yeni' },
+                                        ] as const).map(s => (
+                                            <button key={s.id} onClick={() => setProdSortBy(s.id)}
+                                                className={cn('px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors',
+                                                    prodSortBy === s.id ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-bg-base text-text-tertiary border-border-subtle hover:border-border-default')}>
+                                                {s.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {/* Min reviews */}
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-text-tertiary font-semibold uppercase">Min Yorum:</span>
+                                        {[0, 5, 20, 50, 100].map(v => (
+                                            <button key={v} onClick={() => setProdMinReviews(v)}
+                                                className={cn('px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors',
+                                                    prodMinReviews === v ? 'bg-violet-500/20 text-violet-300 border-violet-500/40' : 'bg-bg-base text-text-tertiary border-border-subtle hover:border-border-default')}>
+                                                {v === 0 ? 'Tümü' : `${v}+`}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {/* Max listing age */}
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-text-tertiary font-semibold uppercase">Yaş:</span>
+                                        {([null, 30, 90, 180, 365] as const).map(v => (
+                                            <button key={String(v)} onClick={() => setProdMaxAge(v)}
+                                                className={cn('px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors',
+                                                    prodMaxAge === v ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-bg-base text-text-tertiary border-border-subtle hover:border-border-default')}>
+                                                {v === null ? 'Tümü' : v === 30 ? '1 ay' : v === 90 ? '3 ay' : v === 180 ? '6 ay' : '1 yıl'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Product list */}
+                                <div className="overflow-y-auto flex-1 p-4">
+                                    {productsLoading && (
+                                        <div className="flex flex-col items-center justify-center py-16 gap-3">
+                                            <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+                                            <p className="text-sm text-text-tertiary">Etsy&apos;den ürünler çekiliyor<br/><span className="text-[11px]">30-60 saniye sürebilir...</span></p>
+                                        </div>
+                                    )}
+                                    {productsError && (
+                                        <div className="flex items-center gap-2 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                            {productsError}
+                                        </div>
+                                    )}
+                                    {products && (() => {
+                                        const filtered = products
+                                            .filter(p => p.reviewCount >= prodMinReviews)
+                                            .filter(p => prodMaxAge === null || (p.listingAgeDays !== null && p.listingAgeDays <= prodMaxAge))
+                                            .filter(p => prodMinPrice === null || p.price >= prodMinPrice)
+                                            .filter(p => prodMaxPrice === null || p.price <= prodMaxPrice)
+                                            .sort((a, b) => {
+                                                if (prodSortBy === 'weekly')    return (b.weeklySales  ?? -1) - (a.weeklySales  ?? -1);
+                                                if (prodSortBy === 'monthly')   return (b.monthlySales ?? -1) - (a.monthlySales ?? -1);
+                                                if (prodSortBy === 'total')     return b.totalEstimatedSales - a.totalEstimatedSales;
+                                                if (prodSortBy === 'favorites') return b.favoriteCount - a.favoriteCount;
+                                                if (prodSortBy === 'newest')    return (a.listingAgeDays ?? 9999) - (b.listingAgeDays ?? 9999);
+                                                return 0;
+                                            });
+                                        if (!filtered.length) return (
+                                            <div className="text-center py-12 text-text-tertiary text-sm">Bu filtrelere uygun ürün bulunamadı.</div>
+                                        );
+                                        return (
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                {filtered.map(p => (
+                                                    <div key={p.listingId} className="rounded-xl border border-border-subtle bg-bg-base overflow-hidden hover:border-blue-500/40 transition-all group">
+                                                        {/* Görsel */}
+                                                        <div className="aspect-square bg-bg-overlay relative overflow-hidden">
+                                                            {p.imageUrl ? (
+                                                                <img src={p.imageUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center text-text-tertiary"><ShoppingBag className="w-8 h-8 opacity-30" /></div>
+                                                            )}
+                                                            {p.isBestSeller && (
+                                                                <span className="absolute top-1.5 left-1.5 text-[9px] font-black bg-amber-500 text-black px-1.5 py-0.5 rounded-full">BESTSELLER</span>
+                                                            )}
+                                                            {p.listingAgeDays !== null && (
+                                                                <span className="absolute top-1.5 right-1.5 text-[9px] bg-black/60 text-white px-1.5 py-0.5 rounded-full">
+                                                                    {p.listingAgeDays < 30 ? `${p.listingAgeDays}g` : p.listingAgeDays < 365 ? `${Math.round(p.listingAgeDays/30)}ay` : `${(p.listingAgeDays/365).toFixed(1)}y`}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {/* Bilgiler */}
+                                                        <div className="p-2.5 space-y-1.5">
+                                                            <p className="text-[11px] font-medium text-text-primary line-clamp-2 leading-snug">{p.title}</p>
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-xs font-bold text-emerald-400">${p.price.toFixed(2)}</span>
+                                                                {p.rating && <span className="text-[10px] text-amber-400">★ {p.rating.toFixed(1)}</span>}
+                                                            </div>
+                                                            {/* Sales badges */}
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {p.weeklySales !== null && p.weeklySales > 0 && (
+                                                                    <span className="text-[9px] font-bold bg-green-500/15 text-green-400 border border-green-500/25 px-1.5 py-0.5 rounded-full">
+                                                                        ~{p.weeklySales}/haf
+                                                                    </span>
+                                                                )}
+                                                                {p.monthlySales !== null && p.monthlySales > 0 && (
+                                                                    <span className="text-[9px] font-bold bg-blue-500/15 text-blue-300 border border-blue-500/25 px-1.5 py-0.5 rounded-full">
+                                                                        ~{p.monthlySales}/ay
+                                                                    </span>
+                                                                )}
+                                                                {p.reviewCount > 0 && (
+                                                                    <span className="text-[9px] text-text-tertiary px-1.5 py-0.5 rounded-full border border-border-subtle">
+                                                                        {p.reviewCount} yorum
+                                                                    </span>
+                                                                )}
+                                                                {p.favoriteCount > 0 && (
+                                                                    <span className="text-[9px] text-text-tertiary px-1.5 py-0.5 rounded-full border border-border-subtle">
+                                                                        ♥ {p.favoriteCount}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {/* Actions */}
+                                                            <div className="flex gap-1 pt-0.5">
+                                                                <a href={p.listingUrl} target="_blank" rel="noopener noreferrer"
+                                                                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-bg-overlay hover:bg-white/10 text-text-tertiary text-[10px] border border-border-subtle transition-colors">
+                                                                    <ArrowRight className="w-2.5 h-2.5" />Etsy
+                                                                </a>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setModalOpen(false);
+                                                                        const prompt = `${p.title.slice(0, 80)}, ${d.niche}`;
+                                                                        setSelModel(selModel);
+                                                                        setTimeout(() => {
+                                                                            const params = new URLSearchParams({ prompt, model: selModel, style: selStyle, niche: d.niche });
+                                                                            window.location.href = `/dashboard/factory?${params.toString()}`;
+                                                                        }, 100);
+                                                                    }}
+                                                                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-green-600/10 hover:bg-green-600/20 text-green-400 text-[10px] border border-green-500/20 transition-colors">
+                                                                    <Factory className="w-2.5 h-2.5" />Üret
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

@@ -263,6 +263,9 @@ function _normaliseEtsyItem(item) {
         sales,
         rating:       item.rating                        ?? null,
         shopName:     item.shop?.name ?? item.shopName   ?? '',
+        reviewCount:  parseInt(item.num_reviews ?? item.reviewCount ?? item.reviews_count ?? item.reviewsCount ?? item.numberOfReviews ?? 0, 10),
+        favoriteCount: parseInt(item.num_favorites ?? item.favoriteCount ?? item.favoritesCount ?? item.favorites ?? 0, 10),
+        listingDate:  item.listing_creation_date ?? item.creation_tsz ?? item.created_at ?? item.createdAt ?? item.listing_date ?? null,
         // ── Instant Intelligence signals ─────────────────────────────────
         isBestSeller: !!(item.is_best_seller ?? item.isBestSeller ?? item.bestseller ?? false),
         inCartCount:  parseInt(item.in_cart ?? item.inCart ?? item.in_carts ?? item.inCartCount ?? 0, 10),

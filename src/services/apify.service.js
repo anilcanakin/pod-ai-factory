@@ -32,12 +32,16 @@ const ACTORS = {
     ETSY_PRODUCTS:    process.env.APIFY_ACTOR_ETSY          || 'shahidirfan/etsy-scraper',
     ETSY_FALLBACK:    process.env.APIFY_ACTOR_ETSY_FALLBACK  || 'apify/etsy-scraper',
     ETSY_KEYWORDS:    process.env.APIFY_ACTOR_KEYWORDS        || 'apify/etsy-scraper',
+    // Hızlı keyword araştırma için optimize actor (8s / 144 sonuç).
+    // .env'de APIFY_ACTOR_ETSY_SEARCH=getdat/etsy-product-search-scraper şeklinde set et.
+    ETSY_SEARCH:      process.env.APIFY_ACTOR_ETSY_SEARCH    || null,
     PINTEREST:        process.env.APIFY_ACTOR_PINTEREST       || 'apify/pinterest-crawler',
 };
 
 // ─── Timeouts (saniye) ────────────────────────────────────────────────────────
-// 60s ilk deneme — aşılırsa kısmi veri alınır, hata fırlatılmaz.
-const TIMEOUTS = { KEYWORDS: 60, PRODUCTS: 60, PINTEREST: 60 };
+// KEYWORDS/PRODUCTS: shahidirfan actor'ı 60s'de zaman aşımına uğruyordu → 300s.
+// SEARCH: hızlı actor için 60s yeterli.
+const TIMEOUTS = { KEYWORDS: 300, PRODUCTS: 300, PINTEREST: 120, SEARCH: 60 };
 
 // ─── Bellek (MB) ──────────────────────────────────────────────────────────────
 const MEMORY = { KEYWORDS: 512, PRODUCTS: 1024, PINTEREST: 1024 };
@@ -192,8 +196,8 @@ async function _runActorWithX402(actorId, input, { waitSecs = 300, memory = 1024
 // ─── Standart SDK runner ──────────────────────────────────────────────────────
 
 async function _runActor(actorId, input, { waitSecs = 60, memory = 1024, maxItems } = {}) {
-    // Timeout 60s — aşılırsa kısmi dataset okunur, hata fırlatılmaz.
-    const runOptions = { waitSecs: Math.min(waitSecs, 60), memory, ...(maxItems ? { maxItems } : {}) };
+    // Timeout üst sınır: 300s (actor'a göre TIMEOUTS sabitleri tarafından kontrol edilir).
+    const runOptions = { waitSecs: Math.min(waitSecs, 300), memory, ...(maxItems ? { maxItems } : {}) };
     console.log(`[Apify] ▶ ${actorId} | memory:${memory}MB | timeout:${runOptions.waitSecs}s${maxItems ? ` | maxItems:${maxItems}` : ''} | input:`, JSON.stringify(input).slice(0, 200));
 
     let run;
@@ -429,7 +433,32 @@ SADECE JSON:
 async function researchEtsyKeywords(keywords, countryCode = 'US') {
     const kwArray = Array.isArray(keywords) ? keywords : [keywords];
 
-    // ── Primary: apify/etsy-scraper → başlık mining ───────────────────────────
+    // ── Primary: hızlı search actor (ETSY_SEARCH) varsa önce onu dene ─────────
+    if (ACTORS.ETSY_SEARCH) {
+        try {
+            const allProducts = [];
+            for (const kw of kwArray.slice(0, 6)) {
+                // Input şeması: { keyword, maxItems } — Etsy Product Search Scraper
+                const items = await _runActor(
+                    ACTORS.ETSY_SEARCH,
+                    { keyword: kw, maxItems: 30 },
+                    { waitSecs: TIMEOUTS.SEARCH, memory: MEMORY.KEYWORDS, maxItems: 30 }
+                );
+                allProducts.push(...items.map(_normaliseEtsyItem));
+            }
+            if (allProducts.length > 0) {
+                const mined = await _mineKeywordsFromTitles(allProducts, kwArray);
+                if (mined.length > 0) {
+                    console.log(`[Apify] ✓ ETSY_SEARCH keyword mining: ${mined.length} keyword (${allProducts.length} ürün)`);
+                    return mined;
+                }
+            }
+        } catch (err) {
+            console.warn(`[Apify] ETSY_SEARCH actor hatası: ${err.message} — standart actor'a geçiliyor.`);
+        }
+    }
+
+    // ── Standart: apify/etsy-scraper → başlık mining ─────────────────────────
     try {
         // Tüm seed keyword'leri birleştirip bir tarama yap
         const combinedQuery = kwArray.join(' ');

@@ -412,11 +412,22 @@ router.post('/radar-discoveries/:id/send-factory', async (req, res) => {
  * GET /api/wpi/niche-products?niche=...&maxResults=30
  * Bir niş için Etsy'deki gerçek ürünleri getirir.
  * reviewCount × 8 formülüyle haftalık ve aylık satış tahmini hesaplar.
+ * Sonuçlar 24 saat Redis'te cache'lenir — Apify maliyetini düşürür.
  */
 router.get('/niche-products', async (req, res) => {
     try {
         const { niche, maxResults = 30 } = req.query;
         if (!niche) return res.status(400).json({ error: 'niche parametresi zorunlu' });
+
+        const cacheKey = `wpi:niche-products:${String(niche).toLowerCase().trim().slice(0, 80)}`;
+        const CACHE_TTL = 86_400; // 24 saat (saniye)
+
+        // Cache kontrolü
+        const cached = await redis.get(cacheKey).catch(() => null);
+        if (cached) {
+            console.log(`[WPI niche-products] Cache HIT: "${niche}"`);
+            return res.json({ ...JSON.parse(cached), fromCache: true });
+        }
 
         const apify    = require('../services/apify.service');
         const products = await apify.scrapeEtsyProducts(String(niche), parseInt(maxResults, 10));
@@ -429,7 +440,7 @@ router.get('/niche-products', async (req, res) => {
             let listingAgeDays = null;
             if (p.listingDate) {
                 const ts = typeof p.listingDate === 'number'
-                    ? p.listingDate * 1000       // Unix timestamp (saniye)
+                    ? p.listingDate * 1000
                     : new Date(p.listingDate).getTime();
                 if (!isNaN(ts)) listingAgeDays = Math.max(1, Math.floor((now - ts) / 86_400_000));
             }
@@ -437,19 +448,16 @@ router.get('/niche-products', async (req, res) => {
             const monthlySales = listingAgeDays ? parseFloat((totalEst / (listingAgeDays / 30)).toFixed(1)) : null;
             const weeklySales  = listingAgeDays ? parseFloat((totalEst / (listingAgeDays / 7)).toFixed(1))  : null;
 
-            return {
-                ...p,
-                totalEstimatedSales: totalEst,
-                listingAgeDays,
-                monthlySales,
-                weeklySales,
-            };
+            return { ...p, totalEstimatedSales: totalEst, listingAgeDays, monthlySales, weeklySales };
         });
 
-        // Haftalık satısa göre sırala (null'lar sona)
         enriched.sort((a, b) => (b.weeklySales ?? -1) - (a.weeklySales ?? -1));
 
-        res.json({ success: true, count: enriched.length, niche, products: enriched });
+        const payload = { success: true, count: enriched.length, niche, products: enriched };
+        redis.set(cacheKey, JSON.stringify(payload), 'EX', CACHE_TTL).catch(() => {});
+        console.log(`[WPI niche-products] Apify çağrıldı + cache yazıldı: "${niche}" (${enriched.length} ürün)`);
+
+        res.json(payload);
     } catch (err) {
         console.error('[WPI niche-products]', err.message);
         res.status(500).json({ error: err.message });

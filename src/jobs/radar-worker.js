@@ -195,12 +195,27 @@ async function runRadarScan() {
 
 // ─── Cron Starter ─────────────────────────────────────────────────────────────
 
-function startCron() {
-    const nextRunMin = Math.round(INITIAL_DELAY_MS / 60000);
-    console.log(`[Radar] Cron başlatıldı — ilk tarama ~${nextRunMin} dk sonra, sonraki her 12 saatte bir.`);
+async function _shouldRun() {
+    try {
+        const ts = await redis.get('radar:lastRunAt');
+        if (!ts) return true;
+        const elapsed = Date.now() - parseInt(ts, 10);
+        if (elapsed < INTERVAL_MS) {
+            const hoursLeft = Math.round((INTERVAL_MS - elapsed) / 3_600_000);
+            console.log(`[Radar] Atlandı — son taramadan bu yana ${Math.round(elapsed/3_600_000)}s geçti, sonraki ~${hoursLeft}s sonra.`);
+            return false;
+        }
+        return true;
+    } catch { return true; }
+}
 
-    setTimeout(() => {
-        runRadarScan().catch(err => console.error('[Radar] İlk tarama başarısız:', err.message));
+function startCron() {
+    console.log('[Radar] Cron başlatıldı — haftalık tarama aktif.');
+
+    setTimeout(async () => {
+        if (await _shouldRun()) {
+            runRadarScan().catch(err => console.error('[Radar] İlk tarama başarısız:', err.message));
+        }
         setInterval(
             () => runRadarScan().catch(err => console.error('[Radar] Cron tarama başarısız:', err.message)),
             INTERVAL_MS

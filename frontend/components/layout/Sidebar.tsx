@@ -24,26 +24,34 @@ import {
     Bot,
     ShoppingBag,
     TrendingUp,
-    Target
+    Target,
+    Radar,
+    Telescope,
+    PackageSearch,
+    BarChart2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SHORTCUT_LABELS } from '@/hooks/useKeyboardShortcuts';
 
 const navItems = [
-    { href: '/dashboard/hq', label: 'HQ', icon: Zap },
-    { href: '/dashboard/overview', label: 'Overview', icon: LayoutDashboard },
-    { href: '/dashboard/agent', label: 'AI Manager', icon: Bot },
-    { href: '/dashboard/brain', label: 'AI Brain', icon: Brain },
-    { href: '/dashboard/orders', label: 'Orders', icon: ShoppingBag },
-    { href: '/dashboard/wpi', label: 'WPI', icon: Target },
-    { href: '/dashboard/factory', label: 'Factory', icon: Cpu },
-    { href: '/dashboard/gallery', label: 'Gallery', icon: Images },
-    { href: '/dashboard/mockups', label: 'Mockups', icon: Frame },
-    { href: '/dashboard/exports', label: 'Exports', icon: Download },
-    { href: '/dashboard/tools', label: 'Araçlar', icon: Wrench },
-    { href: '/dashboard/seo', label: 'SEO Generator', icon: Tag },
-    { href: '/dashboard/etsy-listings', label: 'My Listings', icon: Store },
-    { href: '/dashboard/settings', label: 'Settings', icon: Settings },
+    { href: '/dashboard/hq',            label: 'Ana Merkez',    icon: Zap },
+    { href: '/dashboard/overview',      label: 'Genel Bakış',   icon: LayoutDashboard },
+    { href: '/dashboard/wpi',           label: 'WPI / Radar',   icon: Target },
+    { href: '/dashboard/ideas',         label: 'Fikirler',      icon: Lightbulb },
+    { href: '/dashboard/trends',        label: 'Trendler',      icon: TrendingUp },
+    { href: '/dashboard/etsy-mode',     label: 'Etsy Modu',     icon: PackageSearch },
+    { href: '/dashboard/factory',       label: 'Fabrika',       icon: Cpu },
+    { href: '/dashboard/gallery',       label: 'Galeri',        icon: Images },
+    { href: '/dashboard/mockups',       label: 'Mockuplar',     icon: Frame },
+    { href: '/dashboard/tools',         label: 'Araçlar',       icon: Wrench },
+    { href: '/dashboard/seo',           label: 'SEO Üretici',   icon: Tag },
+    { href: '/dashboard/brain',         label: 'YZ Beyin',      icon: Brain },
+    { href: '/dashboard/analytics',     label: 'Analitik',      icon: BarChart2 },
+    { href: '/dashboard/exports',       label: 'Dışa Aktarım',  icon: Download },
+    { href: '/dashboard/etsy-listings', label: 'Listelerim',    icon: Store },
+    { href: '/dashboard/agent',         label: 'YZ Yöneticisi', icon: Bot },
+    { href: '/dashboard/orders',        label: 'Siparişler',    icon: ShoppingBag },
+    { href: '/dashboard/settings',      label: 'Ayarlar',       icon: Settings },
 ];
 
 export function Sidebar() {
@@ -110,7 +118,7 @@ export function Sidebar() {
                         ? <Sun className="w-3.5 h-3.5 flex-shrink-0" />
                         : <Moon className="w-3.5 h-3.5 flex-shrink-0" />
                     }
-                    <span className="text-[11px]">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+                    <span className="text-[11px]">{theme === 'dark' ? 'Açık Mod' : 'Koyu Mod'}</span>
                 </button>
 
                 {/* Keyboard shortcuts tooltip */}
@@ -120,12 +128,12 @@ export function Sidebar() {
                         className="flex items-center gap-2 w-full px-2 py-1.5 rounded-[6px] text-text-tertiary hover:text-text-secondary hover:bg-[rgba(255,255,255,0.04)] transition-colors"
                     >
                         <Keyboard className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="text-[11px]">Keyboard shortcuts</span>
+                        <span className="text-[11px]">Klavye Kısayolları</span>
                     </button>
                     {showShortcuts && (
                         <div className="absolute bottom-full left-0 mb-2 w-52 bg-bg-elevated border border-border-default rounded-[10px] shadow-xl p-3 z-50">
                             <div className="flex items-center justify-between mb-2">
-                                <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Shortcuts</span>
+                                <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Kısayollar</span>
                                 <button onClick={() => setShowShortcuts(false)} className="text-text-tertiary hover:text-text-secondary">
                                     <X className="w-3 h-3" />
                                 </button>
@@ -149,9 +157,9 @@ export function Sidebar() {
                         AD
                     </div>
                     <div className="min-w-0">
-                        <p className="text-xs font-medium text-text-primary truncate">Workspace Admin</p>
+                        <p className="text-xs font-medium text-text-primary truncate">Alan Yöneticisi</p>
                         <p className="text-[10px] text-text-tertiary truncate">
-                            {process.env.NEXT_PUBLIC_APP_MODE === 'saas' ? 'Mode: SaaS' : 'Mode: Self-Hosted'}
+                            {process.env.NEXT_PUBLIC_APP_MODE === 'saas' ? 'Mod: SaaS' : 'Mod: Öz Barındırma'}
                         </p>
                     </div>
                 </div>

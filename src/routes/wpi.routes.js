@@ -303,18 +303,15 @@ router.get('/radar-discoveries', async (req, res) => {
         const hours       = Math.min(parseInt(req.query.hours || '24', 10), 168); // max 1 hafta
         const cutoff      = new Date(Date.now() - hours * 60 * 60 * 1000);
 
+        // Tek kullanıcılı kurulum: tüm workspace'lerdeki HOT_DISCOVERY'leri göster.
+        // Çok kiracılı geçişte buraya req.workspaceId filtresi eklenecek.
         const entries = await _prisma.corporateMemory.findMany({
             where:   { type: 'HOT_DISCOVERY', createdAt: { gte: cutoff } },
             orderBy: { createdAt: 'desc' },
             take:    200,
             select:  { id: true, workspaceId: true, title: true, content: true, createdAt: true, analysisResult: true },
         });
-
-        // Workspace filter: authenticated users see their own + default-workspace
-        const filteredEntries = entries.filter(e =>
-            e.workspaceId === workspaceId || e.workspaceId === 'default-workspace'
-        );
-        console.log(`[Radar] ${entries.length} total HOT_DISCOVERY, ${filteredEntries.length} for workspace ${workspaceId}`);
+        console.log(`[Radar] ${entries.length} HOT_DISCOVERY (tüm workspaceler, son ${hours}h)`);
 
         // Son çalışma zamanını Redis'ten al (opsiyonel — worker'ın son çalışmasını izlemek için)
         let lastRunAt = null;
@@ -327,7 +324,7 @@ router.get('/radar-discoveries', async (req, res) => {
             }
         } catch { /* Redis yoksa sessizce geç */ }
 
-        const discoveries = filteredEntries.map(e => ({
+        const discoveries = entries.map(e => ({
             id:                    e.id,
             niche:                 e.analysisResult?.niche || e.title.replace('[Radar] ', ''),
             discoveryScore:        e.analysisResult?.discoveryScore || 0,

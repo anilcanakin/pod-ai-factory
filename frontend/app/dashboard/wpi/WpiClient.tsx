@@ -526,6 +526,26 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
     );
 }
 
+// ─── Radar Generate Config ────────────────────────────────────────────────────
+
+const RADAR_MODELS = [
+    { id: 'fal-ai/flux/dev',    label: 'Flux Dev',     emoji: '⚡', desc: 'En kaliteli' },
+    { id: 'fal-ai/flux/schnell',label: 'Flux Schnell', emoji: '🚀', desc: 'Hızlı & uyumlu' },
+    { id: 'fal-ai/ideogram/v2', label: 'Ideogram V2',  emoji: '✍️', desc: 'Metin + görsel' },
+    { id: 'fal-ai/recraft-v3',  label: 'Recraft V3',   emoji: '🎨', desc: 'Vektör tarzı' },
+];
+
+const RADAR_STYLES = [
+    { id: 'vintage',    label: 'Vintage',    emoji: '🏚️' },
+    { id: 'minimalist', label: 'Minimal',    emoji: '◻️' },
+    { id: 'grunge',     label: 'Grunge',     emoji: '⚡' },
+    { id: 'retro',      label: 'Retro',      emoji: '🌈' },
+    { id: 'botanical',  label: 'Botanical',  emoji: '🌿' },
+    { id: 'collegiate', label: 'Collegiate', emoji: '🏆' },
+    { id: 'streetwear', label: 'Street',     emoji: '🔥' },
+    { id: 'watercolor', label: 'Watercolor', emoji: '🎨' },
+];
+
 // ─── Radar Auto-Pilot Panel ───────────────────────────────────────────────────
 
 const SOURCE_CONFIG: Record<string, { label: string; color: string }> = {
@@ -554,7 +574,7 @@ function RadarAutoPilot({
     nextRunAt: string | null;
     onTrigger: () => void;
     onAnalyzeInWpi: (d: RadarDiscovery) => void;
-    onDirectFactory: (d: RadarDiscovery) => void;
+    onDirectFactory: (d: RadarDiscovery, model: string, style: string) => void;
 }) {
     const [collapsed, setCollapsed]     = useState(false);
     const [showAll, setShowAll]         = useState(false);
@@ -718,9 +738,18 @@ function RadarDiscoveryCard({
     discovery: RadarDiscovery;
     isCritical: boolean;
     onAnalyzeInWpi: (d: RadarDiscovery) => void;
-    onDirectFactory: (d: RadarDiscovery) => void;
+    onDirectFactory: (d: RadarDiscovery, model: string, style: string) => void;
 }) {
-    const [modalOpen, setModalOpen] = useState(false);
+    const [modalOpen, setModalOpen]         = useState(false);
+    const [configOpen, setConfigOpen]       = useState(false);
+    const [selModel, setSelModel]           = useState('fal-ai/flux/dev');
+    const [selStyle, setSelStyle]           = useState('vintage');
+
+    const openConfig = (e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setModalOpen(false);
+        setConfigOpen(true);
+    };
     const srcCfg = SOURCE_CONFIG[d.source] ?? SOURCE_CONFIG.etsy;
     const scoreColor = d.discoveryScore >= 90 ? 'text-red-400' : d.discoveryScore >= 80 ? 'text-violet-400' : 'text-amber-400';
 
@@ -793,7 +822,7 @@ function RadarDiscoveryCard({
                         WPI&apos;da Analiz Et
                     </button>
                     <button
-                        onClick={() => onDirectFactory(d)}
+                        onClick={openConfig}
                         className={cn(
                             'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors',
                             isCritical
@@ -807,7 +836,97 @@ function RadarDiscoveryCard({
                 </div>
             </div>
 
-            {/* ── Modal ── */}
+            {/* ── Generate Config Modal ── */}
+            {configOpen && (
+                <div
+                    className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+                    onClick={() => setConfigOpen(false)}
+                >
+                    <div
+                        className="relative w-full max-w-md rounded-2xl border border-border-default shadow-2xl bg-bg-elevated overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
+                            <div>
+                                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                                    <Factory className="w-4 h-4 text-green-400" />
+                                    Üretim Ayarları
+                                </h3>
+                                <p className="text-[10px] text-text-tertiary mt-0.5 truncate max-w-[280px]">{d.niche}</p>
+                            </div>
+                            <button onClick={() => setConfigOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-text-tertiary transition-colors">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-5">
+                            {/* Model seçimi */}
+                            <div>
+                                <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Üretim Motoru</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {RADAR_MODELS.map(m => (
+                                        <button
+                                            key={m.id}
+                                            onClick={() => setSelModel(m.id)}
+                                            className={cn(
+                                                'flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all',
+                                                selModel === m.id
+                                                    ? 'border-accent bg-accent/15 shadow-[0_0_12px_rgba(124,58,237,0.15)]'
+                                                    : 'border-border-subtle bg-bg-base hover:border-border-default'
+                                            )}
+                                        >
+                                            <span className="text-lg leading-none">{m.emoji}</span>
+                                            <div className="min-w-0">
+                                                <p className={cn('text-xs font-semibold', selModel === m.id ? 'text-accent' : 'text-text-primary')}>{m.label}</p>
+                                                <p className="text-[9px] text-text-tertiary">{m.desc}</p>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Stil seçimi */}
+                            <div>
+                                <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Tasarım Stili</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {RADAR_STYLES.map(s => (
+                                        <button
+                                            key={s.id}
+                                            onClick={() => setSelStyle(s.id)}
+                                            className={cn(
+                                                'flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-all',
+                                                selStyle === s.id
+                                                    ? 'border-violet-500/60 bg-violet-500/20 text-violet-300'
+                                                    : 'border-border-subtle bg-bg-base text-text-tertiary hover:text-text-secondary hover:border-border-default'
+                                            )}
+                                        >
+                                            <span>{s.emoji}</span> {s.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Confirm */}
+                            <button
+                                onClick={() => {
+                                    setConfigOpen(false);
+                                    onDirectFactory(d, selModel, selStyle);
+                                }}
+                                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white text-sm font-bold transition-all shadow-lg"
+                            >
+                                <Factory className="w-4 h-4" />
+                                Üret →
+                                <span className="text-[10px] opacity-70 font-normal ml-1">
+                                    {RADAR_MODELS.find(m => m.id === selModel)?.label} · {RADAR_STYLES.find(s => s.id === selStyle)?.label}
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Info Modal ── */}
             {modalOpen && (
                 <div
                     className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
@@ -899,7 +1018,7 @@ function RadarDiscoveryCard({
                                 WPI&apos;da Analiz Et
                             </button>
                             <button
-                                onClick={() => { onDirectFactory(d); setModalOpen(false); }}
+                                onClick={openConfig}
                                 className={cn(
                                     'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold border transition-colors',
                                     isCritical
@@ -1208,7 +1327,7 @@ export function WpiClient() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleRadarDirectFactory = async (d: RadarDiscovery) => {
+    const handleRadarDirectFactory = async (d: RadarDiscovery, model: string, style: string) => {
         try {
             await apiWpi.radarSendFactory(d.id);
             toast.success(`Draft Task oluşturuldu: "${d.niche.slice(0, 45)}"`);
@@ -1216,7 +1335,13 @@ export function WpiClient() {
             toast.error('Draft Task oluşturulamadı — yine de Factory\'ye yönlendiriliyor');
         }
         const prompt = `${d.niche}${d.productRecommendation ? ` ${d.productRecommendation}` : ''}, ${d.suggestedKeywords.slice(0, 2).join(', ')}`;
-        window.location.href = `/dashboard/factory?prompt=${encodeURIComponent(prompt)}`;
+        const params = new URLSearchParams({
+            prompt,
+            model,
+            style,
+            niche: d.niche,
+        });
+        window.location.href = `/dashboard/factory?${params.toString()}`;
     };
 
     useEffect(() => { loadCards(); }, [loadCards]);

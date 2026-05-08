@@ -1,80 +1,58 @@
-const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
-);
+// Tüm yüklenen dosyalar assets/uploads/ altına kaydedilir.
+// Bu dizin index.js'te /assets/uploads/* olarak statik servis edilir.
+const UPLOADS_ROOT = path.join(__dirname, '../../assets/uploads');
 
-const BUCKET = 'mockup-outputs';
+if (!fs.existsSync(UPLOADS_ROOT)) {
+    fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
+}
 
-/**
- * Upload a local file to Supabase Storage
- * Returns the public URL
- */
-async function uploadToStorage(localFilePath, storagePath) {
-    try {
-        const fileBuffer = fs.readFileSync(localFilePath);
-        const contentType = localFilePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+function ensureDir(dir) {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
 
-        const { data, error } = await supabase.storage
-            .from(BUCKET)
-            .upload(storagePath, fileBuffer, {
-                contentType,
-                upsert: true
-            });
-
-        if (error) throw error;
-
-        const { data: urlData } = supabase.storage
-            .from(BUCKET)
-            .getPublicUrl(storagePath);
-
-        return urlData.publicUrl;
-
-    } catch (err) {
-        console.error('[Storage] Upload failed:', err.message);
-        throw err;
-    }
+// storagePath örneği: "generated/abc123_1234567890.png"
+// Dönen URL    örneği: "assets/uploads/generated/abc123_1234567890.png"
+// Frontend'deki resolveUrl() bu değerin önüne API_BASE ekler.
+function toPublicUrl(storagePath) {
+    return `assets/uploads/${storagePath}`;
 }
 
 /**
- * Upload from URL (download then upload to Supabase for permanent hosting)
+ * Yerel bir dosyayı uploads klasörüne kopyalar.
+ * Eski imza: uploadToStorage(localFilePath, storagePath)
+ */
+async function uploadToStorage(localFilePath, storagePath) {
+    const dest = path.join(UPLOADS_ROOT, storagePath);
+    ensureDir(path.dirname(dest));
+    fs.copyFileSync(localFilePath, dest);
+    console.log('[Storage] Dosya kopyalandı:', dest);
+    return toPublicUrl(storagePath);
+}
+
+/**
+ * Bir URL'den görseli indirir ve uploads klasörüne kaydeder.
+ * Eski imza: uploadUrlToStorage(imageUrl, storagePath)
  */
 async function uploadUrlToStorage(imageUrl, storagePath) {
     const fetch = require('node-fetch');
     const response = await fetch(imageUrl);
-
     if (!response.ok) {
-        throw new Error(`[Storage] Failed to fetch image from URL (${response.status}): ${imageUrl}`);
+        throw new Error(`[Storage] Görsel indirilemedi (${response.status}): ${imageUrl}`);
     }
-
-    // Detect real content type from response headers instead of hardcoding 'image/png'
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
     const buffer = await response.buffer();
-
-    const { data, error } = await supabase.storage
-        .from(BUCKET)
-        .upload(storagePath, buffer, {
-            contentType,
-            upsert: true
-        });
-
-    if (error) throw error;
-
-    const { data: urlData } = supabase.storage
-        .from(BUCKET)
-        .getPublicUrl(storagePath);
-
-    return urlData.publicUrl;
+    const dest = path.join(UPLOADS_ROOT, storagePath);
+    ensureDir(path.dirname(dest));
+    fs.writeFileSync(dest, buffer);
+    console.log('[Storage] URL kaydedildi:', dest);
+    return toPublicUrl(storagePath);
 }
 
 /**
- * QA tarafından reddedilen görseli küçük thumbnail olarak Supabase'in
- * rejected_assets/ klasörüne kaydet.
- * — Sharp ile 512×512 sınırına resize, JPEG quality:55 (ucuz depolama)
- * — Kalıcı referans: Gallery'de FAL'ın geçici URL'si yerine bu kullanılır
+ * Reddedilen görseli 512×512 JPEG thumbnail olarak kaydeder.
+ * Eski imza: uploadRejectedToStorage(imageUrl, storagePath)
  */
 async function uploadRejectedToStorage(imageUrl, storagePath) {
     const fetch = require('node-fetch');
@@ -82,55 +60,37 @@ async function uploadRejectedToStorage(imageUrl, storagePath) {
 
     const response = await fetch(imageUrl);
     if (!response.ok) {
-        throw new Error(`[Storage/Rejected] Fetch failed (${response.status}): ${imageUrl}`);
+        throw new Error(`[Storage/Rejected] Görsel indirilemedi (${response.status}): ${imageUrl}`);
     }
-
     const rawBuffer = await response.buffer();
 
-    // Thumbnail: en fazla 512×512, oranı koru, JPEG %55 kalite
     const thumbnail = await sharp(rawBuffer)
         .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 55 })
         .toBuffer();
 
-    const { error } = await supabase.storage
-        .from(BUCKET)
-        .upload(storagePath, thumbnail, {
-            contentType: 'image/jpeg',
-            upsert: true
-        });
-
-    if (error) throw error;
-
-    const { data: urlData } = supabase.storage
-        .from(BUCKET)
-        .getPublicUrl(storagePath);
-
-    return urlData.publicUrl;
+    const dest = path.join(UPLOADS_ROOT, storagePath);
+    ensureDir(path.dirname(dest));
+    fs.writeFileSync(dest, thumbnail);
+    console.log('[Storage] Reddedilen thumbnail kaydedildi:', dest);
+    return toPublicUrl(storagePath);
 }
 
 /**
- * Upload a raw Buffer directly to Supabase Storage (no intermediate fetch needed).
- * Used by ImageRouter to stage Genai-generated images as real HTTPS URLs
- * before they flow into QA, RMBG, and the final storage step.
- *
- * @param {Buffer} buffer
- * @param {string} storagePath  - e.g. 'temp_genai/xyz.png'
- * @param {string} contentType  - e.g. 'image/png'
- * @returns {Promise<string>}   - Supabase public URL
+ * Bir Buffer'ı doğrudan uploads klasörüne yazar.
+ * Eski imza: uploadBufferToStorage(buffer, storagePath, contentType)
  */
 async function uploadBufferToStorage(buffer, storagePath, contentType = 'image/png') {
-    const { error } = await supabase.storage
-        .from(BUCKET)
-        .upload(storagePath, buffer, { contentType, upsert: true });
-
-    if (error) throw new Error(`[Storage] Buffer upload failed: ${error.message}`);
-
-    const { data: urlData } = supabase.storage
-        .from(BUCKET)
-        .getPublicUrl(storagePath);
-
-    return urlData.publicUrl;
+    const dest = path.join(UPLOADS_ROOT, storagePath);
+    ensureDir(path.dirname(dest));
+    fs.writeFileSync(dest, buffer);
+    console.log('[Storage] Buffer kaydedildi:', dest);
+    return toPublicUrl(storagePath);
 }
 
-module.exports = { uploadToStorage, uploadUrlToStorage, uploadRejectedToStorage, uploadBufferToStorage };
+module.exports = {
+    uploadToStorage,
+    uploadUrlToStorage,
+    uploadRejectedToStorage,
+    uploadBufferToStorage,
+};

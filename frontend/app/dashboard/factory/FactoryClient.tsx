@@ -102,15 +102,19 @@ export function FactoryClient() {
     const [mainPrompt, setMainPrompt]       = useState('');
     const [prefillBanner, setPrefillBanner] = useState<string | null>(null);
 
-    // Pre-fill from URL params (e.g. ?prompt=... &niche=... from WPI → Factory flow)
+    // Pre-fill from URL params (e.g. ?prompt=... &niche=... &model=... &style=... from WPI → Factory flow)
     useEffect(() => {
-        const prompt = searchParams.get('prompt');
-        const niche  = searchParams.get('niche');
+        const prompt      = searchParams.get('prompt');
+        const niche       = searchParams.get('niche');
+        const modelParam  = searchParams.get('model');
+        const styleParam  = searchParams.get('style');
         if (prompt) {
             setMainPrompt(prompt);
-            const label = niche ? `Niche: ${niche}` : 'WPI';
+            const label = niche ? `Radar: ${niche}` : 'WPI / Radar';
             setPrefillBanner(label);
         }
+        if (modelParam) setModel(modelParam);
+        if (styleParam) setActivePreset(styleParam);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     const [variations, setVariations] = useState<{ id: string; prompt: string; selected: boolean }[]>([]);
@@ -441,8 +445,8 @@ export function FactoryClient() {
     return (
         <div className="animate-fade-in">
             <div className="mb-4">
-                <h1 className="text-2xl font-bold text-text-primary">AI Design Generator</h1>
-                <p className="text-sm text-text-secondary mt-1">Create POD-ready designs with AI-powered generation</p>
+                <h1 className="text-2xl font-bold text-text-primary">Yapay Zeka Tasarım Üretici</h1>
+                <p className="text-sm text-text-secondary mt-1">Yapay zeka destekli üretimle POD'a hazır tasarımlar oluşturun</p>
             </div>
 
             {/* ── Pre-fill Banner (from WPI / Radar) ── */}
@@ -467,7 +471,7 @@ export function FactoryClient() {
                     >
                         <div className="flex items-center gap-2">
                             <Flame className="w-4 h-4 text-orange-400" />
-                            <span className="text-sm font-semibold text-orange-300">WPI — Ready to Generate</span>
+                            <span className="text-sm font-semibold text-orange-300">WPI — Üretime Hazır</span>
                             <span className="px-1.5 py-0.5 rounded-full bg-orange-500/30 text-orange-300 text-[10px] font-bold">
                                 {wpiJobs.length}
                             </span>
@@ -525,7 +529,7 @@ export function FactoryClient() {
 
                     {/* Upload Area */}
                     <section>
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-3">Reference Images</h3>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-3">Referans Görseller</h3>
 
                         {/* Thumbnails */}
                         {refImages.length > 0 && (
@@ -565,8 +569,8 @@ export function FactoryClient() {
                                     onChange={handleFileChange}
                                 />
                                 <Upload className={cn("w-6 h-6 mb-1 transition-colors", isDragging ? "text-accent" : "text-text-tertiary group-hover:text-accent")} />
-                                <p className="text-xs text-text-secondary">Drop images or <span className="text-accent">browse</span></p>
-                                <p className="text-[10px] text-text-tertiary mt-0.5">JPG, PNG up to 10MB · Max 8 · Each image analyzed separately</p>
+                                <p className="text-xs text-text-secondary">Görselleri bırakın veya <span className="text-accent">seçin</span></p>
+                                <p className="text-[10px] text-text-tertiary mt-0.5">JPG, PNG — maks 10MB · En fazla 8 · Her görsel ayrı analiz edilir</p>
                             </div>
                         )}
                     </section>
@@ -578,16 +582,16 @@ export function FactoryClient() {
                         className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-white px-4 py-3 rounded-[10px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         {isAnalyzing ? (
-                            <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing...</>
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Analiz ediliyor...</>
                         ) : (
-                            <><Sparkles className="w-4 h-4" /> Get AI Prompt</>
+                            <><Sparkles className="w-4 h-4" /> Yapay Zeka Promptu Al</>
                         )}
                     </button>
 
                     {/* Prompt Textarea */}
                     <section>
                         <div className="flex items-center justify-between mb-2">
-                            <label className="text-xs font-semibold uppercase tracking-wider text-text-tertiary block">Generation Prompt</label>
+                            <label className="text-xs font-semibold uppercase tracking-wider text-text-tertiary block">Üretim Promptu</label>
 
                             <div className="flex items-center gap-1.5">
                             {/* History Dropdown Button */}
@@ -596,18 +600,18 @@ export function FactoryClient() {
                                     onClick={() => setShowHistory(!showHistory)}
                                     className="flex items-center gap-1.5 text-[10px] font-medium text-text-tertiary hover:text-text-primary transition-colors bg-bg-elevated/50 px-2.5 py-1 rounded-[6px] border border-border-default"
                                 >
-                                    <Clock className="w-3 h-3" /> History {promptHistory.length > 0 && <span className="text-accent">({promptHistory.length})</span>}
+                                    <Clock className="w-3 h-3" /> Geçmiş {promptHistory.length > 0 && <span className="text-accent">({promptHistory.length})</span>}
                                 </button>
                                 {showHistory && (
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setShowHistory(false)} />
                                         <div className="absolute top-full right-0 mt-2 w-72 bg-bg-elevated border border-border-strong rounded-[10px] shadow-xl z-20 py-1.5 overflow-hidden">
                                             <div className="px-3 py-1.5 border-b border-border-default mb-1.5">
-                                                <p className="text-xs font-semibold text-text-primary">Prompt History</p>
-                                                <p className="text-[10px] text-text-tertiary">Click to restore a previous prompt</p>
+                                                <p className="text-xs font-semibold text-text-primary">Prompt Geçmişi</p>
+                                                <p className="text-[10px] text-text-tertiary">Önceki promptu geri yüklemek için tıklayın</p>
                                             </div>
                                             {promptHistory.length === 0 ? (
-                                                <p className="px-3 py-3 text-xs text-text-tertiary">No history yet. Generate something first.</p>
+                                                <p className="px-3 py-3 text-xs text-text-tertiary">Henüz geçmiş yok. Önce bir şey üretin.</p>
                                             ) : (
                                                 <div className="max-h-[250px] overflow-y-auto scrollbar-thin">
                                                     {promptHistory.map((p, i) => (
@@ -622,7 +626,7 @@ export function FactoryClient() {
                                                 </div>
                                             )}
                                             <div className="px-3 pt-1.5 border-t border-border-default mt-1">
-                                                <button onClick={clearHistory} className="text-[10px] text-danger hover:underline">Clear history</button>
+                                                <button onClick={clearHistory} className="text-[10px] text-danger hover:underline">Geçmişi temizle</button>
                                             </div>
                                         </div>
                                     </>
@@ -635,7 +639,7 @@ export function FactoryClient() {
                                     onClick={() => setShowTemplates(!showTemplates)}
                                     className="flex items-center gap-1.5 text-[10px] font-medium text-accent hover:text-accent-hover transition-colors bg-accent-subtle/50 px-2.5 py-1 rounded-[6px] border border-accent/20"
                                 >
-                                    <Layers className="w-3 h-3" /> Templates
+                                    <Layers className="w-3 h-3" /> Şablonlar
                                 </button>
 
                                 {showTemplates && (
@@ -643,8 +647,8 @@ export function FactoryClient() {
                                         <div className="fixed inset-0 z-10" onClick={() => setShowTemplates(false)} />
                                         <div className="absolute top-full right-0 mt-2 w-72 bg-bg-elevated border border-border-strong rounded-[10px] shadow-xl z-20 py-1.5 overflow-hidden">
                                             <div className="px-3 py-1.5 border-b border-border-default mb-1.5">
-                                                <p className="text-xs font-semibold text-text-primary">Prompt Templates</p>
-                                                <p className="text-[10px] text-text-tertiary">Click to fill. Edit placeholders manually.</p>
+                                                <p className="text-xs font-semibold text-text-primary">Prompt Şablonları</p>
+                                                <p className="text-[10px] text-text-tertiary">Doldurmak için tıklayın. Yer tutucuları kendiniz düzenleyin.</p>
                                             </div>
                                             <div className="max-h-[250px] overflow-y-auto scrollbar-thin">
                                                 {PROMPT_TEMPLATES.map((tpl, i) => (
@@ -700,7 +704,7 @@ export function FactoryClient() {
                                 }}
                                 rows={6}
                                 className="w-full bg-bg-elevated border border-border-default rounded-[10px] px-3 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent resize-none"
-                                placeholder="Upload a reference image and click 'Get AI Prompt', or write your own..."
+                                placeholder="Referans görsel yükleyip 'Yapay Zeka Promptu Al'a tıklayın ya da kendi promptunuzu yazın..."
                             />
                             <span className="absolute bottom-2 right-3 text-[10px] text-text-tertiary tabular-nums">
                                 {mainPrompt.length}
@@ -710,7 +714,7 @@ export function FactoryClient() {
 
                     {/* Negative Prompt */}
                     <section>
-                        <label className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-2 block">Negative Prompt</label>
+                        <label className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-2 block">Negatif Prompt</label>
                         <textarea
                             value={negativePrompt}
                             onChange={e => setNegativePrompt(e.target.value)}
@@ -722,7 +726,7 @@ export function FactoryClient() {
 
                     {/* Variation Controls */}
                     <section className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">Variations</h3>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">Varyasyonlar</h3>
 
                         {/* Mode pills */}
                         <div className="flex gap-1.5">
@@ -744,7 +748,7 @@ export function FactoryClient() {
 
                         {/* Count input */}
                         <div className="flex items-center gap-2">
-                            <label className="text-xs text-text-secondary">Count:</label>
+                            <label className="text-xs text-text-secondary">Sayı:</label>
                             <input
                                 type="number"
                                 min={1}
@@ -762,9 +766,9 @@ export function FactoryClient() {
                             className="w-full flex items-center justify-center gap-2 bg-bg-elevated border border-border-default hover:border-accent text-text-primary px-4 py-2.5 rounded-[10px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                             {isGettingVariations ? (
-                                <><Loader2 className="w-4 h-4 animate-spin" /> Generating variations...</>
+                                <><Loader2 className="w-4 h-4 animate-spin" /> Varyasyonlar üretiliyor...</>
                             ) : (
-                                <><Wand2 className="w-4 h-4 text-accent" /> Get Variations</>
+                                <><Wand2 className="w-4 h-4 text-accent" /> Varyasyon Al</>
                             )}
                         </button>
                     </section>
@@ -773,10 +777,10 @@ export function FactoryClient() {
                     {variations.length > 0 && (
                         <section className="space-y-2">
                             <div className="flex items-center justify-between">
-                                <span className="text-xs text-text-secondary">{variations.filter(v => v.selected).length}/{variations.length} selected</span>
+                                <span className="text-xs text-text-secondary">{variations.filter(v => v.selected).length}/{variations.length} seçili</span>
                                 <div className="flex gap-2">
-                                    <button onClick={selectAllVariations} className="text-[10px] text-accent hover:underline">Select All</button>
-                                    <button onClick={deselectAllVariations} className="text-[10px] text-text-tertiary hover:text-text-secondary">Deselect All</button>
+                                    <button onClick={selectAllVariations} className="text-[10px] text-accent hover:underline">Tümünü Seç</button>
+                                    <button onClick={deselectAllVariations} className="text-[10px] text-text-tertiary hover:text-text-secondary">Seçimi Kaldır</button>
                                 </div>
                             </div>
 
@@ -841,7 +845,7 @@ export function FactoryClient() {
 
                     {/* Model Selection */}
                     <section>
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-3">AI Model</h3>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-3">Yapay Zeka Modeli</h3>
                         <div className="grid grid-cols-2 gap-2">
                             {isLoadingModels ? (
                                 Array.from({ length: 4 }).map((_, i) => (
@@ -875,10 +879,10 @@ export function FactoryClient() {
 
                     {/* Settings */}
                     <section>
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-3">Settings</h3>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-3">Ayarlar</h3>
                         <div className="bg-bg-elevated rounded-[10px] border border-border-default p-4 space-y-4">
                             <div>
-                                <label className="text-xs text-text-secondary block mb-1.5">Aspect Ratio</label>
+                                <label className="text-xs text-text-secondary block mb-1.5">En/Boy Oranı</label>
                                 <select
                                     value={imageSize}
                                     onChange={e => setImageSize(e.target.value)}
@@ -899,9 +903,9 @@ export function FactoryClient() {
                         className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-white px-6 py-4 rounded-[10px] font-bold text-base transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         {isGenerating ? (
-                            <><Loader2 className="w-5 h-5 animate-spin" /> Generating...</>
+                            <><Loader2 className="w-5 h-5 animate-spin" /> Üretiliyor...</>
                         ) : (
-                            <>Generate ({selectedCount}) <ArrowRight className="w-5 h-5" /></>
+                            <>Üret ({selectedCount}) <ArrowRight className="w-5 h-5" /></>
                         )}
                     </button>
 
@@ -911,7 +915,7 @@ export function FactoryClient() {
                             <div className="flex items-center gap-2">
                                 <CheckCircle className="w-5 h-5 text-success" />
                                 <div>
-                                    <p className="text-sm font-medium text-success">Images queued successfully</p>
+                                    <p className="text-sm font-medium text-success">Görseller başarıyla kuyruğa eklendi</p>
                                     <p className="text-[10px] text-text-tertiary font-mono mt-0.5">{lastJobId}</p>
                                 </div>
                             </div>
@@ -919,7 +923,7 @@ export function FactoryClient() {
                                 href={`/dashboard/gallery?jobId=${lastJobId}`}
                                 className="flex items-center gap-1.5 bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-[8px] text-sm font-medium transition-colors"
                             >
-                                View in Gallery <ArrowRight className="w-4 h-4" />
+                                Galeriye Git <ArrowRight className="w-4 h-4" />
                             </Link>
                         </div>
                     )}
@@ -929,17 +933,17 @@ export function FactoryClient() {
                         <section className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-                                    Results
+                                    Sonuçlar
                                 </h3>
                                 {isPolling && (
                                     <div className="flex items-center gap-1.5 text-xs text-text-tertiary">
                                         <Loader2 className="w-3 h-3 animate-spin" />
-                                        Generating...
+                                        Üretiliyor...
                                     </div>
                                 )}
                                 {!isPolling && generatedImages.length > 0 && (
                                     <span className="text-xs text-text-tertiary">
-                                        {generatedImages.length} image{generatedImages.length > 1 ? 's' : ''}
+                                        {generatedImages.length} görsel
                                     </span>
                                 )}
                             </div>
@@ -965,7 +969,7 @@ export function FactoryClient() {
                                                 <div className="absolute top-2 left-2 flex gap-1">
                                                     {hasBgRemoved && (
                                                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-success-subtle text-success border border-[rgba(34,197,94,0.20)] font-medium">
-                                                            BG Removed
+                                                            BG Kaldırıldı
                                                         </span>
                                                     )}
                                                     {hasUpscaled && (
@@ -985,7 +989,7 @@ export function FactoryClient() {
                                                     className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs rounded-[6px] border border-border-default transition-colors disabled:opacity-40"
                                                 >
                                                     {isBgProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Scissors className="w-3 h-3" />}
-                                                    Remove BG
+                                                    BG Kaldır
                                                 </button>
 
                                                 {/* Bria Premium */}
@@ -1005,7 +1009,7 @@ export function FactoryClient() {
                                                     className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs rounded-[6px] border border-border-default transition-colors disabled:opacity-40"
                                                 >
                                                     {isUpProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ZoomIn className="w-3 h-3" />}
-                                                    Upscale 4x
+                                                    Büyüt 4x
                                                 </button>
 
                                                 {/* SEO */}
@@ -1042,7 +1046,7 @@ export function FactoryClient() {
                                                     className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-accent-subtle text-text-secondary hover:text-accent text-xs rounded-[6px] border border-border-default hover:border-accent/30 transition-colors"
                                                 >
                                                     <Layers className="w-3 h-3" />
-                                                    To Mockup
+                                                    Mockup'a Git
                                                 </button>
 
                                                 {/* To Remove BG */}
@@ -1051,7 +1055,7 @@ export function FactoryClient() {
                                                     className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-overlay hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs rounded-[6px] border border-border-default transition-colors"
                                                 >
                                                     <Scissors className="w-3 h-3" />
-                                                    To Remove BG
+                                                    BG Kaldırmaya Git
                                                 </button>
                                             </div>
 
@@ -1060,7 +1064,7 @@ export function FactoryClient() {
                                                 <div className="p-2 border-t border-border-default space-y-1.5">
                                                     <div className="flex items-start justify-between gap-2">
                                                         <div className="flex-1 min-w-0">
-                                                            <p className="text-[10px] text-text-tertiary uppercase tracking-wider mb-0.5">Title</p>
+                                                            <p className="text-[10px] text-text-tertiary uppercase tracking-wider mb-0.5">Başlık</p>
                                                             <p className="text-xs text-text-primary line-clamp-2">{seoResults[img.id].title}</p>
                                                         </div>
                                                         <button
@@ -1071,13 +1075,13 @@ export function FactoryClient() {
                                                         </button>
                                                     </div>
                                                     <div className="flex items-center justify-between">
-                                                        <p className="text-[10px] text-text-tertiary">{seoResults[img.id].tags.length} tags ready</p>
+                                                        <p className="text-[10px] text-text-tertiary">{seoResults[img.id].tags.length} etiket hazır</p>
                                                         <div className="flex gap-1">
                                                             <button
                                                                 onClick={() => { navigator.clipboard.writeText(seoResults[img.id].tags.join(', ')); toast.success('Tags copied!'); }}
                                                                 className="text-[10px] px-2 py-0.5 bg-accent-subtle text-accent rounded border border-accent/20 hover:bg-accent hover:text-white transition-colors"
                                                             >
-                                                                Copy Tags
+                                                                Etiketleri Kopyala
                                                             </button>
                                                             <button
                                                                 onClick={() => {
@@ -1087,7 +1091,7 @@ export function FactoryClient() {
                                                                 }}
                                                                 className="text-[10px] px-2 py-0.5 bg-bg-overlay text-text-secondary rounded border border-border-default hover:bg-bg-elevated transition-colors"
                                                             >
-                                                                Copy All
+                                                                Tümünü Kopyala
                                                             </button>
                                                         </div>
                                                     </div>
@@ -1111,8 +1115,8 @@ export function FactoryClient() {
                     {selectedCount === 0 && !lastJobId && (
                         <div className="flex flex-col items-center justify-center py-16 text-text-tertiary">
                             <ImageIcon className="w-12 h-12 mb-3 opacity-20" />
-                            <p className="text-sm">Upload references & generate prompts</p>
-                            <p className="text-xs mt-1">Or write a prompt directly in the left panel</p>
+                            <p className="text-sm">Referans yükleyin ve prompt üretin</p>
+                            <p className="text-xs mt-1">Ya da sol panele doğrudan prompt yazın</p>
                         </div>
                     )}
                 </div>

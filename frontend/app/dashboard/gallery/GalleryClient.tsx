@@ -21,10 +21,10 @@ function timeAgo(dateStr: string): string {
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
     
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return `${days}d ago`;
+    if (mins < 1) return 'az önce';
+    if (mins < 60) return `${mins}dk önce`;
+    if (hours < 24) return `${hours}sa önce`;
+    return `${days}g önce`;
 }
 
 export function GalleryClient() {
@@ -333,7 +333,7 @@ function GalleryInner() {
                         )}
                     >
                         <History className="w-4 h-4" />
-                        History
+                        Geçmiş
                         <span className="px-1.5 py-0.5 bg-accent/10 text-accent text-[10px] font-medium rounded-full">{jobs.length}</span>
                         {showHistory ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     </button>
@@ -354,8 +354,8 @@ function GalleryInner() {
                                         <Images className="w-3.5 h-3.5 text-text-tertiary" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className={cn("text-[11px] font-semibold", activeJobId === '__all__' ? "text-accent" : "text-text-primary")}>All Images</div>
-                                        <div className="text-[10px] text-text-tertiary">Recent across all jobs</div>
+                                        <div className={cn("text-[11px] font-semibold", activeJobId === '__all__' ? "text-accent" : "text-text-primary")}>Tüm Görseller</div>
+                                        <div className="text-[10px] text-text-tertiary">Tüm işlerdeki son görseller</div>
                                     </div>
                                 </button>
                                 <div className="border-t border-border-subtle mb-2" />
@@ -372,7 +372,7 @@ function GalleryInner() {
                                         ))}
                                     </div>
                                 ) : jobs.length === 0 ? (
-                                    <div className="text-center py-6 text-xs text-text-tertiary">No jobs yet</div>
+                                    <div className="text-center py-6 text-xs text-text-tertiary">Henüz iş yok</div>
                                 ) : (
                                     jobs.map(job => (
                                         <button
@@ -420,24 +420,24 @@ function GalleryInner() {
                     <div className="flex items-center gap-2">
                         <h1 className="text-lg font-bold text-text-primary flex items-center gap-2">
                             {allImagesMode ? (
-                                <span className="text-accent bg-accent/10 px-2 py-0.5 rounded text-sm">All Images</span>
+                                <span className="text-accent bg-accent/10 px-2 py-0.5 rounded text-sm">Tüm Görseller</span>
                             ) : (
                                 <span className="font-mono text-accent bg-accent/10 px-2 py-0.5 rounded text-sm">{truncateId(activeJobId)}</span>
                             )}
-                            Gallery
+                            Galeri
                         </h1>
                         <span className="text-xs text-text-tertiary hidden sm:block">
-                            {allImagesMode ? 'Latest 100 across all jobs' : 'Review + approve generated designs'}
+                            {allImagesMode ? 'Tüm işlerdeki son 100 görsel' : 'Üretilen tasarımları incele ve onayla'}
                         </span>
                     </div>
                 )}
 
                 <div className="ml-auto flex items-center gap-1.5 text-xs text-text-tertiary bg-bg-surface px-3 py-1.5 rounded-[8px] border border-border-default">
                     <Info className="w-3 h-3" />
-                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">A</kbd> approve ·
-                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">R</kbd> reject ·
-                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">←→</kbd> navigate ·
-                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Esc</kbd> clear
+                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">A</kbd> onayla ·
+                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">R</kbd> reddet ·
+                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">←→</kbd> gezin ·
+                    <kbd className="px-1 bg-bg-overlay rounded text-[10px]">Esc</kbd> temizle
                 </div>
             </div>
 
@@ -462,7 +462,7 @@ function GalleryInner() {
                                                     : 'bg-bg-elevated text-text-secondary border-border-default hover:text-text-primary hover:border-border-strong'
                                             )}
                                         >
-                                            {f === 'all' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
+                                            {f === 'all' ? 'Tümü' : f === 'PENDING' ? 'Bekliyor' : f === 'COMPLETED' ? 'Tamamlandı' : f === 'APPROVED' ? 'Onaylandı' : 'Reddedildi'}
                                         </button>
                                     ))}
                                 </div>
@@ -472,23 +472,23 @@ function GalleryInner() {
                             {images.length > 0 && (
                                 <div className="flex items-center gap-2 flex-wrap">
                                     {selected.size > 0 && <span className="text-xs text-accent font-medium">{selected.size} selected</span>}
-                                    <button onClick={selectAll} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors bg-bg-base">Select All</button>
+                                    <button onClick={selectAll} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors bg-bg-base">Tümünü Seç</button>
 
                                     {selected.size > 0 && (
                                         <>
-                                            <button onClick={clearSelect} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors bg-bg-base">Clear</button>
+                                            <button onClick={clearSelect} className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-[6px] border border-border-default hover:border-border-strong transition-colors bg-bg-base">Temizle</button>
                                             <button onClick={bulkApprove} className="flex items-center gap-1.5 px-3 py-1.5 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-xs font-medium rounded-[6px] border border-[rgba(34,197,94,0.20)] transition-colors">
-                                                <CheckCircle className="w-3.5 h-3.5" /> Approve ({selected.size})
+                                                <CheckCircle className="w-3.5 h-3.5" /> Onayla ({selected.size})
                                             </button>
                                             <button onClick={() => setBulkConfirm('reject')} className="flex items-center gap-1.5 px-3 py-1.5 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-xs font-medium rounded-[6px] border border-[rgba(239,68,68,0.20)] transition-colors">
-                                                <XCircle className="w-3.5 h-3.5" /> Reject
+                                                <XCircle className="w-3.5 h-3.5" /> Reddet
                                             </button>
                                             <button onClick={bulkDelete} className="flex items-center gap-1.5 px-3 py-1.5 bg-danger-subtle hover:bg-danger text-danger hover:text-white text-xs font-medium rounded-[6px] border border-danger/30 transition-colors">
-                                                <Trash2 className="w-3.5 h-3.5" /> Delete ({selected.size})
+                                                <Trash2 className="w-3.5 h-3.5" /> Sil ({selected.size})
                                             </button>
                                             <button onClick={bulkPublishToEtsy} disabled={!!publishingImage} className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 text-xs font-medium rounded-[6px] border border-orange-500/30 transition-colors disabled:opacity-40">
                                                 {publishingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Store className="w-3.5 h-3.5" />}
-                                                Publish to Etsy ({selected.size})
+                                                Etsy'ye Yayınla ({selected.size})
                                             </button>
                                         </>
                                     )}
@@ -496,14 +496,14 @@ function GalleryInner() {
                                     <div className="w-px h-5 bg-border-default mx-1"></div>
 
                                     <button onClick={() => setBulkConfirm('pipeline')} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-subtle hover:bg-[rgba(124,58,237,0.18)] text-accent text-xs font-medium rounded-[6px] border border-accent-border transition-colors">
-                                        <Play className="w-3.5 h-3.5" /> Run Pipeline ({approvedCount})
+                                        <Play className="w-3.5 h-3.5" /> Pipeline Çalıştır ({approvedCount})
                                     </button>
                                     <div className="flex items-center gap-1 bg-bg-elevated border border-border-default rounded-[6px] px-2 h-[30px]">
                                         <span className="text-text-tertiary text-xs">$</span>
                                         <input type="number" min="0.01" step="0.01" value={listingPrice} onChange={e => setListingPrice(e.target.value)} className="w-14 bg-transparent text-text-primary text-xs focus:outline-none" title="Default listing price for Etsy drafts" />
                                     </div>
                                     <a href={apiExport.bundleUrl(activeJobId)} className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated hover:bg-bg-overlay text-text-primary text-xs font-medium rounded-[6px] border border-border-default transition-colors shadow-sm" target="_blank" rel="noopener noreferrer">
-                                        <Download className="w-3.5 h-3.5" /> Bundle
+                                        <Download className="w-3.5 h-3.5" /> Paket İndir
                                     </a>
                                 </div>
                             )}
@@ -516,7 +516,7 @@ function GalleryInner() {
                     {!activeJobId ? (
                         <div className="flex flex-col items-center justify-center h-full text-text-tertiary gap-3">
                             <History className="w-8 h-8 opacity-30" />
-                            <p className="text-sm font-medium text-text-secondary">Open History to select a job</p>
+                            <p className="text-sm font-medium text-text-secondary">İş seçmek için Geçmişi açın</p>
                         </div>
                     ) : isLoading ? (
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -527,7 +527,7 @@ function GalleryInner() {
                     ) : filtered.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-20 text-text-tertiary">
                             <ImageIcon className="w-10 h-10 mb-2 opacity-30" />
-                            <p className="text-sm">No images match this filter</p>
+                            <p className="text-sm">Bu filtreyle eşleşen görsel yok</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-20">
@@ -573,22 +573,22 @@ function GalleryInner() {
                             <StatusBadge status={viewImg.status} className="px-3" />
                             <div className="w-px h-6 bg-border-default"></div>
                             <button onClick={() => { approveMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-2 px-4 py-2 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-sm font-medium rounded-[10px] border border-[rgba(34,197,94,0.20)] transition-colors">
-                                <CheckCircle className="w-4 h-4" /> Approve (A)
+                                <CheckCircle className="w-4 h-4" /> Onayla (A)
                             </button>
                             <button onClick={() => { rejectMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-2 px-4 py-2 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-sm font-medium rounded-[10px] border border-[rgba(239,68,68,0.20)] transition-colors">
-                                <XCircle className="w-4 h-4" /> Reject (R)
+                                <XCircle className="w-4 h-4" /> Reddet (R)
                             </button>
                             <div className="w-px h-6 bg-border-default ml-2"></div>
                             <button onClick={() => setViewImg(null)} className="text-text-tertiary hover:text-text-primary px-3 text-sm transition-colors">
-                                Close (Esc)
+                                Kapat (Esc)
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            <ConfirmModal open={bulkConfirm === 'reject'} title="Reject selected images?" message={`This will reject ${selected.size} image(s).`} confirmLabel="Reject All" variant="danger" onConfirm={bulkReject} onCancel={() => setBulkConfirm(null)} />
-            <ConfirmModal open={bulkConfirm === 'pipeline'} title="Run pipeline for approved images?" message={`Asset pipeline will run for ${approvedCount} approved image(s).`} confirmLabel="Run Pipeline" onConfirm={runPipelineForApproved} onCancel={() => setBulkConfirm(null)} />
+            <ConfirmModal open={bulkConfirm === 'reject'} title="Seçili görseller reddedilsin mi?" message={`${selected.size} görsel reddedilecek.`} confirmLabel="Tümünü Reddet" variant="danger" onConfirm={bulkReject} onCancel={() => setBulkConfirm(null)} />
+            <ConfirmModal open={bulkConfirm === 'pipeline'} title="Onaylı görseller için pipeline çalıştırılsın mı?" message={`${approvedCount} onaylı görsel için pipeline başlatılacak.`} confirmLabel="Pipeline Çalıştır" onConfirm={runPipelineForApproved} onCancel={() => setBulkConfirm(null)} />
 
             {pipelineImage && (
                 <PipelineModal
@@ -667,7 +667,7 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                 </div>
             ) : isFailed && !img.imageUrl ? (
                 <div className="h-48 flex flex-col items-center justify-center min-h-[160px] bg-bg-elevated gap-1 px-3">
-                    <span className="text-xs text-danger font-medium">Generation failed</span>
+                    <span className="text-xs text-danger font-medium">Üretim başarısız</span>
                     {qaRejectionReason && (
                         <span className="text-[10px] text-text-tertiary text-center leading-tight">{qaRejectionReason}</span>
                     )}
@@ -693,11 +693,11 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                 <div className="flex items-center justify-between p-2">
                     <button onClick={e => { e.stopPropagation(); onApprove(); }}
                         className="flex items-center gap-1 px-2 py-1 bg-success/80 hover:bg-success text-white text-[10px] font-medium rounded-[6px] transition-colors">
-                        <Check className="w-3 h-3" /> Approve
+                        <Check className="w-3 h-3" /> Onayla
                     </button>
                     <button onClick={e => { e.stopPropagation(); onReject(); }}
                         className="flex items-center gap-1 px-2 py-1 bg-danger/80 hover:bg-danger text-white text-[10px] font-medium rounded-[6px] transition-colors">
-                        <X className="w-3 h-3" /> Reject
+                        <X className="w-3 h-3" /> Reddet
                     </button>
                 </div>
 
@@ -708,7 +708,7 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                 <div className="flex items-center gap-1 p-2 flex-wrap">
                     <button onClick={e => { e.stopPropagation(); handleDownload(); }}
                         className="flex items-center gap-1 px-2 py-1 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded-[6px] border border-white/10 transition-colors">
-                        <Download className="w-3 h-3" /> Save
+                        <Download className="w-3 h-3" /> Kaydet
                     </button>
                     <button onClick={e => { e.stopPropagation(); onRemoveBg('birefnet'); }}
                         disabled={isProcessing}
@@ -722,7 +722,7 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                     </button>
                     <button onClick={e => { e.stopPropagation(); onMockup(); }}
                         className="flex items-center gap-1 px-2 py-1 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded-[6px] border border-white/10 transition-colors">
-                        <Layers className="w-3 h-3" /> Mockup
+                        <Layers className="w-3 h-3" /> Mockup'a
                     </button>
                     <button onClick={e => { e.stopPropagation(); onSeo(); }}
                         className="flex items-center gap-1 px-2 py-1 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded-[6px] border border-white/10 transition-colors">
@@ -803,9 +803,9 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                 <div className="flex items-center justify-between p-6 border-b border-slate-700/60">
                     <div>
                         <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                            <Zap className="w-5 h-5 text-purple-400" /> One-Click Pipeline
+                            <Zap className="w-5 h-5 text-purple-400" /> Tek Tıkla Pipeline
                         </h3>
-                        <p className="text-xs text-slate-400 mt-0.5">BG Remove → Mockup → SEO · automated in one shot</p>
+                        <p className="text-xs text-slate-400 mt-0.5">BG Kaldır → Mockup → SEO · tek seferde otomatik</p>
                     </div>
                     <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
                         <X className="w-5 h-5" />
@@ -822,14 +822,14 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                             className="w-16 h-16 object-contain rounded-lg bg-slate-900 shrink-0"
                         />
                         <div>
-                            <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Source Design</p>
+                            <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Kaynak Tasarım</p>
                             <p className="text-sm text-white font-mono mt-0.5">{image.id.slice(0, 8)}…</p>
                         </div>
                     </div>
 
                     {/* Pipeline steps */}
                     <div className="space-y-3">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pipeline Steps</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pipeline Adımları</p>
 
                         {/* BG Remove */}
                         <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/40 space-y-2">
@@ -867,10 +867,10 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
 
                         {/* Template picker */}
                         <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/40 space-y-2">
-                            <p className="text-sm font-semibold text-white">🖼 Mockup Templates</p>
-                            <p className="text-xs text-slate-400">Select up to 5 templates to render</p>
+                            <p className="text-sm font-semibold text-white">🖼 Mockup Şablonları</p>
+                            <p className="text-xs text-slate-400">Render için en fazla 5 şablon seçin</p>
                             {templates.length === 0 ? (
-                                <p className="text-xs text-slate-500 italic">No templates found. Upload in the Mockups page first.</p>
+                                <p className="text-xs text-slate-500 italic">Şablon bulunamadı. Önce Mockuplar sayfasından yükleyin.</p>
                             ) : (
                                 <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
                                     {templates.map(t => (
@@ -913,8 +913,8 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                                 className="w-4 h-4 accent-purple-500"
                             />
                             <div>
-                                <p className="text-sm font-semibold text-white">🏷 SEO Generation</p>
-                                <p className="text-xs text-slate-400">Auto-generate title, description & 13 tags via AI</p>
+                                <p className="text-sm font-semibold text-white">🏷 SEO Üretimi</p>
+                                <p className="text-xs text-slate-400">Yapay zeka ile başlık, açıklama ve 13 etiket otomatik üretilir</p>
                             </div>
                         </label>
                     </div>
@@ -922,7 +922,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                     {/* Results */}
                     {steps && (
                         <div className="space-y-2 border-t border-slate-700/60 pt-4">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Results</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sonuçlar</p>
 
                             {steps.bgRemove && (
                                 <div className={cn('flex items-center gap-3 text-xs p-3 rounded-xl',
@@ -950,7 +950,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
 
                             {steps.seo?.status === 'success' && (
                                 <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 space-y-2">
-                                    <p className="text-xs font-bold text-green-400">✓ SEO Generated</p>
+                                    <p className="text-xs font-bold text-green-400">✓ SEO Üretildi</p>
                                     <p className="text-xs text-slate-300 line-clamp-2 font-medium">{steps.seo.title}</p>
                                     <div className="flex flex-wrap gap-1">
                                         {steps.seo.tags?.slice(0, 7).map((tag: string, i: number) => (
@@ -965,7 +965,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                                         }}
                                         className="text-[10px] px-3 py-1.5 bg-green-600/20 text-green-400 rounded-lg border border-green-500/30 hover:bg-green-600/30 transition-colors font-semibold"
                                     >
-                                        Copy All SEO
+                                        Tüm SEO'yu Kopyala
                                     </button>
                                 </div>
                             )}
@@ -982,7 +982,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                 {/* Footer */}
                 <div className="flex gap-3 p-6 pt-0">
                     <button onClick={onClose} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold rounded-xl transition-colors">
-                        {results ? 'Close' : 'Cancel'}
+                        {results ? 'Kapat' : 'Vazgeç'}
                     </button>
                     {!results && (
                         <button
@@ -991,9 +991,9 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                             className="flex-1 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-40 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
                         >
                             {running ? (
-                                <><Loader2 className="w-4 h-4 animate-spin" /> Running Pipeline…</>
+                                <><Loader2 className="w-4 h-4 animate-spin" /> Pipeline Çalışıyor…</>
                             ) : (
-                                <><Zap className="w-4 h-4" /> Run Pipeline</>
+                                <><Zap className="w-4 h-4" /> Pipeline Çalıştır</>
                             )}
                         </button>
                     )}

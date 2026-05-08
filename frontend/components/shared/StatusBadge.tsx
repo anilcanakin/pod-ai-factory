@@ -9,15 +9,15 @@ interface BadgeProps {
 
 export function StatusBadge({ status, className }: BadgeProps) {
     const labels: Record<string, string> = {
-        COMPLETED: 'Completed',
-        APPROVED: 'Approved',
-        REJECTED: 'Rejected',
-        PENDING: 'Pending',
-        PROCESSING: 'Processing',
-        FAILED: 'Failed',
-        SUCCESS: 'Success',
-        WINNER: '🏆 Winner',
-        LOW_SCORE: '💀 Low Score',
+        COMPLETED: 'Tamamlandı',
+        APPROVED: 'Onaylandı',
+        REJECTED: 'Reddedildi',
+        PENDING: 'Bekliyor',
+        PROCESSING: 'İşleniyor',
+        FAILED: 'Başarısız',
+        SUCCESS: 'Başarılı',
+        WINNER: '🏆 Kazanan',
+        LOW_SCORE: '💀 Düşük Puan',
     };
 
     return (

@@ -10,7 +10,7 @@ interface FileDropzoneProps {
     label?: string;
 }
 
-export function FileDropzone({ onFile, accept = '.csv', label = 'Drop file here or click to browse' }: FileDropzoneProps) {
+export function FileDropzone({ onFile, accept = '.csv', label = 'Dosyayı buraya bırakın veya tıklayarak seçin' }: FileDropzoneProps) {
     const [dragging, setDragging] = useState(false);
     const [fileName, setFileName] = useState<string | null>(null);
 
@@ -55,7 +55,7 @@ export function FileDropzone({ onFile, accept = '.csv', label = 'Drop file here 
                 <>
                     <Upload className="w-6 h-6 text-slate-500 mb-2" />
                     <p className="text-xs text-slate-400">{label}</p>
-                    <p className="text-[10px] text-slate-600 mt-0.5">{accept} supported</p>
+                    <p className="text-[10px] text-slate-600 mt-0.5">{accept} desteklenir</p>
                 </>
             )}
         </label>

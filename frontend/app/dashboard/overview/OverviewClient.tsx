@@ -831,7 +831,7 @@ function WeeklyChart({ data }: { data: WeeklyStatDay[] }) {
     return (
         <div className="bg-[#1e293b] border border-slate-700 rounded-xl p-5">
             <h2 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-blue-400" /> Last 7 Days
+                <Activity className="w-4 h-4 text-blue-400" /> Son 7 Gün
             </h2>
             <div className="flex items-end gap-2 h-24">
                 {data.map(day => {
@@ -860,8 +860,8 @@ function WeeklyChart({ data }: { data: WeeklyStatDay[] }) {
                 })}
             </div>
             <div className="flex items-center gap-4 mt-3 text-[10px] text-slate-500">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-600/70 inline-block" /> Generated</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500/70 inline-block" /> Approved</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-600/70 inline-block" /> Üretilen</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500/70 inline-block" /> Onaylanan</span>
             </div>
         </div>
     );
@@ -947,14 +947,14 @@ export function OverviewClient() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Overview</h1>
-                    <p className="text-sm text-slate-400 mt-0.5">Financial War Room · POD AI Factory</p>
+                    <h1 className="text-2xl font-bold text-white">Genel Bakış</h1>
+                    <p className="text-sm text-slate-400 mt-0.5">Mali Komuta Merkezi · POD AI Fabrika</p>
                 </div>
                 <button
                     onClick={() => refetch()}
                     className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors"
                 >
-                    <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                    <RefreshCw className="w-3.5 h-3.5" /> Yenile
                 </button>
             </div>
 
@@ -975,13 +975,13 @@ export function OverviewClient() {
 
             {/* KPI Cards — today's production stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
-                <StatCard label="Runs Today" value={String(dash?.runsToday ?? 0)} icon={Cpu} color="blue" loading={isLoading} />
-                <StatCard label="Images (24h)" value={String(dash?.imagesGeneratedToday ?? 0)} icon={ImageIcon} color="blue" loading={isLoading} />
-                <StatCard label="Approved Today" value={String(dash?.approvedToday ?? 0)} icon={ThumbsUp} color="green" loading={isLoading} />
-                <StatCard label="Spend Today" value={`$${dailySpend.toFixed(2)} / $${dailyLimit.toFixed(2)}`} icon={DollarSign} color="yellow" loading={isLoading} />
-                <StatCard label="Success Rate" value={String(dash?.successRate ?? 0)} icon={TrendingUp} color="green" loading={isLoading} suffix="%" />
-                <StatCard label="Avg Time" value={dash?.avgGenerationTime ? `${dash.avgGenerationTime}s` : '—'} icon={Clock} color="purple" loading={isLoading} />
-                <StatCard label="Knowledge Entries" value={String(brainSummary?.totalEntries ?? 0)} icon={Brain} color="purple" loading={!brainSummary} />
+                <StatCard label="Bugünkü Çalışmalar" value={String(dash?.runsToday ?? 0)} icon={Cpu} color="blue" loading={isLoading} />
+                <StatCard label="Görseller (24sa)" value={String(dash?.imagesGeneratedToday ?? 0)} icon={ImageIcon} color="blue" loading={isLoading} />
+                <StatCard label="Bugün Onaylanan" value={String(dash?.approvedToday ?? 0)} icon={ThumbsUp} color="green" loading={isLoading} />
+                <StatCard label="Günlük Harcama" value={`$${dailySpend.toFixed(2)} / $${dailyLimit.toFixed(2)}`} icon={DollarSign} color="yellow" loading={isLoading} />
+                <StatCard label="Başarı Oranı" value={String(dash?.successRate ?? 0)} icon={TrendingUp} color="green" loading={isLoading} suffix="%" />
+                <StatCard label="Ort. Süre" value={dash?.avgGenerationTime ? `${dash.avgGenerationTime}sn` : '—'} icon={Clock} color="purple" loading={isLoading} />
+                <StatCard label="Bilgi Girişleri" value={String(brainSummary?.totalEntries ?? 0)} icon={Brain} color="purple" loading={!brainSummary} />
             </div>
 
             {/* ── Financial Command Center ─────────────────────────────────────── */}
@@ -1000,10 +1000,10 @@ export function OverviewClient() {
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-                            <Images className="w-4 h-4 text-purple-400" /> Recent Mockups
+                            <Images className="w-4 h-4 text-purple-400" /> Son Mockuplar
                         </h2>
                         <Link href="/dashboard/mockups" className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1">
-                            View all <ExternalLink className="w-3 h-3" />
+                            Tümünü gör <ExternalLink className="w-3 h-3" />
                         </Link>
                     </div>
                     <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
@@ -1028,14 +1028,14 @@ export function OverviewClient() {
             {/* Quick Actions */}
             <div className="space-y-3">
                 <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-yellow-400" /> Quick Actions
+                    <Zap className="w-4 h-4 text-yellow-400" /> Hızlı Eylemler
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     {[
-                        { href: '/dashboard/factory', label: 'New Generation', icon: Cpu, color: 'bg-blue-600/20 border-blue-500/30 hover:border-blue-500/60 text-blue-400' },
-                        { href: '/dashboard/tools?tab=remove-bg', label: 'Remove BG', icon: Scissors, color: 'bg-emerald-600/20 border-emerald-500/30 hover:border-emerald-500/60 text-emerald-400' },
-                        { href: '/dashboard/seo', label: 'Generate SEO', icon: Tag, color: 'bg-purple-600/20 border-purple-500/30 hover:border-purple-500/60 text-purple-400' },
-                        { href: '/dashboard/mockups', label: 'Upload Mockup', icon: Frame, color: 'bg-orange-600/20 border-orange-500/30 hover:border-orange-500/60 text-orange-400' },
+                        { href: '/dashboard/factory', label: 'Yeni Üretim', icon: Cpu, color: 'bg-blue-600/20 border-blue-500/30 hover:border-blue-500/60 text-blue-400' },
+                        { href: '/dashboard/tools?tab=remove-bg', label: 'BG Kaldır', icon: Scissors, color: 'bg-emerald-600/20 border-emerald-500/30 hover:border-emerald-500/60 text-emerald-400' },
+                        { href: '/dashboard/seo', label: 'SEO Üret', icon: Tag, color: 'bg-purple-600/20 border-purple-500/30 hover:border-purple-500/60 text-purple-400' },
+                        { href: '/dashboard/mockups', label: 'Mockup Yükle', icon: Frame, color: 'bg-orange-600/20 border-orange-500/30 hover:border-orange-500/60 text-orange-400' },
                     ].map(({ href, label, icon: Icon, color }) => (
                         <Link
                             key={href}
@@ -1060,9 +1060,9 @@ export function OverviewClient() {
             {/* Projects Grid */}
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-white">Your Projects</h2>
+                    <h2 className="text-lg font-semibold text-white">Projelerim</h2>
                     <Link href="/dashboard/factory" className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors shadow-lg shadow-blue-900/20">
-                        <Zap className="w-4 h-4" /> New Project
+                        <Zap className="w-4 h-4" /> Yeni Proje
                     </Link>
                 </div>
 
@@ -1077,12 +1077,12 @@ export function OverviewClient() {
                         <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-4">
                             <Images className="w-8 h-8 text-blue-400" />
                         </div>
-                        <h3 className="text-lg font-medium text-white mb-2">No projects yet</h3>
+                        <h3 className="text-lg font-medium text-white mb-2">Henüz proje yok</h3>
                         <p className="text-sm text-slate-400 mb-6 text-center max-w-sm">
-                            Create your first project to start generating designs, extracting prompts, and building mockups automatically.
+                            İlk projenizi oluşturun; tasarım üretimine, prompt çıkarımına ve mockup oluşturmaya hemen başlayın.
                         </p>
                         <Link href="/dashboard/factory" className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors">
-                            <Zap className="w-4 h-4" /> Start First Project
+                            <Zap className="w-4 h-4" /> İlk Projeyi Başlat
                         </Link>
                     </div>
                 ) : (
@@ -1119,7 +1119,7 @@ export function OverviewClient() {
                                     <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-700/50">
                                         <div className="flex items-center gap-1.5 text-xs text-slate-400">
                                             <ImageIcon className="w-3.5 h-3.5" />
-                                            <span>{job.imageCount} imgs</span>
+                                            <span>{job.imageCount} görsel</span>
                                         </div>
                                         <div className="text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">
                                             ${(job.spend || 0).toFixed(2)}

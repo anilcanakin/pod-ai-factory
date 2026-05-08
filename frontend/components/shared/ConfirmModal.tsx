@@ -15,7 +15,7 @@ interface ConfirmModalProps {
 }
 
 export function ConfirmModal({
-    title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel',
+    title, message, confirmLabel = 'Onayla', cancelLabel = 'İptal',
     variant = 'default', onConfirm, onCancel, open
 }: ConfirmModalProps) {
     const confirmRef = useRef<HTMLButtonElement>(null);

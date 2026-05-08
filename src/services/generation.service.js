@@ -257,7 +257,7 @@ class GenerationService {
                         const { uploadRejectedToStorage } = require('./storage.service');
                         const storagePath = `rejected_assets/${img.id}_qa_thumb.jpg`;
                         rejectedUrl = await uploadRejectedToStorage(falResponse.image_url, storagePath);
-                        console.log(`[VisionQA] Rejected thumbnail Supabase'e kaydedildi: ${rejectedUrl}`);
+                        console.log(`[VisionQA] Rejected thumbnail yerel depoya kaydedildi: ${rejectedUrl}`);
                     } catch (uploadErr) {
                         console.warn(`[VisionQA] Rejected thumbnail yüklenemedi (FAL URL kullanılıyor): ${uploadErr.message}`);
                     }
@@ -314,7 +314,7 @@ class GenerationService {
                     }
                 }
 
-                // ── Adım 3: Supabase'e kalıcı olarak yükle ────────────────────────
+                // ── Adım 3: Yerel depoya kalıcı olarak yükle ─────────────────────
                 // Upscale başarıldıysa devasa PNG, başarılamadıysa standart PNG/JPG
                 let permanentUrl = finalImageUrl;
                 try {
@@ -322,9 +322,9 @@ class GenerationService {
                     const ext = isTransparent ? 'png' : 'jpg';
                     const storagePath = `generated/${img.id}_${Date.now()}.${ext}`;
                     permanentUrl = await uploadUrlToStorage(finalImageUrl, storagePath);
-                    console.log(`[Generation] Supabase'e yüklendi (${ext.toUpperCase()}): ${permanentUrl}`);
+                    console.log(`[Generation] Yerel depoya yüklendi (${ext.toUpperCase()}): ${permanentUrl}`);
                 } catch (uploadErr) {
-                    console.warn(`[Generation] Supabase upload başarısız, FAL/RMBG/Upscale URL kullanılıyor: ${uploadErr.message}`);
+                    console.warn(`[Generation] Yerel depo yükleme başarısız, FAL/RMBG/Upscale URL kullanılıyor: ${uploadErr.message}`);
                 }
 
                 const totalCost = modelCost + rmbgCost + upscaledCost; // generation + RMBG + Upscale toplamı

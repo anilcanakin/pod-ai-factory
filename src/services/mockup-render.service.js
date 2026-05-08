@@ -346,7 +346,7 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
     const outputMetadata = await sharp(outputPath).metadata();
     console.log('[Render] Output dimensions:', outputMetadata.width, 'x', outputMetadata.height);
 
-    // 11. Upload to Supabase Storage
+    // 11. Yerel depoya yükle
     let publicUrl = null;
     try {
         const storagePath = `mockups/${workspaceId}/${path.basename(outputPath)}`;

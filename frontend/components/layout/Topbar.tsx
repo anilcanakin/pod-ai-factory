@@ -8,10 +8,10 @@ import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 
 const FAL_CONFIG: Record<FalStatus, { label: string; color: string; dotClass: string; Icon: React.ElementType }> = {
-    online: { label: 'Fal Online', color: 'text-success', dotClass: 'bg-success animate-pulse', Icon: Wifi },
-    offline: { label: 'Fal Offline', color: 'text-danger', dotClass: 'bg-danger', Icon: WifiOff },
-    auth_error: { label: 'Fal Auth Error', color: 'text-warn', dotClass: 'bg-warn animate-pulse', Icon: ShieldAlert },
-    payload_error: { label: 'Fal Degraded', color: 'text-warn', dotClass: 'bg-warn', Icon: AlertTriangle },
+    online: { label: 'Fal Çevrimiçi', color: 'text-success', dotClass: 'bg-success animate-pulse', Icon: Wifi },
+    offline: { label: 'Fal Çevrimdışı', color: 'text-danger', dotClass: 'bg-danger', Icon: WifiOff },
+    auth_error: { label: 'Fal Kimlik Hatası', color: 'text-warn', dotClass: 'bg-warn animate-pulse', Icon: ShieldAlert },
+    payload_error: { label: 'Fal Yavaşladı', color: 'text-warn', dotClass: 'bg-warn', Icon: AlertTriangle },
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -25,9 +25,9 @@ const TYPE_COLORS: Record<string, string> = {
 function timeAgo(dateStr: string): string {
     const diff = Date.now() - new Date(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    return `${Math.floor(mins / 60)}h ago`;
+    if (mins < 1) return 'az önce';
+    if (mins < 60) return `${mins}dk önce`;
+    return `${Math.floor(mins / 60)}sa önce`;
 }
 
 export function Topbar() {
@@ -93,7 +93,7 @@ export function Topbar() {
                 {status?.currentJob && (
                     <div className="flex items-center gap-1.5 text-xs text-accent">
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Job running…</span>
+                        <span>İş devam ediyor…</span>
                     </div>
                 )}
             </div>
@@ -102,7 +102,7 @@ export function Topbar() {
             <div className="flex items-center gap-4">
                 {/* Daily spend bar */}
                 <div className="hidden sm:flex flex-col items-end gap-0.5">
-                    <span className="text-[10px] text-text-tertiary">Daily spend</span>
+                    <span className="text-[10px] text-text-tertiary">Günlük Harcama</span>
                     <div className="flex items-center gap-1.5">
                         <div className="w-20 h-1.5 rounded-full bg-bg-elevated overflow-hidden">
                             <div
@@ -130,20 +130,20 @@ export function Topbar() {
                             <FalIcon className={cn('w-3.5 h-3.5', cfg.color)} />
                         )}
                         <span className={cn('text-xs font-medium', isLoading ? 'text-text-tertiary' : cfg.color)}>
-                            {isLoading ? 'Checking…' : cfg.label}
+                            {isLoading ? 'Kontrol ediliyor…' : cfg.label}
                         </span>
                         <div className={cn('w-1.5 h-1.5 rounded-full', isLoading ? 'bg-text-tertiary' : cfg.dotClass)} />
                     </div>
                     {tooltipVisible && status?.falMessage && (
                         <div className="absolute right-0 top-7 z-50 w-64 px-3 py-2 bg-bg-surface border border-border-default rounded-[10px] shadow-xl text-xs text-text-secondary">
-                            <div className="font-semibold text-warn mb-1">Last error</div>
+                            <div className="font-semibold text-warn mb-1">Son Hata</div>
                             <div className="text-text-tertiary break-words font-mono">{status.falMessage}</div>
                         </div>
                     )}
                     {tooltipVisible && !status?.falMessage && status && (
                         <div className="absolute right-0 top-7 z-50 w-48 px-3 py-2 bg-bg-surface border border-border-default rounded-[10px] shadow-xl text-xs text-text-secondary">
                             <div className={cn('font-semibold', cfg.color)}>{cfg.label}</div>
-                            <div className="text-text-tertiary mt-0.5">Health check: 30s cache</div>
+                            <div className="text-text-tertiary mt-0.5">Sağlık kontrolü: 30sn önbellek</div>
                         </div>
                     )}
                 </div>
@@ -168,13 +168,13 @@ export function Topbar() {
                     {showNotifs && (
                         <div className="absolute right-0 top-10 z-50 w-80 bg-bg-surface border border-border-default rounded-[12px] shadow-2xl overflow-hidden">
                             <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
-                                <span className="text-xs font-semibold text-text-primary">Activity</span>
+                                <span className="text-xs font-semibold text-text-primary">Aktiviteler</span>
                                 {notifications.some(n => !n.read) && (
                                     <button
                                         onClick={() => readAllMutation.mutate()}
                                         className="flex items-center gap-1 text-[10px] text-text-tertiary hover:text-text-secondary transition-colors"
                                     >
-                                        <CheckCheck className="w-3 h-3" /> Mark all read
+                                        <CheckCheck className="w-3 h-3" /> Tümünü okundu işaretle
                                     </button>
                                 )}
                             </div>
@@ -182,7 +182,7 @@ export function Topbar() {
                                 {notifications.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-10 text-text-tertiary">
                                         <Bell className="w-6 h-6 mb-2 opacity-30" />
-                                        <p className="text-xs">No activity yet</p>
+                                        <p className="text-xs">Henüz aktivite yok</p>
                                     </div>
                                 ) : (
                                     notifications.map(n => (
@@ -214,7 +214,7 @@ export function Topbar() {
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-[8px] transition-colors"
                 >
                     <Plus className="w-3.5 h-3.5" />
-                    New Run
+                    Yeni Üretim
                 </Link>
             </div>
         </header>

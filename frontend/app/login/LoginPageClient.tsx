@@ -9,8 +9,8 @@ import { Zap, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 const schema = z.object({
-    email: z.string().email('Valid email required'),
-    password: z.string().min(4, 'Password required'),
+    email: z.string().email('Geçerli bir e-posta adresi giriniz'),
+    password: z.string().min(4, 'Şifre zorunludur'),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -38,11 +38,11 @@ export default function LoginPageClient() {
             });
 
             const result = await res.json();
-            if (!res.ok) throw new Error(result.error || 'Login failed');
+            if (!res.ok) throw new Error(result.error || 'Giriş başarısız');
 
             // Refetch to confirm session as requested
             const meRes = await fetch('/api/auth/me', { credentials: 'include' });
-            if (!meRes.ok) throw new Error('Session verification failed');
+            if (!meRes.ok) throw new Error('Oturum doğrulaması başarısız');
 
             toast.success('Signed in successfully');
             router.push(from);
@@ -68,20 +68,20 @@ export default function LoginPageClient() {
                             <Zap className="w-6 h-6 text-white" />
                         </div>
                         <h1 className="text-xl font-bold text-white">POD AI Factory</h1>
-                        <p className="text-sm text-slate-400 mt-1">Admin Panel</p>
+                        <p className="text-sm text-slate-400 mt-1">Yönetim Paneli</p>
                     </div>
 
                     {/* DEV Banner */}
                     <div className="flex items-center gap-2 px-3 py-2 mb-6 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
                         <ShieldCheck className="w-4 h-4 text-yellow-500 flex-shrink-0" />
                         <p className="text-xs text-yellow-400">
-                            DEV MODE — password: <code className="bg-yellow-500/20 px-1 rounded">dev-token-2024</code>
+                            GELİŞTİRİCİ MODU — şifre: <code className="bg-yellow-500/20 px-1 rounded">dev-token-2024</code>
                         </p>
                     </div>
 
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                         <div>
-                            <label className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
+                            <label className="block text-xs font-medium text-slate-400 mb-1.5">E-posta</label>
                             <input
                                 {...register('email')}
                                 type="email"
@@ -91,7 +91,7 @@ export default function LoginPageClient() {
                         </div>
 
                         <div>
-                            <label className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+                            <label className="block text-xs font-medium text-slate-400 mb-1.5">Şifre</label>
                             <div className="relative">
                                 <input
                                     {...register('password')}
@@ -115,13 +115,13 @@ export default function LoginPageClient() {
                             className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition-colors text-sm mt-2"
                         >
                             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                            {loading ? 'Signing in…' : 'Sign In'}
+                            {loading ? 'Giriş yapılıyor…' : 'Giriş Yap'}
                         </button>
                     </form>
                 </div>
 
                 <p className="text-center text-xs text-slate-600 mt-4">
-                    Auth placeholder · Not production-ready
+                    Kimlik doğrulama · Geliştirme aşamasında
                 </p>
             </div>
         </div>

@@ -1,9 +1,7 @@
 const prisma = require('../lib/prisma');
 const { getKnowledge } = require('./seo-knowledge.service');
-const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const CATEGORY_MAP = {
@@ -114,18 +112,16 @@ async function getKnowledgeSummary(workspaceId) {
 }
 
 /**
- * RAG: etsy_knowledge tablosunu embedding ile sorgula (match_knowledge RPC).
- * Kullanıcının girdiği niş/anahtar kelimeyle anlamsal olarak en alakalı
- * 5 içeriği döndürür. Supabase'de match_knowledge fonksiyonu yoksa boş string döner.
+ * RAG: CorporateMemory tablosunu pgvector cosine similarity ile sorgular.
+ * Yerel Postgres 18 + pgvector kullanır — Supabase RPC gerekmez.
  *
- * @param {string} query - Niş veya anahtar kelime (örn: 'boxing tee gift for dad')
- * @param {number} matchCount - Döndürülecek maksimum chunk sayısı
- * @param {number} threshold - Minimum benzerlik skoru (0-1)
- * @returns {Promise<string>} - Prompt'a enjekte edilecek bağlam metni
+ * @param {string} query       - Niş veya anahtar kelime (örn: 'boxing tee gift for dad')
+ * @param {number} matchCount  - Döndürülecek maksimum chunk sayısı
+ * @param {number} threshold   - Minimum cosine benzerlik skoru (0–1)
+ * @returns {Promise<string>}  - Prompt'a enjekte edilecek bağlam metni
  */
 async function getVectorContext(query, matchCount = 5, threshold = 0.7) {
-    if (!query || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return '';
-    if (!process.env.OPENAI_API_KEY) return '';
+    if (!query || !process.env.OPENAI_API_KEY) return '';
 
     try {
         // 1. Sorgu metnini vektöre dönüştür
@@ -134,26 +130,30 @@ async function getVectorContext(query, matchCount = 5, threshold = 0.7) {
             input: query,
         });
         const queryEmbedding = embeddingRes.data[0].embedding;
+        const vecLiteral = JSON.stringify(queryEmbedding);
 
-        // 2. Supabase match_knowledge RPC ile en yakın chunk'ları çek
-        const { data, error } = await supabase.rpc('match_knowledge', {
-            query_embedding: queryEmbedding,
-            match_threshold: threshold,
-            match_count: matchCount,
-        });
+        // 2. Yerel pgvector ile cosine similarity sorgusu
+        // vectorEmbedding JSONB::text::vector cast — extension index bunu yakalar.
+        const rows = await prisma.$queryRaw`
+            SELECT id, content, title, category,
+                   1 - ("vectorEmbedding"::text::vector <=> ${vecLiteral}::vector) AS similarity
+            FROM "CorporateMemory"
+            WHERE "vectorEmbedding" IS NOT NULL
+              AND "isActive" = true
+            ORDER BY "vectorEmbedding"::text::vector <=> ${vecLiteral}::vector
+            LIMIT ${matchCount}
+        `;
 
-        if (error) {
-            console.warn('[VectorContext] RPC error:', error.message);
-            return '';
-        }
-        if (!data || data.length === 0) return '';
+        // 3. Eşik altını filtrele
+        const matches = rows.filter(r => parseFloat(r.similarity) >= threshold);
+        if (matches.length === 0) return '';
 
-        // 3. İçerikleri tek bir bağlam bloğu hâline getir
-        const context = data
-            .map((row, i) => `[Kaynak ${i + 1}] ${row.content}`)
+        // 4. İçerikleri tek bir bağlam bloğu hâline getir
+        const context = matches
+            .map((row, i) => `[Kaynak ${i + 1}] (${row.category}) ${row.title}:\n${String(row.content).slice(0, 600)}`)
             .join('\n\n');
 
-        console.log(`[VectorContext] ${data.length} chunk bulundu (query: "${query.slice(0, 40)}...")`);
+        console.log(`[VectorContext] ${matches.length} chunk bulundu — yerel pgvector (query: "${query.slice(0, 40)}...")`);
         return context;
 
     } catch (err) {

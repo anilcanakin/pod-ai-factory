@@ -1,11 +1,13 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pgvector(map: "vector")]
 }
 
 // ─── Multi-tenant ─────────────────────────────────────────────────────────────
@@ -287,7 +289,9 @@ model CorporateMemory {
   category         String    @default("general_etsy")
   tags             String[]  @default([])
   analysisResult   Json?     // Storing structured UI/Screen insights from Vision AI
-  vectorEmbedding  Json?     // Array of floats storing the embedding for semantic search
+  // Stored as JSONB (float array). Queried via "vectorEmbedding"::text::vector cast
+  // so pgvector cosine ops work without Prisma Unsupported() — keeps ORM reads intact.
+  vectorEmbedding  Json?
   sourceUrl        String?
   isActive         Boolean   @default(true)
   createdAt        DateTime  @default(now())

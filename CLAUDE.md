@@ -6,6 +6,7 @@
 - **Stay on target.** Every few turns, re-read the original request to confirm you haven't drifted from the goal.
 - **Follow through completely.** Re-read the user's last message before responding. Execute every instruction fully — do not partially implement.
 - **On correction: stop and confirm.** When the user corrects you, stop, re-read their message, quote back what they asked for, and confirm before proceeding.
+- **Language Protocol:** The entire user interface, blueprints, and system prompts must be in professional, natural Turkish. Technical variable names and database keys (e.g., `hafta_n`) must remain unchanged.
 
 ---
 

@@ -13,9 +13,12 @@
 'use strict';
 
 const { ApifyClient } = require('apify-client');
+const redis = require('../config/redis');
 
 // ── Client ────────────────────────────────────────────────────────────
 const apify = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
+
+const INTEL_CACHE_TTL = 43_200; // 12 saat
 
 // ── Actor Kimlikleri ──────────────────────────────────────────────────
 const ACTORS = {
@@ -176,6 +179,16 @@ async function getFullIntelligence(keyword) {
         return _fallback(keyword, 'APIFY_API_TOKEN eksik');
     }
 
+    // 12 saatlik cache — aynı keyword için Apify'ı tekrar çalıştırma
+    const cacheKey = `market:intel:${keyword.toLowerCase().trim().slice(0, 80)}`;
+    try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+            console.log(`[İstihbarat] Cache HIT: "${keyword}"`);
+            return JSON.parse(cached);
+        }
+    } catch { /* Redis yoksa devam */ }
+
     console.log(`\n${'═'.repeat(60)}`);
     console.log(`  [İstihbarat] 🔭 3 ajan paralel başlatılıyor → "${keyword}"`);
     console.log(`${'═'.repeat(60)}`);
@@ -216,7 +229,7 @@ async function getFullIntelligence(keyword) {
     console.log(`  │  ⏱️  Süre         : ${elapsed}s`);
     console.log(`  └─────────────────────────────────────────────────┘\n`);
 
-    return {
+    const result = {
         keyword,
         resultCount,
         averagePrice,
@@ -228,6 +241,11 @@ async function getFullIntelligence(keyword) {
         dataSource: 'apify',
         isFallback: false,
     };
+
+    // Başarılı sonucu 12 saat cache'le
+    redis.set(cacheKey, JSON.stringify(result), 'EX', INTEL_CACHE_TTL).catch(() => {});
+
+    return result;
 }
 
 // ═════════════════════════════════════════════════════════════════════

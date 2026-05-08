@@ -705,86 +705,201 @@ function RadarDiscoveryCard({
     onAnalyzeInWpi: (d: RadarDiscovery) => void;
     onDirectFactory: (d: RadarDiscovery) => void;
 }) {
+    const [modalOpen, setModalOpen] = useState(false);
     const srcCfg = SOURCE_CONFIG[d.source] ?? SOURCE_CONFIG.etsy;
+    const scoreColor = d.discoveryScore >= 90 ? 'text-red-400' : d.discoveryScore >= 80 ? 'text-violet-400' : 'text-amber-400';
 
     return (
-        <div className={cn(
-            'rounded-xl border p-3 space-y-2 transition-all',
-            isCritical
-                ? 'border-red-500/40 bg-red-500/5 shadow-[0_0_12px_rgba(239,68,68,0.08)]'
-                : 'border-border-subtle bg-bg-elevated hover:border-border-default'
-        )}>
-            {/* Score + Source */}
-            <div className="flex items-center justify-between gap-2">
-                <span className={cn(
-                    'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
-                    srcCfg.color
+        <>
+            {/* ── Kart ── */}
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setModalOpen(true)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setModalOpen(true); }}
+                className={cn(
+                    'rounded-xl border p-3 space-y-2 transition-all cursor-pointer select-none',
+                    isCritical
+                        ? 'border-red-500/40 bg-red-500/5 shadow-[0_0_12px_rgba(239,68,68,0.08)] hover:border-red-500/60'
+                        : 'border-border-subtle bg-bg-elevated hover:border-accent/40'
                 )}>
-                    {srcCfg.label}
-                </span>
-                <div className={cn(
-                    'text-sm font-black tabular-nums',
-                    d.discoveryScore >= 90 ? 'text-red-400' : d.discoveryScore >= 80 ? 'text-violet-400' : 'text-amber-400'
-                )}>
-                    {d.discoveryScore}
-                    <span className="text-[9px] font-normal text-text-tertiary">/100</span>
-                </div>
-            </div>
-
-            {/* Niche name */}
-            <h3 className="text-xs font-semibold text-text-primary leading-snug">{d.niche}</h3>
-
-            {/* Product + Urgency */}
-            <div className="flex items-center gap-2 flex-wrap">
-                {d.productRecommendation && (
-                    <span className="text-[10px] text-text-tertiary bg-bg-overlay px-2 py-0.5 rounded-full border border-border-subtle">
-                        {d.productRecommendation}
+                {/* Score + Source */}
+                <div className="flex items-center justify-between gap-2">
+                    <span className={cn('flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border', srcCfg.color)}>
+                        {srcCfg.label}
                     </span>
+                    <div className={cn('text-sm font-black tabular-nums', scoreColor)}>
+                        {d.discoveryScore}
+                        <span className="text-[9px] font-normal text-text-tertiary">/100</span>
+                    </div>
+                </div>
+
+                {/* Niche name */}
+                <h3 className="text-xs font-semibold text-text-primary leading-snug">{d.niche}</h3>
+
+                {/* Product + Urgency */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    {d.productRecommendation && (
+                        <span className="text-[10px] text-text-tertiary bg-bg-overlay px-2 py-0.5 rounded-full border border-border-subtle">
+                            {d.productRecommendation}
+                        </span>
+                    )}
+                    <span className={cn('text-[10px] font-semibold', URGENCY_COLOR[d.urgency as keyof typeof URGENCY_COLOR] ?? 'text-text-tertiary')}>
+                        ↑ {d.urgency}
+                    </span>
+                </div>
+
+                {/* Reasoning (trimmed) */}
+                {d.reasoning && (
+                    <p className="text-[10px] text-text-tertiary leading-relaxed line-clamp-2">{d.reasoning}</p>
                 )}
-                <span className={cn('text-[10px] font-semibold', URGENCY_COLOR[d.urgency])}>
-                    ↑ {d.urgency}
-                </span>
+
+                {/* Keywords (ilk 3) */}
+                {d.suggestedKeywords.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                        {d.suggestedKeywords.slice(0, 3).map(kw => (
+                            <span key={kw} className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                                {kw}
+                            </span>
+                        ))}
+                        {d.suggestedKeywords.length > 3 && (
+                            <span className="text-[9px] text-text-tertiary px-1">+{d.suggestedKeywords.length - 3}</span>
+                        )}
+                    </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-1.5 pt-0.5" onClick={e => e.stopPropagation()}>
+                    <button
+                        onClick={() => onAnalyzeInWpi(d)}
+                        className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent text-[11px] font-semibold border border-accent/20 transition-colors"
+                    >
+                        <Brain className="w-3 h-3" />
+                        WPI&apos;da Analiz Et
+                    </button>
+                    <button
+                        onClick={() => onDirectFactory(d)}
+                        className={cn(
+                            'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors',
+                            isCritical
+                                ? 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30'
+                                : 'bg-green-600/10 hover:bg-green-600/20 text-green-400 border-green-500/20'
+                        )}
+                    >
+                        <Factory className="w-3 h-3" />
+                        Hemen Üret
+                    </button>
+                </div>
             </div>
 
-            {/* Reasoning (trimmed) */}
-            {d.reasoning && (
-                <p className="text-[10px] text-text-tertiary leading-relaxed line-clamp-2">{d.reasoning}</p>
-            )}
+            {/* ── Modal ── */}
+            {modalOpen && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                    onClick={() => setModalOpen(false)}
+                >
+                    <div
+                        className={cn(
+                            'relative w-full max-w-lg rounded-2xl border shadow-2xl p-6 space-y-4 bg-bg-elevated max-h-[90vh] overflow-y-auto',
+                            isCritical ? 'border-red-500/50' : 'border-border-default'
+                        )}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Kapat butonu */}
+                        <button
+                            onClick={() => setModalOpen(false)}
+                            className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-white/10 text-text-tertiary transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
 
-            {/* Keywords */}
-            {d.suggestedKeywords.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                    {d.suggestedKeywords.slice(0, 3).map(kw => (
-                        <span key={kw} className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20">
-                            {kw}
-                        </span>
-                    ))}
+                        {/* Başlık */}
+                        <div className="flex items-start gap-3 pr-8">
+                            <div className={cn('text-3xl font-black tabular-nums leading-none', scoreColor)}>
+                                {d.discoveryScore}
+                                <span className="text-sm font-normal text-text-tertiary">/100</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h2 className="text-base font-bold text-text-primary leading-snug">{d.niche}</h2>
+                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border', srcCfg.color)}>
+                                        {srcCfg.label}
+                                    </span>
+                                    <span className={cn('text-xs font-semibold', URGENCY_COLOR[d.urgency as keyof typeof URGENCY_COLOR] ?? 'text-text-tertiary')}>
+                                        Aciliyet: {d.urgency}
+                                    </span>
+                                    {isCritical && (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-500/20 text-red-300 border border-red-500/40 animate-pulse">
+                                            CRITICAL
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Ürün önerisi */}
+                        {d.productRecommendation && (
+                            <div className="rounded-lg bg-bg-overlay border border-border-subtle p-3">
+                                <p className="text-[10px] text-text-tertiary uppercase tracking-wider font-semibold mb-1">Ürün Önerisi</p>
+                                <p className="text-sm text-text-primary font-medium">{d.productRecommendation}</p>
+                            </div>
+                        )}
+
+                        {/* AI Analizi */}
+                        {d.reasoning && (
+                            <div className="rounded-lg bg-bg-overlay border border-border-subtle p-3">
+                                <p className="text-[10px] text-text-tertiary uppercase tracking-wider font-semibold mb-1.5">AI Analizi</p>
+                                <p className="text-sm text-text-secondary leading-relaxed">{d.reasoning}</p>
+                            </div>
+                        )}
+
+                        {/* Tüm keyword'ler */}
+                        {d.suggestedKeywords.length > 0 && (
+                            <div>
+                                <p className="text-[10px] text-text-tertiary uppercase tracking-wider font-semibold mb-2">
+                                    Önerilen Keyword&apos;ler ({d.suggestedKeywords.length})
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {d.suggestedKeywords.map(kw => (
+                                        <span key={kw} className="text-xs px-2 py-1 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                                            {kw}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Keşif tarihi */}
+                        <p className="text-[10px] text-text-tertiary">
+                            Keşfedildi: {new Date(d.discoveredAt).toLocaleString('tr-TR')}
+                        </p>
+
+                        {/* Aksiyon butonları */}
+                        <div className="flex gap-2 pt-1">
+                            <button
+                                onClick={() => { onAnalyzeInWpi(d); setModalOpen(false); }}
+                                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-accent/15 hover:bg-accent/25 text-accent text-sm font-semibold border border-accent/30 transition-colors"
+                            >
+                                <Brain className="w-4 h-4" />
+                                WPI&apos;da Analiz Et
+                            </button>
+                            <button
+                                onClick={() => { onDirectFactory(d); setModalOpen(false); }}
+                                className={cn(
+                                    'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold border transition-colors',
+                                    isCritical
+                                        ? 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30'
+                                        : 'bg-green-600/10 hover:bg-green-600/20 text-green-400 border-green-500/20'
+                                )}
+                            >
+                                <Factory className="w-4 h-4" />
+                                Hemen Üret
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
-
-            {/* Action buttons */}
-            <div className="flex gap-1.5 pt-0.5">
-                <button
-                    onClick={() => onAnalyzeInWpi(d)}
-                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent text-[11px] font-semibold border border-accent/20 transition-colors"
-                >
-                    <Brain className="w-3 h-3" />
-                    WPI&apos;da Analiz Et
-                </button>
-                <button
-                    onClick={() => onDirectFactory(d)}
-                    className={cn(
-                        'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors',
-                        isCritical
-                            ? 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30'
-                            : 'bg-green-600/10 hover:bg-green-600/20 text-green-400 border-green-500/20'
-                    )}
-                >
-                    <Factory className="w-3 h-3" />
-                    Hemen Üret
-                </button>
-            </div>
-        </div>
+        </>
     );
 }
 

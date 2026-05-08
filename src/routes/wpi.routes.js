@@ -454,8 +454,12 @@ router.get('/niche-products', async (req, res) => {
         enriched.sort((a, b) => (b.weeklySales ?? -1) - (a.weeklySales ?? -1));
 
         const payload = { success: true, count: enriched.length, niche, products: enriched };
-        redis.set(cacheKey, JSON.stringify(payload), 'EX', CACHE_TTL).catch(() => {});
-        console.log(`[WPI niche-products] Apify çağrıldı + cache yazıldı: "${niche}" (${enriched.length} ürün)`);
+        if (enriched.length > 0) {
+            redis.set(cacheKey, JSON.stringify(payload), 'EX', CACHE_TTL).catch(() => {});
+            console.log(`[WPI niche-products] Apify çağrıldı + cache yazıldı: "${niche}" (${enriched.length} ürün)`);
+        } else {
+            console.warn(`[WPI niche-products] 0 ürün döndü — cache'e yazılmadı: "${niche}"`);
+        }
 
         res.json(payload);
     } catch (err) {

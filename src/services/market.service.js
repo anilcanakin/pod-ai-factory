@@ -34,7 +34,7 @@ async function runProductScraper(keyword) {
     try {
         const run = await apify.actor(ACTORS.ETSY_PRODUCTS).call(
             { keywords: [keyword], maxItems: 20 },
-            { waitSecs: WAIT_SECS }
+            { waitSecs: WAIT_SECS, memory: 1024 }
         );
         const { items } = await apify.dataset(run.defaultDatasetId).listItems();
         if (!items?.length) return null;
@@ -78,7 +78,7 @@ async function runKeywordResearch(keyword) {
     try {
         const run = await apify.actor(ACTORS.ETSY_KEYWORDS).call(
             { keyword },
-            { waitSecs: WAIT_SECS }
+            { waitSecs: WAIT_SECS, memory: 512 }
         );
         const { items } = await apify.dataset(run.defaultDatasetId).listItems();
         if (!items?.length) return null;
@@ -112,7 +112,7 @@ async function runPinterestScraper(keyword) {
     try {
         const run = await apify.actor(ACTORS.PINTEREST).call(
             { query: keyword, limit: 20 },
-            { waitSecs: WAIT_SECS }
+            { waitSecs: WAIT_SECS, memory: 512 }
         );
         const { items } = await apify.dataset(run.defaultDatasetId).listItems();
         if (!items?.length) return null;

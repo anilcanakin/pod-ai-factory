@@ -3,6 +3,22 @@ const router = express.Router();
 const fetch = require('node-fetch');
 const Anthropic = require('@anthropic-ai/sdk');
 
+function _extractFirstJson(text) {
+    const start = text.indexOf('{');
+    if (start === -1) throw new Error('AI yanıtında JSON bulunamadı');
+    let depth = 0, inString = false, escape = false;
+    for (let i = start; i < text.length; i++) {
+        const c = text[i];
+        if (escape)            { escape = false; continue; }
+        if (c === '\\' && inString) { escape = true; continue; }
+        if (c === '"')         { inString = !inString; continue; }
+        if (inString)          continue;
+        if (c === '{')         depth++;
+        if (c === '}') { depth--; if (depth === 0) return text.slice(start, i + 1); }
+    }
+    throw new Error('AI yanıtında tam JSON objesi bulunamadı');
+}
+
 // ─── GET /api/trends/weekly — AI-analysed weekly trending niches ─────────────
 router.get('/weekly', async (req, res) => {
     try {
@@ -94,9 +110,7 @@ Return ONLY valid JSON:
         });
 
         const rawText = response.content[0].text.replace(/```json|```/g, '').trim();
-        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error('AI yanıtında JSON bulunamadı');
-        const trends = JSON.parse(jsonMatch[0]);
+        const trends = JSON.parse(_extractFirstJson(rawText));
 
         res.json({
             ...trends,

@@ -528,10 +528,11 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
 
 // ─── Radar Auto-Pilot Panel ───────────────────────────────────────────────────
 
-const SOURCE_CONFIG = {
-    etsy:          { label: 'Etsy',          color: 'bg-orange-500/15 text-orange-300 border-orange-500/25' },
-    google_trends: { label: 'Google Trends', color: 'bg-blue-500/15 text-blue-300 border-blue-500/25' },
-    pinterest:     { label: 'Pinterest',     color: 'bg-pink-500/15 text-pink-300 border-pink-500/25' },
+const SOURCE_CONFIG: Record<string, { label: string; color: string }> = {
+    etsy:           { label: 'Etsy',           color: 'bg-orange-500/15 text-orange-300 border-orange-500/25' },
+    google_trends:  { label: 'Google Trends',  color: 'bg-blue-500/15 text-blue-300 border-blue-500/25' },
+    pinterest:      { label: 'Pinterest',      color: 'bg-pink-500/15 text-pink-300 border-pink-500/25' },
+    event_calendar: { label: 'Takvim',         color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25' },
 };
 
 const URGENCY_COLOR = {

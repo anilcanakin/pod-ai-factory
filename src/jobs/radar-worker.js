@@ -10,9 +10,8 @@
  *   6. Score >= 90 → CRITICAL HOT NOW bildirimi gönderir
  */
 
-const fetch       = require('node-fetch');
 const { evaluateNiche } = require('../services/ai-brain.service');
-const { getEtsyAutocomplete } = require('../services/keyword-research.service');
+const apifyService = require('../services/apify.service');
 const { logNotification } = require('../routes/notification.routes');
 const redis       = require('../config/redis');
 
@@ -53,68 +52,49 @@ function getSeasonalSeeds() {
 // ─── Data Sources ─────────────────────────────────────────────────────────────
 
 async function fetchEtsyNiches(seeds) {
-    const results = await Promise.allSettled(
-        seeds.slice(0, 8).map(seed => getEtsyAutocomplete(seed))
-    );
-    const niches = [];
-    for (const r of results) {
-        if (r.status === 'fulfilled') {
-            for (const term of r.value) {
-                niches.push({ niche: term, source: 'etsy' });
-            }
-        }
-    }
-    return niches;
-}
-
-async function fetchGoogleTrendingTopics() {
     try {
-        const url = 'https://trends.google.com/trends/api/dailytrends?hl=en-US&tz=0&geo=US&ns=15';
-        const res = await fetch(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-            timeout: 12000,
-        });
-        if (!res.ok) return [];
-
-        const text = await res.text();
-        const clean = text.replace(/^[^{[]*/, '').trim();
-        if (!clean) return [];
-
-        const data = JSON.parse(clean);
-        const searches = data?.default?.trendingSearchesDays?.[0]?.trendingSearches || [];
-
-        return searches
-            .map(t => t?.title?.query || '')
-            .filter(q => q && /shirt|mug|gift|art|print|design|poster|sticker|apparel|tee|hoodie|case|tote|decor|pillow/i.test(q))
-            .slice(0, 10)
-            .map(niche => ({ niche, source: 'google_trends' }));
+        const keywords = await apifyService.researchEtsyKeywords(seeds.slice(0, 6));
+        return keywords
+            .map(k => ({ niche: k.keyword, source: 'etsy' }))
+            .filter(({ niche }) => niche && niche.length > 3);
     } catch (err) {
-        console.warn('[Radar] Google Trends fetch failed:', err.message);
+        console.warn('[Radar] Apify Etsy keyword fetch failed:', err.message);
         return [];
     }
 }
 
-async function fetchPinterestTrends(seeds) {
+async function fetchEventBasedNiches() {
+    const month = new Date().getMonth();
+    const events = {
+        0:  ['new year resolution 2026 shirt', 'winter cozy aesthetic mug', 'january motivation poster'],
+        1:  ["valentine's day personalized gift", 'love heart couples shirt', 'galentines day girl squad'],
+        2:  ["st patrick's day lucky shirt", 'spring vibes aesthetic tee', 'march lucky charm mug'],
+        3:  ['easter bunny spring shirt', 'spring flowers wall art', 'april earth day nature print'],
+        4:  ["mother's day personalized gift", 'best mom wildflower wall art', 'mama bear cute shirt'],
+        5:  ["father's day funny gift", 'dad joke shirt', 'graduation 2026 senior gift'],
+        6:  ['4th july 250th anniversary patriotic', 'FIFA World Cup 2026 soccer fan', 'summer beach vibes'],
+        7:  ['back to school teacher gift', 'summer end aesthetic', 'august reading bookish shirt'],
+        8:  ['fall aesthetic pumpkin shirt', 'autumn leaves cozy mug', 'september harvest wall art'],
+        9:  ['halloween gothic witch shirt', 'spooky season ghost mug', 'october skeleton aesthetic'],
+        10: ['thanksgiving grateful family shirt', 'fall harvest pumpkin print', 'november cozy grateful'],
+        11: ['christmas gift personalized ornament', 'holiday ugly sweater shirt', 'xmas family matching'],
+    };
+    return (events[month] || []).map(niche => ({ niche, source: 'event_calendar' }));
+}
+
+async function fetchPinterestNiches(seeds) {
     const results = [];
-    for (const seed of seeds.slice(0, 3)) {
+    for (const seed of seeds.slice(0, 2)) {
         try {
-            const encoded = encodeURIComponent(seed);
-            const url = `https://www.pinterest.com/api/v3/search/typeahead/?query=${encoded}&scope=pins`;
-            const res = await fetch(url, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept': 'application/json',
-                },
-                timeout: 8000,
-            });
-            if (!res.ok) continue;
-            const data = await res.json();
-            const suggestions = (data?.suggestions || []).map(s => s?.term || '').filter(Boolean).slice(0, 4);
-            for (const term of suggestions) {
-                results.push({ niche: term, source: 'pinterest' });
+            const trends = await apifyService.scrapePinterestTrends(seed, 15);
+            for (const pin of trends.slice(0, 5)) {
+                const title = pin.title || '';
+                if (title && title.length > 3) {
+                    results.push({ niche: title.slice(0, 80), source: 'pinterest' });
+                }
             }
-        } catch {
-            // Pinterest may block — silently skip
+        } catch (err) {
+            console.warn(`[Radar] Apify Pinterest failed for "${seed}":`, err.message);
         }
     }
     return results;
@@ -149,14 +129,14 @@ async function runRadarScan() {
     const seeds = [...BASE_SEEDS, ...getSeasonalSeeds()];
 
     // Tüm kaynaklardan topla
-    const [etsyNiches, googleNiches, pinterestNiches] = await Promise.all([
+    const [etsyNiches, eventNiches, pinterestNiches] = await Promise.all([
         fetchEtsyNiches(seeds),
-        fetchGoogleTrendingTopics(),
-        fetchPinterestTrends(getSeasonalSeeds()),
+        fetchEventBasedNiches(),
+        fetchPinterestNiches(getSeasonalSeeds()),
     ]);
 
-    const allNiches = deduplicateNiches([...etsyNiches, ...googleNiches, ...pinterestNiches]).slice(0, 40);
-    console.log(`[Radar] Toplam ${allNiches.length} aday niche: Etsy(${etsyNiches.length}) Google(${googleNiches.length}) Pinterest(${pinterestNiches.length})`);
+    const allNiches = deduplicateNiches([...etsyNiches, ...eventNiches, ...pinterestNiches]).slice(0, 40);
+    console.log(`[Radar] Toplam ${allNiches.length} aday niche: Etsy(${etsyNiches.length}) Events(${eventNiches.length}) Pinterest(${pinterestNiches.length})`);
 
     for (const ws of workspaces) {
         const workspaceId = ws.id;

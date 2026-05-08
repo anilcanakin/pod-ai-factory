@@ -604,8 +604,19 @@ async function _scanSingleKeyword(workspaceId, keyword, kwIdx, {
     const processedUrls = new Set(); // local dedup — instant + trending arasında tekrar önle
 
     try {
-        // ── 1. Scrape ─────────────────────────────────────────────────────────
-        const rawProducts = await scrapeEtsyProducts(keyword, maxPerKeyword);
+        // ── 1. Scrape (fetch hatasında 1 kez retry) ───────────────────────────
+        let rawProducts;
+        try {
+            rawProducts = await scrapeEtsyProducts(keyword, maxPerKeyword);
+        } catch (fetchErr) {
+            const isNetwork = fetchErr.message?.toLowerCase().includes('fetch') ||
+                              fetchErr.message?.toLowerCase().includes('network') ||
+                              fetchErr.message?.toLowerCase().includes('econnreset');
+            if (!isNetwork) throw fetchErr;
+            console.warn(`[WPI]   ↳ "${keyword}" fetch hatası, 8s sonra retry: ${fetchErr.message}`);
+            await new Promise(r => setTimeout(r, 8000));
+            rawProducts = await scrapeEtsyProducts(keyword, maxPerKeyword);
+        }
         console.log(`[WPI]   ↳ ${rawProducts.length} products scraped`);
 
         // ── 1b. Kategorize + NON_POD filtrele ─────────────────────────────────

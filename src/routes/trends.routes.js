@@ -93,8 +93,10 @@ Return ONLY valid JSON:
             }]
         });
 
-        const raw = response.content[0].text.replace(/```json|```/g, '').trim();
-        const trends = JSON.parse(raw);
+        const rawText = response.content[0].text.replace(/```json|```/g, '').trim();
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('AI yanıtında JSON bulunamadı');
+        const trends = JSON.parse(jsonMatch[0]);
 
         res.json({
             ...trends,

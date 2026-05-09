@@ -23,7 +23,13 @@ router.post('/audit', async (req, res) => {
  */
 router.post('/execute-action', async (req, res) => {
   try {
-    const { listingId, actionType, details } = req.body;
+    const { listingId, actionType, details, dryRun } = req.body;
+    if (dryRun) {
+      const preview = actionType === 'UPDATE_PRICE' ? `Listing ${listingId} fiyati $${details?.newPrice} olacakti.` : `Listing ${listingId} basligi "${details?.newTitle}"
+olacakti.`;
+      console.log('[Agent DryRun]', preview);
+      return res.json({ success: true, dryRun: true, preview });
+    }
     const etsyBrowser = require('../services/etsy-browser.service');
     
     let result;

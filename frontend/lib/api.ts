@@ -601,9 +601,9 @@ export interface AuditPlan {
 
 export const apiAgent = {
     runAudit: () => request<AuditPlan>('/agent/audit', { method: 'POST' }),
-    applyAction: (action: AgentAction) => request<{ success: boolean }>('/agent/execute-action', {
+    applyAction: (action: AgentAction, dryRun = false) => request<{ success: boolean; dryRun?: boolean; preview?: string }>('/agent/execute-action', {
         method: 'POST',
-        body: JSON.stringify(action)
+        body: JSON.stringify({ ...action, dryRun })
     }),
 
     // ── Agentic Pipeline (agent.service.js) ──────────────────────────────────

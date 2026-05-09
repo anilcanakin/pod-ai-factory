@@ -583,3 +583,68 @@ router.post('/brainstorm/update/:id', async (req, res) => {
 
 module.exports = router;
 
+ router.post('/quality-test', async (req, res) => {
+      try {
+          const { keyword = 'minimalist cat wall art' } = req.body;
+          const workspaceId = req.workspaceId;
+          const anthropic = require('../lib/anthropic');
+          const { getSeoContext } = require('../services/knowledge-context.service');
+
+          const brainContext = await getSeoContext(workspaceId);
+
+          const buildPrompt = (context) =>
+              (context ? 'CONTEXT:\n' + context + '\n\n' : '') +
+              'Generate Etsy SEO for: ' + keyword + '\n' +
+              'Return JSON: {"title":"<140 chars>","tags":["tag1","tag2","tag3","tag4","tag5"]}';
+
+          const [withBrain, baseline] = await Promise.all([
+              anthropic.messages.create({
+                  model: 'claude-haiku-4-5-20251001', max_tokens: 300,
+                  messages: [{ role: 'user', content: buildPrompt(brainContext) }]
+              }),
+              anthropic.messages.create({
+                  model: 'claude-haiku-4-5-20251001', max_tokens: 300,
+                  messages: [{ role: 'user', content: buildPrompt('') }]
+              })
+          ]);
+
+          const parse = (msg) => {
+              try {
+                  const raw = msg.content[0].text;
+                  const m = raw.match(/\{[\s\S]*\}/);
+                  return m ? JSON.parse(m[0]) : { title: raw.slice(0, 140), tags: [] };
+              } catch { return { title: '?', tags: [] }; }
+          };
+
+          const brainResult   = parse(withBrain);
+          const baselineResult = parse(baseline);
+
+          const judgeRes = await anthropic.messages.create({
+              model: 'claude-haiku-4-5-20251001', max_tokens: 400,
+              messages: [{
+                  role: 'user',
+                  content: 'You are an Etsy SEO expert. Judge these two Etsy listing titles for keyword: "' + keyword + '".\n\n' +
+                      'OPTION A (Brain-assisted): ' + brainResult.title + '\n' +
+                      'OPTION B (Baseline): ' + baselineResult.title + '\n\n' +
+                      'Which title will get more clicks on Etsy? Return JSON: {"winner":"A"|"B"|"tie","score":0-100,"reason":"<50 words>"}'
+              }]
+          });
+
+          const judge = parse(judgeRes);
+          const brainWins = judge.winner === 'A';
+
+          res.json({
+              keyword,
+              brainContext: brainContext ? brainContext.slice(0, 200) + '...' : '(empty)',
+              withBrain: brainResult,
+              baseline: baselineResult,
+              verdict: {
+                  winner: brainWins ? 'brain' : judge.winner === 'B' ? 'baseline' : 'tie',
+                  score: judge.score || 50,
+                  reason: judge.reason || ''
+              }
+          });
+      } catch (err) {
+          res.status(500).json({ error: err.message });
+      }
+  });

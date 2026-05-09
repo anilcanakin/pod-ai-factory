@@ -12,7 +12,7 @@
  *     FALLBACK → Claude Haiku              (actor başarısız olursa semantik genişletme)
  *
  *   scrapePinterestTrends
- *     → apify/pinterest-crawler            (Starter CU)
+ *     → automation-lab/pinterest-scraper            (Starter CU)
  *
  * x402 ödeme akışı:
  *   POST → 402 → payment-required decode → EIP-3009 TransferWithAuthorization imzala →
@@ -35,7 +35,7 @@ const ACTORS = {
     // Hızlı keyword araştırma için optimize actor (8s / 144 sonuç).
     // .env'de APIFY_ACTOR_ETSY_SEARCH=getdat/etsy-product-search-scraper şeklinde set et.
     ETSY_SEARCH:      process.env.APIFY_ACTOR_ETSY_SEARCH    || null,
-    PINTEREST:        process.env.APIFY_ACTOR_PINTEREST       || 'apify/pinterest-crawler',
+    PINTEREST:        process.env.APIFY_ACTOR_PINTEREST       || 'automation-lab/pinterest-scraper',
 };
 
 // ─── Timeouts (saniye) ────────────────────────────────────────────────────────
@@ -319,7 +319,7 @@ async function scrapeEtsyProducts(keyword, maxResults = 50) {
 async function scrapePinterestTrends(keyword, maxResults = 30) {
     const items = await _runActor(
         ACTORS.PINTEREST,
-        { queries: [keyword], maxResults, searchType: 'pins' },
+        { searchQueries: [keyword], maxResults, type: 'pins' },
         { waitSecs: TIMEOUTS.PINTEREST, memory: MEMORY.PINTEREST }
     );
 

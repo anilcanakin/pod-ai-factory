@@ -77,8 +77,28 @@ async function getSeoContext(workspaceId) {
 /**
  * Get context for Factory prompt/variation generation.
  */
+async function getPerformanceContext(workspaceId) {
+    try {
+        const performers = await prisma.productPerformance.findMany({
+            where: { image: { job: { workspaceId } }, OR: [{ flag: 'WINNER' }, { score: { gte: 50 } }] },
+            orderBy: { score: 'desc' }, take: 5,
+            include: { image: { include: { seoData: true, job: { select: { keyword: true, niche: true, style: true } } } } }
+        });
+        const lines = performers.map(p => {
+            const job = p.image?.job; const seo = p.image?.seoData;
+            const ctr = p.impressions > 0 ? ((p.visits / p.impressions) * 100).toFixed(1) : '0.0';
+            const niche = [job?.niche, job?.keyword, job?.style].filter(Boolean).join(' / ') || 'Bilinmiyor';
+            const title = seo?.title ? '"' + seo.title.slice(0, 70) + '"' : '';
+            return '• ' + niche + ' — Score: ' + p.score + ', CTR: ' + ctr + '%, Orders: ' + p.orders + (title ? ' Title: ' + title : '');
+        });
+        return '## EN IYI PERFORMANS GOSTEREN TASARIMLAR (Gercek Etsy Verisi): ' + lines.join(' ');
+    } catch (err) { console.warn('[PerformanceContext] Failed:', err.message); return ''; }
+}
 async function getFactoryContext(workspaceId) {
-    return getRelevantContext(workspaceId, 'factory');
+    const [brainResult, perfResult] = await Promise.allSettled([getRelevantContext(workspaceId, 'factory'), getPerformanceContext(workspaceId)]);
+    const brain = brainResult.status === 'fulfilled' ? brainResult.value : '';
+    const perf  = perfResult.status  === 'fulfilled' ? perfResult.value  : '';
+    return [brain, perf].filter(Boolean).join(" | ");
 }
 
 /**
@@ -169,4 +189,5 @@ module.exports = {
     getIdeasContext,
     getKnowledgeSummary,
     getVectorContext,
+    getPerformanceContext,
 };

@@ -76,4 +76,35 @@ router.get('/performance', async (req, res) => {
     }
 });
 
-module.exports = router;
+
+ router.post('/synthesize', async (req, res) => {
+      try {
+          const workspaceId = req.workspaceId;
+          const performers = await prisma.productPerformance.findMany({
+              where: { image: { job: { workspaceId } }, OR: [{ flag: 'WINNER' }, { score: { gte: 40 } }] },
+              orderBy: { score: 'desc' }, take: 10,
+              include: { image: { include: { seoData: true, job: { select: { keyword: true, niche: true, style: true } } } } }
+          });
+          if (!performers.length) return res.json({ success: false, message: 'Analiz icin yeterli veri yok.' });
+          const lines = performers.map((p, i) => {
+              const job = p.image && p.image.job;
+              const seo = p.image && p.image.seoData;
+              const ctr = p.impressions > 0 ? ((p.visits / p.impressions) * 100).toFixed(1) : '0';
+              return (i + 1) + '. ' + ((job && job.niche) || (job && job.keyword) || '?') + ' | ' + ((job && job.style) || '?') + ' | Score:' + p.score + ' CTR:' + ctr + '% Orders:' + p.orders + ' | ' + ((seo && seo.title && seo.title.slice(0, 60)) || '-');
+          });
+          const summary = lines.join(' --- ');
+          const anthropic = require('../lib/anthropic');
+          const response = await anthropic.messages.create({
+              model: 'claude-haiku-4-5-20251001', max_tokens: 800,
+              messages: [{ role: 'user', content: 'Etsy POD top performer analizi: ' + summary + ' -- Hangi nis/stil calisiyor, 3 oneri ver, bullet-point.' }]
+          });
+          const insight = response.content[0].text;
+          await prisma.corporateMemory.create({ data: { workspaceId, type: 'auto_analysis', title: 'Analytics Feedback ' + new Date().toLocaleDateString('tr-TR'), content: insight, category:      
+  'pod_apparel', isActive: true, analysisResult: { synthesis: insight } } });
+          res.json({ success: true, insight, performersAnalyzed: performers.length });
+      } catch (err) {
+          res.status(500).json({ error: err.message });
+      }
+  });
+
+  module.exports = router;

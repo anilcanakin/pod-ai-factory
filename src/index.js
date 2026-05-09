@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('dotenv').config();
 
 // ── In-memory log ring buffer (console'u override et, son 100 log'u tut) ─────
 const LOG_BUFFER = [];
@@ -80,6 +81,9 @@ require('./jobs/seo-knowledge-updater').startCron();
 
 // Autonomous Radar: Etsy/Google Trends/Pinterest — every 12h
 require('./jobs/radar-worker').startCron();
+
+require('./jobs/playwright-health-cron').startCron();
+require('./jobs/order-poller.job').startCron();
 
 // Storage asset explicit workspace scoped protection
 app.use('/assets/outputs/:filename', async (req, res, next) => {
@@ -383,7 +387,7 @@ app.use('/api/factory', require('./routes/factory.routes'));
 app.use('/api/ideas', require('./routes/idea.routes'));
 app.use('/api/analytics', require('./routes/analytics.routes'));
 app.use('/api/packs', require('./routes/product-pack.routes'));
-app.use('/api/billing', require('./routes/billing.routes'));
+// app.use('/api/billing', require('./routes/billing.routes'));
 app.use('/api/mockups/templates', require('./routes/mockup-template.routes'));
 app.use('/api/mockups', require('./routes/mockup.routes'));
 app.use('/api/notifications', require('./routes/notification.routes'));

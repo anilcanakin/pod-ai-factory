@@ -1494,7 +1494,7 @@ export function WpiClient() {
     const loadRadarDiscoveries = useCallback(async () => {
         setRadarLoading(true);
         try {
-            const res = await apiWpi.radarDiscoveries(24);
+            const res = await apiWpi.radarDiscoveries(168);
             setRadarDiscoveries(res.discoveries);
             setRadarLastRun(res.lastRunAt);
             setRadarNextRun(res.nextRunAt);

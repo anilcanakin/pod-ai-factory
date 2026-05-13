@@ -1,14 +1,33 @@
-# Mockup Bulk Import — Design Spec
+# Mockup Bulk Import & PSD Integration — Design Spec
 
 **Tarih:** 2026-05-13  
-**Kapsam:** Creative Fabrica'dan indirilen PNG/JPG/PSD mockupları toplu sisteme aktarma  
-**Yaklaşım:** Mevcut Mockups sayfasına "Toplu İçe Aktar" sekmesi + backend PSD desteği
+**Kapsam:** Creative Fabrica PNG/JPG/PSD mockup toplu aktarımı + gerçekçi kumaş render + ürün rengi değiştirme  
+**Yaklaşım:** Mevcut Mockups sayfasına "Toplu İçe Aktar" sekmesi + backend PSD analiz servisi + render pipeline güncellemesi
 
 ---
 
-## Bağlam
+## Problem & Motivasyon
 
-Creative Fabrica'dan 100+ mockup (flat PNG/JPG + PSD) indirilmektedir. Mevcut sistem tek-dosya template yüklemesini destekliyor; backend'de `bulk-upload` route'u var ama sadece PNG/JPG kabul ediyor ve 20 dosya limiti var. PSD desteği hiç yok.
+Creative Fabrica'dan indirilen PSD mockupların değeri şuradan geliyor:
+1. **Smart object katmanı** — tasarımın tam olarak nereye oturacağını piksel piksel tanımlar
+2. **Shadow/highlight overlay katmanı** — kumaş kıvrımlarını ve doku etkisini yaratır
+3. **Ürün silüeti** — farklı tişört renklerinde aynı mockupu kullanmaya izin verir
+
+Mevcut sistem bunların hiçbirini PSD'den otomatik çıkaramıyor; brightness-based tahmin yapıyor ve tek renk sabit.
+
+---
+
+## Hedef Çıktı
+
+Bir PSD yüklendiğinde sistem otomatik olarak şunları üretecek:
+
+```
+assets/mockups/{category}/{templateId}/
+  ├── base.png          → flattened PSD (orijinal renk + texture, preview için)
+  ├── gray_base.png     → greyscale ürün silüeti (renk değiştirme için)
+  ├── shadow.png        → shadow/highlight overlay katmanı
+  └── config.json       → printArea (smart object bounds'dan), defaultColor, layerMap
+```
 
 ---
 
@@ -16,153 +35,220 @@ Creative Fabrica'dan 100+ mockup (flat PNG/JPG + PSD) indirilmektedir. Mevcut si
 
 ```
 Frontend: MockupsClient.tsx
-  └─ "Toplu İçe Aktar" sekmesi → <BulkImporter />
-       ├─ Çoklu dosya seçimi (PNG/JPG/PSD)
-       ├─ Kategori seçici (tek kategori tüm batch için)
-       ├─ Frontend batching: 20'şerlik gruplar → sırayla POST
-       └─ Dosya başına durum: bekliyor → işleniyor → ✓/✗
+  ├── "Toplu İçe Aktar" sekmesi → <BulkImporter />
+  │    └── PNG/JPG/PSD yükle → kategori → batch POST
+  │
+  └── Render bölümü (mevcut)
+       └── Renk picker eklendi → productColor → render isteğine eklenir
 
 Backend: POST /api/mockups/templates/bulk-upload  [güncellendi]
-  ├─ PNG/JPG → detectPrintArea → MockupTemplate DB kaydı
-  └─ PSD     → psdFlatten() → PNG buffer → detectPrintArea → DB kaydı
+  ├── PNG/JPG → detectPrintArea → DB
+  └── PSD     → PsdAnalyzer.analyze() → base/gray/shadow PNG'leri → DB
 
-Yeni servis: src/services/psd.service.js
-  └─ psdFlatten(filePath): Promise<Buffer>
+Yeni: src/services/psd-analyzer.service.js
+  └── analyze(filePath): { printArea, shadowBuffer, grayBuffer, baseBuffer, defaultColor }
+
+Güncellenen: src/services/mockup-render.service.js
+  └── renderMockup() → productColor parametresi eklendi
+       grayBasePath varsa: gray_base.png → tint(productColor) → base olarak kullan
+       yoksa: mevcut base.jpg/png kullan
 ```
 
 ---
 
-## Backend Değişiklikleri
+## PSD Analiz Servisi: `psd-analyzer.service.js`
 
-### 1. Yeni: `src/services/psd.service.js`
+### Layer tanımlama stratejisi
+
+`psd.js` ile layer tree taranır, isim heuristikleri uygulanır:
 
 ```js
-const PSD = require('psd');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
+const SMART_OBJECT_KEYWORDS = ['design', 'artwork', 'place', 'your', 'motif', 'print', 'grafik', 'tasarım'];
+const SHADOW_KEYWORDS       = ['shadow', 'highlight', 'texture', 'shading', 'overlay', 'wrinkle', 'fold'];
+const COLOR_KEYWORDS        = ['color', 'colour', 'renk', 'fill', 'base', 'shirt', 'tshirt'];
+```
 
-async function psdFlatten(filePath) {
-    const psd = PSD.fromFile(filePath);
+### analyze() çıktısı
+
+```js
+async function analyze(psdFilePath) {
+    const psd = PSD.fromFile(psdFilePath);
     psd.parse();
-    // saveAsPng yazar ve tamamlandığında resolve eder
-    const tmpPath = path.join(os.tmpdir(), `psd-${Date.now()}.png`);
-    await psd.image.saveAsPng(tmpPath);
-    const buffer = fs.readFileSync(tmpPath);
-    fs.unlinkSync(tmpPath);
-    return buffer; // PNG Buffer
-}
 
-module.exports = { psdFlatten };
+    const { width, height } = psd.header;
+    const layers = flattenLayers(psd.tree().children());
+
+    // 1. Smart object → print area
+    const smartLayer = findLayer(layers, SMART_OBJECT_KEYWORDS);
+    const printArea = smartLayer
+        ? boundsToNormalized(smartLayer.get('bounds'), width, height)
+        : await detectPrintArea(psdFilePath); // fallback: brightness tabanlı
+
+    // 2. Tam flatten → base.png
+    const baseTmp = tmp();
+    await psd.image.saveAsPng(baseTmp);
+    const baseBuffer = fs.readFileSync(baseTmp);
+
+    // 3. Greyscale base → gray_base.png (tişört rengi için)
+    const grayBuffer = await sharp(baseBuffer)
+        .greyscale()
+        .png()
+        .toBuffer();
+
+    // 4. Shadow katmanı render → shadow.png
+    //    psd.js layer export ile shadow katmanını izole et
+    //    Eğer bulunamazsa: null (render engine shadow kullanmaz)
+    const shadowLayer = findLayer(layers, SHADOW_KEYWORDS);
+    const shadowBuffer = shadowLayer
+        ? await renderLayerToPng(shadowLayer, width, height)
+        : null;
+
+    // 5. Default color → ilk color fill katmanından al
+    const colorLayer = findLayer(layers, COLOR_KEYWORDS);
+    const defaultColor = colorLayer
+        ? extractFillColor(colorLayer)
+        : '#FFFFFF';
+
+    return { printArea, baseBuffer, grayBuffer, shadowBuffer, defaultColor };
+}
 ```
 
-### 2. Güncelleme: `bulk-upload` route (`mockup-template.routes.js`)
+### Shadow katmanı render notu
 
-**Değişen noktalar:**
+`psd.js` tek bir katmanı izole render etmek için doğrudan API sunmuyor. `renderLayerToPng()` implementasyonu şu yolu izleyecek:
+- Layer'ın pixel buffer'ını `layer.image.toBuffer()` ile al
+- Layer `width × height` boyutunda boş bir canvas oluştur, layer'ı `(left, top)` koordinatına yerleştir
+- Sharp ile PNG'ye çevir
+Eğer bu yaklaşım belirli PSD yapıları için başarısız olursa, shadow layer çıkarma atlanır (fallback: shadow yok).
 
-| Satır | Öncesi | Sonrası |
-|-------|--------|---------|
-| `fileFilter` | sadece `image/*` | `image/*` + `.psd` uzantısı |
-| `maxCount` | 20 | 100 |
-| Dosya işleme döngüsü | sadece PNG/JPG | `.psd` uzantısı → `psdFlatten()` → geçici PNG → detectPrintArea |
+### Fallback davranışı
 
-**PSD akışı:**
+Her adım bağımsız — bir katman bulunamazsa sistem durmuyor:
+
+| Bulunamazsa | Davranış |
+|-------------|----------|
+| Smart object | `detectPrintArea()` ile brightness tahmini |
+| Shadow katmanı | `shadow.png` yok, render engine shadow uygulamaz |
+| Color layer | `defaultColor = '#FFFFFF'` |
+
+---
+
+## Render Pipeline Güncellemesi: `mockup-render.service.js`
+
+### Yeni parametre: `productColor`
+
 ```js
-if (path.extname(file.originalname).toLowerCase() === '.psd') {
-    const pngBuffer = await psdFlatten(file.path);
-    const tmpPng = path.join(os.tmpdir(), `psd-${Date.now()}.png`);
-    fs.writeFileSync(tmpPng, pngBuffer);
-    // tmpPng'yi base image olarak kullan
-    // detectPrintArea(tmpPng) ile print area tespit et
-    // finalDir'e kopyala, DB kaydı oluştur
-    fs.unlinkSync(tmpPng); // temizle
+renderMockup({ ..., productColor: '#FF5733' })
+```
+
+### Güncellenen akış
+
+```
+1. baseImagePath mi, grayBasePath mi?
+   └── grayBasePath varsa (PSD'den gelen şablonlar):
+         gray_base.png → sharp().tint({ r, g, b }) → renkli base buffer
+   └── baseImagePath varsa (mevcut PNG şablonlar):
+         base.jpg / base.png direkt yüklenir
+
+2. Mevcut adımlar devam eder:
+   print area → design composite → shadow overlay → output
+```
+
+### Sharp tint uygulaması
+
+```js
+if (template.grayBasePath && productColor) {
+    const { r, g, b } = hexToRgb(productColor);
+    baseBuffer = await sharp(grayBasePath)
+        .tint({ r, g, b })
+        .toBuffer();
+} else {
+    baseBuffer = basePath; // mevcut akış
 }
 ```
 
-### 3. `package.json`
+### configJson yeni alanlar
+
+```json
+{
+  "printArea": { ... },
+  "transform": { ... },
+  "render": { ... },
+  "meta": {
+    "grayBasePath": "assets/mockups/tshirt/{id}/gray_base.png",
+    "defaultColor": "#FFFFFF",
+    "isPsdDerived": true,
+    "layerMap": {
+      "smartObject": "Your Design Here",
+      "shadow": "Shadow & Highlights",
+      "colorBase": "Color"
+    }
+  }
+}
 ```
-npm install psd
-```
+
+---
+
+## DB Değişikliği
+
+Yok. `grayBasePath` ve `defaultColor` `configJson.meta` içinde saklanıyor — mevcut `MockupTemplate` modeli yeterli.
 
 ---
 
 ## Frontend Değişiklikleri
 
-### 1. Yeni dosya: `frontend/app/dashboard/mockups/BulkImporter.tsx`
+### 1. `BulkImporter.tsx` (yeni dosya)
 
-**Props:**
-```ts
-interface BulkImporterProps {
-  onComplete: (count: number) => void;
-}
-```
+**Dosya tipi desteği:** `image/*,.psd`  
+**Kategori:** tek seçim, tüm batch'e uygulanır  
+**Batching:** 20 dosya/istek, sırayla  
+**Per-dosya durum:** bekliyor → işleniyor → ✓ / ✗ (hata mesajıyla)  
+**Özet:** "47/50 yüklendi, 3 hatalı"
 
-**State:**
-```ts
-type FileEntry = {
-  file: File;
-  status: 'pending' | 'uploading' | 'success' | 'error';
-  error?: string;
-  templateId?: string;
-};
+Dosya badge renkleri: PSD=mor, PNG=yeşil, JPG=mavi
 
-const [files, setFiles] = useState<FileEntry[]>([]);
-const [category, setCategory] = useState('tshirt');
-const [isRunning, setIsRunning] = useState(false);
-const [progress, setProgress] = useState({ done: 0, total: 0 });
-```
+### 2. `MockupsClient.tsx` güncellemeleri
 
-**Kullanıcı akışı:**
-1. Kategori seç (dropdown — tshirt/hoodie/sweatshirt/mug/sticker/phone_case)
-2. Dosyaları sürükle veya "Dosya Seç" (`accept="image/*,.psd"` + `multiple`)
-3. Dosya listesi görünür: isim, boyut, tip badge (PSD=mor/PNG=yeşil/JPG=mavi), durum
-4. "Yüklemeyi Başlat" → batch işleme başlar
-5. Her dosya güncel durumu gösterir
-6. Tüm batch bitince: "X/Y yüklendi" özet ve `onComplete(successCount)` callback
+**Yeni sekme:** "Toplu İçe Aktar" → `<BulkImporter />`
 
-**Batching stratejisi:**
-```
-files → 20'şerlik chunks → sırayla POST /api/mockups/templates/bulk-upload
-```
-Her chunk için tek bir `FormData` (20 dosya, aynı kategori). Bir chunk tamamlandıktan sonra sonraki chunk başlar.
-
-**Dosya tipi badge'leri:**
-- `.psd` → `bg-purple-600/20 text-purple-400 border-purple-500/30`
-- `.png` → `bg-green-600/20 text-green-400 border-green-500/30`
-- `.jpg/.jpeg` → `bg-blue-600/20 text-blue-400 border-blue-500/30`
-
-### 2. Güncelleme: `MockupsClient.tsx`
-
-- Mevcut sekme yapısına "Toplu İçe Aktar" sekmesi eklenir
-- Sekme içeriğinde `<BulkImporter onComplete={handleBulkComplete} />` render edilir
-- `handleBulkComplete` → template listesini yeniler (mevcut `refetchTemplates` fonksiyonu)
+**Render bölümüne renk picker eklenir:**
+- Sadece `configJson.meta.isPsdDerived === true` olan şablonlarda görünür
+- Yaygın tişört renkleri için 8-10 hazır renk swatchi: beyaz, siyah, lacivert, gri, kırmızı, yeşil vb.
+- Özel hex renk input'u da var
+- Seçilen renk render isteğine `productColor` olarak eklenir
+- Seçili renk şablona özel `localStorage`'da hatırlanır (oturum boyunca)
 
 ---
 
-## Hata Yönetimi
+## `bulk-upload` Route Güncellemesi
 
-| Durum | Davranış |
-|-------|----------|
-| PSD parse hatası | O dosya `error` durumuna geçer, batch devam eder |
-| Ağ hatası (chunk) | Chunk içindeki tüm dosyalar `error` olur, sonraki chunk devam eder |
-| Boyut aşımı (>20MB) | `fileFilter` reddeder, frontend'de `error` badge |
-| Geçersiz uzantı | Frontend'de filtrelenir, listeye eklenmez |
+```
+fileFilter: image/* + .psd
+dosya limiti: 100
+PSD akışı:
+  PsdAnalyzer.analyze(filePath)
+  → base/gray/shadow dosyaları assets/mockups/{category}/{id}/ altına yazar
+  → configJson meta alanlarını doldurur
+  → MockupTemplate DB kaydı oluşturur (shadowImagePath dahil)
+```
 
 ---
 
 ## Kapsam Dışı
 
-- Dosya adından otomatik kategori tespiti (gelecekte eklenebilir)
-- PSD içindeki smart object bounds'u kullanarak hassas print area tespiti (mevcut auto-detect yeterli)
+- Perspective warp / mesh warp (displacement map ile tasarımı eğme) — gelecek
+- PSD içindeki birden fazla smart object (multi-area) otomatik tespiti — gelecek
 - Batch sırasında individual dosya iptali
-- Klasör yükleme (`webkitdirectory`) — standart multi-file seçimi yeterli
+- Klasör yükleme (`webkitdirectory`)
 
 ---
 
 ## Test Planı
 
-1. 5 PNG + 2 PSD + 1 JPG karışık batch yükle → tümü başarılı
-2. Bozuk PSD yükle → sadece o dosya `error` badge, geri kalanlar başarılı
-3. 25 dosya yükle → 20+5 olarak iki batch gönderildiği logda görülür
-4. Yükleme sonrası MockupsClient template listesinde yeni templatelar görünür
-5. Yüklenen bir PSD template'iyle normal render çalışır
+1. Creative Fabrica PSD yükle → `config.json`'da `printArea` smart object bounds'a uyuyor mu?
+2. Aynı şablonda 3 farklı renk seç → her render farklı renkte tişört üretiyor mu?
+3. Shadow katmanı olan PSD → render'da kumaş texture görünüyor mu?
+4. Shadow katmanı olmayan PSD → render çalışıyor, shadow yok ama hata yok
+5. 25 PNG + 5 PSD karışık batch → tüm PSD'ler `isPsdDerived: true`, tümü başarılı
+6. Bozuk PSD → sadece o dosya error, batch devam ediyor
+7. PNG şablonlarda renk picker görünmüyor (sadece PSD şablonlarda)

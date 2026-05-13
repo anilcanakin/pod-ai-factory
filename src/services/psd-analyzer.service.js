@@ -42,16 +42,22 @@ function boundsToNormalized(coords, psdWidth, psdHeight) {
 
 async function renderLayerToPng(layer, psdWidth, psdHeight) {
     try {
-        const rawBuf = layer.image.toBuffer();
-        if (!rawBuf || rawBuf.byteLength === 0) return null;
+        // Try pixelData first, fallback to toPng().data
+        let rawBuf;
+        try {
+            const png = layer.image.toPng();
+            rawBuf = png && png.data ? Buffer.from(png.data) : null;
+        } catch {
+            rawBuf = null;
+        }
+        if (!rawBuf || rawBuf.length === 0) return null;
 
         const lw = layer.layer.width || layer.width;
         const lh = layer.layer.height || layer.height;
         if (!lw || !lh) return null;
 
-        const coords = layer.layer.coords || {};
-        const left = coords.left || 0;
-        const top = coords.top || 0;
+        const left = Math.max(0, layer.layer.left || 0);
+        const top  = Math.max(0, layer.layer.top  || 0);
 
         // Layer pixel data → PNG buffer
         const layerPng = await sharp(Buffer.from(rawBuf), {
@@ -67,7 +73,8 @@ async function renderLayerToPng(layer, psdWidth, psdHeight) {
             .toBuffer();
 
         return fullCanvas;
-    } catch {
+    } catch (err) {
+        console.warn('[psd-analyzer] renderLayerToPng failed:', err.message);
         return null;
     }
 }
@@ -92,7 +99,12 @@ async function analyze(psdFilePath, category = 'tshirt') {
     let smartLayerName = null;
 
     if (smartLayer) {
-        const coords = smartLayer.layer?.coords || smartLayer.get?.('bounds') || {};
+        const coords = smartLayer.coords || {
+            top: smartLayer.layer?.top,
+            left: smartLayer.layer?.left,
+            bottom: smartLayer.layer?.bottom,
+            right: smartLayer.layer?.right,
+        };
         const valid = typeof coords.top === 'number' && typeof coords.left === 'number'
             && typeof coords.bottom === 'number' && typeof coords.right === 'number'
             && (coords.right - coords.left) > 0 && (coords.bottom - coords.top) > 0;
@@ -103,18 +115,14 @@ async function analyze(psdFilePath, category = 'tshirt') {
         }
     }
 
-    if (!printArea) {
-        // Fallback: write flattened PSD to temp then detect
-        const tmpPath = path.join(os.tmpdir(), `psd-detect-${Date.now()}.png`);
-        await psd.image.saveAsPng(tmpPath);
-        printArea = await detectPrintArea(tmpPath);
-        try { fs.unlinkSync(tmpPath); } catch {}
-    }
-
-    // 2. Full flatten → base buffer
+    // 2. Full flatten → base buffer (saveAsPng only once)
     const baseTmp = path.join(os.tmpdir(), `psd-base-${Date.now()}.png`);
     await psd.image.saveAsPng(baseTmp);
     const baseBuffer = fs.readFileSync(baseTmp);
+
+    if (!printArea) {
+        printArea = await detectPrintArea(baseTmp);
+    }
     try { fs.unlinkSync(baseTmp); } catch {}
 
     // 3. Greyscale → gray_base buffer

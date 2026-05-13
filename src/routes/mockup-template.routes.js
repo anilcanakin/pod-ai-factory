@@ -4,7 +4,9 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const sharp = require('sharp');
 const { detectPrintArea } = require('../services/mockup-render.service');
+const { analyze: analyzePsd } = require('../services/psd-analyzer.service');
 
 const prisma = require('../lib/prisma');
 
@@ -48,7 +50,7 @@ const upload = multer({
     storage,
     limits: { fileSize: 100 * 1024 * 1024 }, // increased to 100MB for videos
     fileFilter: (req, file, cb) => {
-        const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.webm', '.mov'];
+        const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.webm', '.mov', '.psd'];
         const ext = path.extname(file.originalname).toLowerCase();
         if (allowed.includes(ext)) cb(null, true);
         else cb(new Error(`File type ${ext} not allowed. Use: ${allowed.join(', ')}`));
@@ -375,14 +377,15 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
                 filename: (req, file, cb) => cb(null, `base-${Date.now()}${path.extname(file.originalname)}`)
             }),
             fileFilter: (req, file, cb) => {
-                if (file.mimetype.startsWith('image/')) cb(null, true);
-                else cb(new Error('Images only'));
+                const ext = path.extname(file.originalname).toLowerCase();
+                if (file.mimetype.startsWith('image/') || ext === '.psd') cb(null, true);
+                else cb(new Error('Images and PSD only'));
             },
             limits: { fileSize: 20 * 1024 * 1024 }
         });
 
         await new Promise((resolve, reject) => {
-            upload.array('images', 20)(req, res, err => err ? reject(err) : resolve());
+            upload.array('images', 100)(req, res, err => err ? reject(err) : resolve());
         });
 
         const { category = 'tshirt' } = req.body;
@@ -392,59 +395,90 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
             return res.status(400).json({ error: 'No images provided' });
         }
 
-        const sharp = require('sharp');
         const results = [];
 
         for (const file of files) {
             try {
                 const templateId = require('crypto').randomUUID();
+                const isPsd = path.extname(file.originalname).toLowerCase() === '.psd';
                 const destDir = path.join(__dirname, `../../assets/mockups/${category}/${templateId}`);
                 fs.mkdirSync(destDir, { recursive: true });
 
-                const ext = path.extname(file.originalname);
-                const destPath = path.join(destDir, `base${ext}`);
-                fs.copyFileSync(file.path, destPath);
+                let printArea, baseImageFilename, shadowImagePath, configMeta, printAreaConfidence;
 
-                const printAreaResult = await detectPrintArea(file.path);
-                const printArea = {
-                    x: printAreaResult.x,
-                    y: printAreaResult.y,
-                    width: printAreaResult.width,
-                    height: printAreaResult.height
-                };
-                const confidence = printAreaResult.confidence;
+                if (isPsd) {
+                    const analysis = await analyzePsd(file.path, category);
 
-                // Save to DB
+                    baseImageFilename = 'base.png';
+                    fs.writeFileSync(path.join(destDir, 'base.png'), analysis.baseBuffer);
+                    fs.writeFileSync(path.join(destDir, 'gray_base.png'), analysis.grayBuffer);
+
+                    if (analysis.shadowBuffer) {
+                        fs.writeFileSync(path.join(destDir, 'shadow.png'), analysis.shadowBuffer);
+                        shadowImagePath = `assets/mockups/${category}/${templateId}/shadow.png`;
+                    } else {
+                        shadowImagePath = `assets/presets/shadows/${category}_shadow.png`;
+                    }
+
+                    printArea = analysis.printArea;
+                    printAreaConfidence = 100;
+                    configMeta = {
+                        grayBasePath: `assets/mockups/${category}/${templateId}/gray_base.png`,
+                        defaultColor: analysis.defaultColor,
+                        isPsdDerived: true,
+                        shadowSource: analysis.shadowBuffer ? 'psd' : 'preset',
+                        layerMap: analysis.layerMap,
+                    };
+                } else {
+                    const ext = path.extname(file.originalname);
+                    baseImageFilename = `base${ext}`;
+                    const destPath = path.join(destDir, baseImageFilename);
+                    fs.copyFileSync(file.path, destPath);
+                    shadowImagePath = null;
+
+                    const printAreaResult = await detectPrintArea(file.path);
+                    printArea = {
+                        x: printAreaResult.x,
+                        y: printAreaResult.y,
+                        width: printAreaResult.width,
+                        height: printAreaResult.height,
+                    };
+                    printAreaConfidence = printAreaResult.confidence;
+                    configMeta = {
+                        view: 'front', background: 'studio', color: 'white', hasHumanModel: false,
+                        isPsdDerived: false,
+                    };
+                }
+
                 const template = await prisma.mockupTemplate.create({
                     data: {
                         id: templateId,
                         workspaceId: req.workspaceId,
-                        name: path.basename(file.originalname, ext),
+                        name: path.basename(file.originalname, path.extname(file.originalname)),
                         category,
-                        baseImagePath: `assets/mockups/${category}/${templateId}/base${ext}`,
+                        baseImagePath: `assets/mockups/${category}/${templateId}/${baseImageFilename}`,
+                        shadowImagePath,
                         configJson: {
                             printArea,
-                            transform: { rotation: 0, opacity: 1, blendMode: 'multiply' },
+                            transform: { rotation: 0, opacity: isPsd ? 0.92 : 1, blendMode: 'multiply' },
                             render: { renderMode: 'flat' },
-                            meta: { view: 'front', background: 'studio', color: 'white', hasHumanModel: false }
-                        }
-                    }
+                            meta: configMeta,
+                        },
+                    },
                 });
 
                 results.push({
                     id: template.id,
                     name: template.name,
                     printArea,
-                    confidence,
-                    status: 'success'
+                    confidence: printAreaConfidence,
+                    type: isPsd ? 'psd' : 'image',
+                    shadowSource: isPsd ? configMeta.shadowSource : null,
+                    status: 'success',
                 });
 
             } catch (err) {
-                results.push({
-                    name: file.originalname,
-                    status: 'error',
-                    error: err.message
-                });
+                results.push({ name: file.originalname, status: 'error', error: err.message });
             }
         }
 
@@ -517,6 +551,74 @@ router.post('/render-video', async (req, res) => {
             error: err.message,
             detail: err.body || err.detail || {}
         });
+    }
+});
+
+// POST /api/mockups/templates/:id/generate-shadow
+router.post('/:id/generate-shadow', async (req, res) => {
+    try {
+        if (!req.workspaceId) return res.status(401).json({ error: 'Unauthorized' });
+
+        const template = await prisma.mockupTemplate.findFirst({
+            where: { id: req.params.id, workspaceId: req.workspaceId },
+        });
+        if (!template) return res.status(404).json({ error: 'Template not found' });
+
+        const basePath = path.isAbsolute(template.baseImagePath)
+            ? template.baseImagePath
+            : path.join(__dirname, '../../', template.baseImagePath);
+
+        if (!fs.existsSync(basePath)) {
+            return res.status(400).json({ error: 'Base image not found' });
+        }
+
+        const { uploadToStorage } = require('../services/storage.service');
+        const storagePath = `tmp/shadow-gen-${Date.now()}.png`;
+        const publicUrl = await uploadToStorage(basePath, storagePath);
+
+        const { fal } = require('@fal-ai/client');
+        const result = await fal.subscribe('fal-ai/imageutils/depth', {
+            input: { image_url: publicUrl },
+        });
+
+        const depthUrl = result?.data?.image?.url || result?.image?.url;
+        if (!depthUrl) return res.status(500).json({ error: 'Depth model returned no output' });
+
+        const fetch = require('node-fetch');
+        const depthRes = await fetch(depthUrl);
+        const depthBuffer = Buffer.from(await depthRes.arrayBuffer());
+
+        const shadowBuffer = await sharp(depthBuffer)
+            .negate()
+            .blur(3)
+            .ensureAlpha()
+            .modulate({ brightness: 0.4 })
+            .png()
+            .toBuffer();
+
+        const templateDir = path.dirname(basePath);
+        const shadowPath = path.join(templateDir, 'shadow_ai.png');
+        fs.writeFileSync(shadowPath, shadowBuffer);
+
+        const shadowImagePath = template.baseImagePath.replace(/[^/\\]+$/, 'shadow_ai.png').replace(/\\/g, '/');
+        const updatedTemplate = await prisma.mockupTemplate.update({
+            where: { id: template.id },
+            data: {
+                shadowImagePath,
+                configJson: {
+                    ...template.configJson,
+                    meta: {
+                        ...(template.configJson?.meta || {}),
+                        shadowSource: 'ai',
+                    },
+                },
+            },
+        });
+
+        res.json({ success: true, shadowImagePath, template: updatedTemplate });
+    } catch (err) {
+        console.error('[generate-shadow]', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 

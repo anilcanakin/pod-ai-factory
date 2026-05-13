@@ -60,45 +60,74 @@ async function getRelevantContext(workspaceId, topic = 'general') {
  * Combines seoKnowledgeBase + relevant brain memories.
  */
 async function getSeoContext(workspaceId) {
-    const [brainResult, seoResult] = await Promise.allSettled([
+    const [brainResult, seoResult, perfResult] = await Promise.allSettled([
         getRelevantContext(workspaceId, 'seo'),
-        getKnowledge(workspaceId)
+        getKnowledge(workspaceId),
+        getPerformanceContext(workspaceId)
     ]);
 
     const brain = brainResult.status === 'fulfilled' ? brainResult.value : '';
     const seo   = seoResult.status   === 'fulfilled' ? seoResult.value   : '';
+    const perf  = perfResult.status  === 'fulfilled' ? perfResult.value  : '';
 
-    if (!brain && !seo) return '';
-    if (!brain) return seo;
+    return [seo, brain ? `## ADDITIONAL KNOWLEDGE FROM YOUR TRAINING MATERIALS:\n${brain}` : '', perf]
+        .filter(Boolean).join('\n\n');
+}
 
-    return `${seo}\n\n## ADDITIONAL KNOWLEDGE FROM YOUR TRAINING MATERIALS:\n${brain}`;
+/**
+ * Top-performing design verilerini Factory/SEO promptlarına enjekte etmek için özet döner.
+ * ProductPerformance tablosundaki WINNER ve yüksek-scorlu tasarımları kullanır.
+ */
+async function getPerformanceContext(workspaceId) {
+    try {
+        const performers = await prisma.productPerformance.findMany({
+            where: {
+                image: { job: { workspaceId } },
+                OR: [{ flag: 'WINNER' }, { score: { gte: 50 } }]
+            },
+            orderBy: { score: 'desc' },
+            take: 5,
+            include: {
+                image: {
+                    include: {
+                        seoData: true,
+                        job: { select: { keyword: true, niche: true, style: true } }
+                    }
+                }
+            }
+        });
+
+        if (!performers.length) return '';
+
+        const lines = performers.map(p => {
+            const job   = p.image?.job;
+            const seo   = p.image?.seoData;
+            const ctr   = p.impressions > 0 ? ((p.visits / p.impressions) * 100).toFixed(1) : '0.0';
+            const niche = [job?.niche, job?.keyword, job?.style].filter(Boolean).join(' / ') || 'Bilinmiyor';
+            const title = seo?.title ? `"${seo.title.slice(0, 70)}"` : '';
+            return `• ${niche} — Score: ${p.score}, CTR: ${ctr}%, Orders: ${p.orders}${title ? `\n  Title: ${title}` : ''}`;
+        });
+
+        return `## EN İYİ PERFORMANS GÖSTEREN TASARIMLAR (Gerçek Etsy Verisi):\nBu niş/stil kombinasyonları en yüksek tıklama ve sipariş oranlarını sağladı — benzer tasarımları önceliklendir:\n${lines.join('\n')}`;
+    } catch (err) {
+        console.warn('[PerformanceContext] Failed:', err.message);
+        return '';
+    }
 }
 
 /**
  * Get context for Factory prompt/variation generation.
  */
-async function getPerformanceContext(workspaceId) {
-    try {
-        const performers = await prisma.productPerformance.findMany({
-            where: { image: { job: { workspaceId } }, OR: [{ flag: 'WINNER' }, { score: { gte: 50 } }] },
-            orderBy: { score: 'desc' }, take: 5,
-            include: { image: { include: { seoData: true, job: { select: { keyword: true, niche: true, style: true } } } } }
-        });
-        const lines = performers.map(p => {
-            const job = p.image?.job; const seo = p.image?.seoData;
-            const ctr = p.impressions > 0 ? ((p.visits / p.impressions) * 100).toFixed(1) : '0.0';
-            const niche = [job?.niche, job?.keyword, job?.style].filter(Boolean).join(' / ') || 'Bilinmiyor';
-            const title = seo?.title ? '"' + seo.title.slice(0, 70) + '"' : '';
-            return '• ' + niche + ' — Score: ' + p.score + ', CTR: ' + ctr + '%, Orders: ' + p.orders + (title ? ' Title: ' + title : '');
-        });
-        return '## EN IYI PERFORMANS GOSTEREN TASARIMLAR (Gercek Etsy Verisi): ' + lines.join(' ');
-    } catch (err) { console.warn('[PerformanceContext] Failed:', err.message); return ''; }
-}
 async function getFactoryContext(workspaceId) {
-    const [brainResult, perfResult] = await Promise.allSettled([getRelevantContext(workspaceId, 'factory'), getPerformanceContext(workspaceId)]);
+    const [brainResult, perfResult] = await Promise.allSettled([
+        getRelevantContext(workspaceId, 'factory'),
+        getPerformanceContext(workspaceId)
+    ]);
+
     const brain = brainResult.status === 'fulfilled' ? brainResult.value : '';
     const perf  = perfResult.status  === 'fulfilled' ? perfResult.value  : '';
-    return [brain, perf].filter(Boolean).join(" | ");
+
+    return [brain, perf].filter(Boolean).join('\n\n---\n\n');
 }
 
 /**

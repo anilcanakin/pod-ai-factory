@@ -1,5 +1,4 @@
 require('dotenv').config();
-require('dotenv').config();
 
 // ── In-memory log ring buffer (console'u override et, son 100 log'u tut) ─────
 const LOG_BUFFER = [];
@@ -82,7 +81,9 @@ require('./jobs/seo-knowledge-updater').startCron();
 // Autonomous Radar: Etsy/Google Trends/Pinterest — every 12h
 require('./jobs/radar-worker').startCron();
 
+// Playwright publish health monitor — saatlik kontrol, 24h sessizlik = Telegram/bildirim uyarısı
 require('./jobs/playwright-health-cron').startCron();
+// Etsy sipariş polling — 30 dakikada bir yeni sipariş kontrolü + Telegram + Yuppion
 require('./jobs/order-poller.job').startCron();
 
 // Storage asset explicit workspace scoped protection
@@ -387,6 +388,7 @@ app.use('/api/factory', require('./routes/factory.routes'));
 app.use('/api/ideas', require('./routes/idea.routes'));
 app.use('/api/analytics', require('./routes/analytics.routes'));
 app.use('/api/packs', require('./routes/product-pack.routes'));
+// Billing (Stripe) devre dışı — tek kullanıcı için gereksiz SaaS altyapısı
 // app.use('/api/billing', require('./routes/billing.routes'));
 app.use('/api/mockups/templates', require('./routes/mockup-template.routes'));
 app.use('/api/mockups', require('./routes/mockup.routes'));

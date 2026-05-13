@@ -3,6 +3,7 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const path = require('path');
 const fs = require('fs');
 const monitor = require('./playwright-monitor.service');
+
 // ─── Stealth plugin: hides automation fingerprints from Etsy ──────────────────
 chromium.use(StealthPlugin());
 
@@ -153,11 +154,15 @@ async function createEtsyDraft(listing) {
             await draftButton.click();
             await page.waitForTimeout(2000);
         });
-                 monitor.recordPublishSuccess().catch(() => {});
+
+        monitor.recordPublishSuccess().catch(() => {});
         return { success: true, message: 'Draft listing created successfully' };
     } catch (err) {
         console.error('[Etsy Browser] createEtsyDraft permanently failed:', err.message);
-                monitor.sendAlert('Etsy ilan basarisiz: ' + err.message, {type:'publish_failure'}).catch(() => {});
+        monitor.sendAlert(
+            `❌ Etsy ilan oluşturma başarısız!\n\n<b>Hata:</b> ${err.message}`,
+            { type: 'publish_failure' }
+        ).catch(() => {});
         return { success: false, error: err.message };
     } finally {
         await browser.close();

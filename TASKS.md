@@ -1,6 +1,33 @@
 # POD AI Factory — Task Board & Project Status
 
-Last updated: April 11, 2026
+Last updated: May 13, 2026
+
+---
+
+## 🆕 TAMAMLANDI — Mockup Bulk Import & PSD Entegrasyonu (13 Mayıs 2026)
+
+### Neler Eklendi
+- **PSD Analiz Servisi** (`src/services/psd-analyzer.service.js`) — `psd.js` ile smart object bounds → kesin print area, shadow katmanı extraction, greyscale base PNG üretimi
+- **Preset Shadow PNG'leri** (`assets/presets/shadows/`) — `scripts/create-preset-shadows.js` ile 6 kategori için Sharp+SVG tabanlı soft overlay shadow'lar (tshirt, hoodie, sweatshirt, mug, sticker, phone_case)
+- **Bulk Upload PSD Desteği** (`src/routes/mockup-template.routes.js`) — `.psd` fileFilter, 100 dosya limiti, PSD için `analyzePsd()` entegrasyonu, gray_base.png + shadow kaydı, preset shadow fallback, `configJson.meta.isPsdDerived` flag
+- **AI Shadow Generate Route** (`POST /api/mockups/templates/:id/generate-shadow`) — FAL.ai `fal-ai/imageutils/depth` depth estimation → invert+blur → shadow_ai.png, base64 data URL ile fal.ai'ya gönderim
+- **productColor Tint Render** (`src/services/mockup-render.service.js`) — `hexToRgb()`, `productColor` parametresi, gray_base.png + Sharp `.tint()` → geçici dosya → efektif base olarak kullan
+- **API Types** (`frontend/lib/api.ts`) — `productColor` render/renderBatch'e eklendi, `generateShadow()`, `bulkUpload()` (batch 20), `MockupMeta` interface genişletildi
+- **BulkUploadModal Yükseltme** (`MockupsClient.tsx`) — PSD+PNG+JPG desteği, sınırsız dosya, 20'li batch, per-file durum badge (pending/uploading/success/error), progress bar, tamamlanma özeti
+- **Renk Picker** (`MockupsClient.tsx`) — `SHIRT_COLORS` 8 preset, `productColors` state localStorage, TemplateEditor içi color picker (sadece `isPsdDerived` şablonlarda)
+- **AI Shadow Butonu** (`MockupsClient.tsx` TemplateCard) — `Wand2` ikonu, `handleGenerateShadow`, `isPsdDerived && shadowSource !== 'ai'` koşulunda görünür
+
+### Teknik Notlar
+- `psd.js` v3.4.0: layer bounds `node.coords` üzerinde (NOT `node.layer.coords`), pixel data `layer.image.toPng().data` (NOT `toBuffer()`)
+- FAL.ai çağrılarında local path kullanılamaz → base64 `data:image/png;base64,...` formatı kullanılıyor
+- Shadow fallback: PSD'de shadow layer bulunamazsa `assets/presets/shadows/{category}_shadow.png` otomatik atanır
+- `generate-shadow` route'u Yuppion API gibi external bağımlılığa sahip: FAL_API_KEY gerektirir
+
+### Kalan / Gelecek İşler
+- [ ] PSD'li şablonlarla gerçek Creative Fabrica dosyaları ile end-to-end test
+- [ ] Bulk render modunda per-template productColor desteği (şu an tüm batch için tek renk)
+- [ ] Displacement map / perspective warp (kumaş dokusuna göre tasarımı eğme)
+- [ ] Çoklu smart object tespiti (multi-area PSD)
 
 ---
 

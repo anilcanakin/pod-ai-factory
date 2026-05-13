@@ -19,19 +19,30 @@ router.post('/audit', async (req, res) => {
 
 /**
  * POST /api/agent/execute-action
- * Executes an AI-recommended action via browser automation
+ * Executes an AI-recommended action via browser automation.
+ * dryRun: true → simülasyon modu, Etsy'e dokunmadan ne yapılacağını döner.
  */
 router.post('/execute-action', async (req, res) => {
   try {
     const { listingId, actionType, details, dryRun } = req.body;
+
+    // ── Dry-run modu: canlı değişiklik yok ──────────────────────────────────
     if (dryRun) {
-      const preview = actionType === 'UPDATE_PRICE' ? `Listing ${listingId} fiyati $${details?.newPrice} olacakti.` : `Listing ${listingId} basligi "${details?.newTitle}"
-olacakti.`;
-      console.log('[Agent DryRun]', preview);
+      let preview;
+      if (actionType === 'UPDATE_PRICE') {
+        preview = `Listing ${listingId} fiyatı $${details?.newPrice} olarak güncellenecekti.`;
+      } else if (actionType === 'UPDATE_SEO') {
+        preview = `Listing ${listingId} başlığı "${details?.newTitle}" olarak güncellenecekti.`;
+      } else {
+        preview = `Listing ${listingId} üzerinde ${actionType} eylemi çalıştırılacaktı.`;
+      }
+      console.log(`[Agent DryRun] ${preview}`);
       return res.json({ success: true, dryRun: true, preview });
     }
+
+    // ── Canlı mod: gerçek Etsy güncellemesi ─────────────────────────────────
     const etsyBrowser = require('../services/etsy-browser.service');
-    
+
     let result;
     if (actionType === 'UPDATE_PRICE') {
       result = await etsyBrowser.updateListing(listingId, { price: details.newPrice });

@@ -12,7 +12,7 @@
  *     FALLBACK → Claude Haiku              (actor başarısız olursa semantik genişletme)
  *
  *   scrapePinterestTrends
- *     → automation-lab/pinterest-scraper            (Starter CU)
+ *     → automation-lab/pinterest-scraper   (Starter CU)
  *
  * x402 ödeme akışı:
  *   POST → 402 → payment-required decode → EIP-3009 TransferWithAuthorization imzala →

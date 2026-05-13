@@ -47,7 +47,7 @@ async function downloadToTemp(url) {
     return tmpPath;
 }
 
-async function renderMockup({ designPath, template, imageId, workspaceId, placement, areaDesigns }) {
+async function renderMockup({ designPath, template, imageId, workspaceId, placement, areaDesigns, productColor }) {
     // Deterministic output path: assets/outputs/mockups/{workspaceId}/{imageId}_{templateId}.[ext]
     const outputDir = path.join(ASSETS_ROOT, 'outputs', 'mockups', workspaceId);
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
@@ -71,14 +71,35 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
         ? template.baseImagePath
         : path.join(ASSETS_ROOT, '..', template.baseImagePath);
 
+    // If PSD-derived template + productColor provided: tint gray_base.png → temp file
+    let effectiveBasePath = basePath;
+    let tintTmpFile = null;
+
+    const grayBasePath = template.configJson?.meta?.grayBasePath;
+    if (productColor && grayBasePath) {
+        const grayFullPath = path.isAbsolute(grayBasePath)
+            ? grayBasePath
+            : path.join(ASSETS_ROOT, '..', grayBasePath);
+
+        if (fs.existsSync(grayFullPath)) {
+            const { r, g, b } = hexToRgb(productColor);
+            tintTmpFile = path.join(os.tmpdir(), `tinted-${Date.now()}.png`);
+            await sharp(grayFullPath)
+                .tint({ r, g, b })
+                .png()
+                .toFile(tintTmpFile);
+            effectiveBasePath = tintTmpFile;
+        }
+    }
+
     let baseW, baseH;
     if (isVideo) {
-        const metadata = await ffprobe(basePath);
+        const metadata = await ffprobe(effectiveBasePath);
         const stream = metadata.streams.find(s => s.codec_type === 'video') || metadata.streams[0];
         baseW = stream.width;
         baseH = stream.height;
     } else {
-        const baseMeta = await sharp(basePath).metadata();
+        const baseMeta = await sharp(effectiveBasePath).metadata();
         baseW = baseMeta.width;
         baseH = baseMeta.height;
     }
@@ -195,7 +216,7 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
     // 7. Blend mode
     let sharpBlend = 'multiply';
     if (!isVideo) {
-        const { data: templateData } = await sharp(basePath)
+        const { data: templateData } = await sharp(effectiveBasePath)
             .greyscale()
             .resize(50, 50)
             .raw()
@@ -321,7 +342,7 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
         fs.writeFileSync(tempOverlay, overlay);
 
         await new Promise((resolve, reject) => {
-            ffmpeg().input(basePath).input(tempOverlay)
+            ffmpeg().input(effectiveBasePath).input(tempOverlay)
                 .complexFilter('[0:v][1:v]overlay=0:0[out]').map('[out]').map('0:a?')
                 .videoCodec('libx264').outputOptions(['-pix_fmt yuv420p'])
                 .save(outputPath).on('end', resolve).on('error', reject);
@@ -329,11 +350,14 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
         fs.unlinkSync(tempOverlay);
     } else {
         console.log(`[Render] Image Mode Render: ${designComposites.length} layers.`);
-        await sharp(basePath).composite(designComposites).png().toFile(outputPath);
+        await sharp(effectiveBasePath).composite(designComposites).png().toFile(outputPath);
     }
 
     // Clean up
     tmpFiles.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+    if (tintTmpFile) {
+        try { fs.unlinkSync(tintTmpFile); } catch {}
+    }
 
     // 10.5. Validate output file before upload
     const outputStats = fs.statSync(outputPath);
@@ -429,4 +453,14 @@ async function detectPrintArea(imagePath) {
     };
 }
 
-module.exports = { renderMockup, detectPrintArea };
+function hexToRgb(hex) {
+    const clean = (hex || '').replace('#', '');
+    if (clean.length !== 6) return { r: 255, g: 255, b: 255 };
+    return {
+        r: parseInt(clean.slice(0, 2), 16),
+        g: parseInt(clean.slice(2, 4), 16),
+        b: parseInt(clean.slice(4, 6), 16),
+    };
+}
+
+module.exports = { renderMockup, detectPrintArea, hexToRgb };

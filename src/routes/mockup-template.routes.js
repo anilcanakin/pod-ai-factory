@@ -381,7 +381,7 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
                 if (file.mimetype.startsWith('image/') || ext === '.psd') cb(null, true);
                 else cb(new Error('Images and PSD only'));
             },
-            limits: { fileSize: 20 * 1024 * 1024 }
+            limits: { fileSize: 100 * 1024 * 1024 }
         });
 
         await new Promise((resolve, reject) => {
@@ -479,6 +479,8 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
 
             } catch (err) {
                 results.push({ name: file.originalname, status: 'error', error: err.message });
+            } finally {
+                try { fs.unlinkSync(file.path); } catch {}
             }
         }
 
@@ -572,13 +574,14 @@ router.post('/:id/generate-shadow', async (req, res) => {
             return res.status(400).json({ error: 'Base image not found' });
         }
 
-        const { uploadToStorage } = require('../services/storage.service');
-        const storagePath = `tmp/shadow-gen-${Date.now()}.png`;
-        const publicUrl = await uploadToStorage(basePath, storagePath);
+        const baseB64 = fs.readFileSync(basePath).toString('base64');
+        const baseExt = path.extname(basePath).toLowerCase();
+        const mime = baseExt === '.jpg' || baseExt === '.jpeg' ? 'image/jpeg' : 'image/png';
+        const dataUrl = `data:${mime};base64,${baseB64}`;
 
         const { fal } = require('@fal-ai/client');
         const result = await fal.subscribe('fal-ai/imageutils/depth', {
-            input: { image_url: publicUrl },
+            input: { image_url: dataUrl },
         });
 
         const depthUrl = result?.data?.image?.url || result?.image?.url;

@@ -7,7 +7,7 @@ import { apiMockups, MockupTemplate, MockupConfig, apiGallery, GalleryImage } fr
 import {
     Plus, Trash2, X, Image as ImageIcon, RotateCw, Layers,
     Eye, Download, Search, Loader2, Save, Grid3x3, CheckCircle2,
-    AlertCircle, Package, ChevronDown, ChevronRight, Upload
+    AlertCircle, Package, ChevronDown, ChevronRight, Upload, PackageOpen
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
@@ -1950,149 +1950,254 @@ function RenderedMockupsSection({ renderedMockups, refetchMockups, addToast }: {
     );
 }
 
+type BulkFileEntry = {
+    file: File;
+    status: 'pending' | 'uploading' | 'success' | 'error';
+    error?: string;
+    type: 'psd' | 'png' | 'jpg' | 'other';
+};
+
+function getFileType(file: File): BulkFileEntry['type'] {
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (ext === 'psd') return 'psd';
+    if (ext === 'png') return 'png';
+    if (['jpg', 'jpeg', 'webp'].includes(ext)) return 'jpg';
+    return 'other';
+}
+
+function FileBadge({ type }: { type: BulkFileEntry['type'] }) {
+    const styles: Record<string, string> = {
+        psd:   'bg-purple-600/20 text-purple-400 border-purple-500/30',
+        png:   'bg-green-600/20 text-green-400 border-green-500/30',
+        jpg:   'bg-blue-600/20 text-blue-400 border-blue-500/30',
+        other: 'bg-slate-600/20 text-slate-400 border-slate-500/30',
+    };
+    return (
+        <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded border uppercase tracking-wide ${styles[type] || styles.other}`}>
+            {type.toUpperCase()}
+        </span>
+    );
+}
+
 function BulkUploadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-    const [files, setFiles] = useState<File[]>([]);
+    const [entries, setEntries] = useState<BulkFileEntry[]>([]);
     const [category, setCategory] = useState('tshirt');
-    const [uploading, setUploading] = useState(false);
-    const [results, setResults] = useState<any[]>([]);
+    const [isRunning, setIsRunning] = useState(false);
+    const [progress, setProgress] = useState({ done: 0, total: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleFiles = (newFiles: FileList | null) => {
-        if (!newFiles) return;
-        const imageFiles = Array.from(newFiles).filter(f => f.type.startsWith('image/'));
-        setFiles(prev => [...prev, ...imageFiles].slice(0, 20));
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+    const BATCH_SIZE = 20;
+
+    const addFiles = (fileList: FileList | null) => {
+        if (!fileList) return;
+        const allowed = ['jpg', 'jpeg', 'png', 'webp', 'psd'];
+        const newEntries = Array.from(fileList)
+            .filter(f => allowed.includes(f.name.split('.').pop()?.toLowerCase() || ''))
+            .map(f => ({ file: f, status: 'pending' as const, type: getFileType(f) }));
+        setEntries(prev => [...prev, ...newEntries]);
     };
 
-    const handleUpload = async () => {
-        if (files.length === 0) return;
-        setUploading(true);
-        try {
-            const formData = new FormData();
-            files.forEach(f => formData.append('images', f));
-            formData.append('category', category);
+    const removeEntry = (idx: number) =>
+        setEntries(prev => prev.filter((_, i) => i !== idx));
 
-            const res = await fetch('/api/mockups/templates/bulk-upload', {
-                method: 'POST',
-                credentials: 'include',
-                body: formData
-            });
-            const data = await res.json();
-            setResults(data.results || []);
-            onSuccess();
-        } catch (err: any) {
-            alert('Upload failed: ' + err.message);
-        } finally {
-            setUploading(false);
+    const startUpload = async () => {
+        if (entries.length === 0 || isRunning) return;
+        setIsRunning(true);
+
+        const files = entries.map(e => e.file);
+        let done = 0;
+        setProgress({ done: 0, total: files.length });
+
+        setEntries(prev => prev.map(e => ({ ...e, status: 'pending' })));
+
+        for (let i = 0; i < files.length; i += BATCH_SIZE) {
+            const batchFiles = files.slice(i, i + BATCH_SIZE);
+            const batchIndices = batchFiles.map((_, j) => i + j);
+
+            setEntries(prev => prev.map((e, idx) =>
+                batchIndices.includes(idx) ? { ...e, status: 'uploading' } : e
+            ));
+
+            try {
+                const fd = new FormData();
+                batchFiles.forEach(f => fd.append('images', f));
+                fd.append('category', category);
+
+                const res = await fetch(`${API_BASE}/api/mockups/templates/bulk-upload`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: fd,
+                });
+                const data = await res.json();
+                const batchResults: any[] = data.results || [];
+
+                setEntries(prev => {
+                    const next = [...prev];
+                    batchIndices.forEach((origIdx, batchIdx) => {
+                        const r = batchResults[batchIdx];
+                        if (!r) { next[origIdx] = { ...next[origIdx], status: 'error', error: 'No result' }; return; }
+                        next[origIdx] = {
+                            ...next[origIdx],
+                            status: r.status === 'success' ? 'success' : 'error',
+                            error: r.error,
+                        };
+                    });
+                    return next;
+                });
+            } catch (err: any) {
+                setEntries(prev => prev.map((e, idx) =>
+                    batchIndices.includes(idx) ? { ...e, status: 'error', error: err.message } : e
+                ));
+            }
+
+            done += batchFiles.length;
+            setProgress({ done, total: files.length });
         }
+
+        setIsRunning(false);
+        onSuccess();
     };
+
+    const successCount = entries.filter(e => e.status === 'success').length;
+    const errorCount = entries.filter(e => e.status === 'error').length;
+    const isDone = !isRunning && entries.length > 0 && entries.every(e => e.status === 'success' || e.status === 'error');
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="bg-[#1a2332] border border-slate-700 rounded-2xl w-full max-w-2xl p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between">
+            <div className="bg-[#1a2332] border border-slate-700 rounded-2xl w-full max-w-2xl p-6 space-y-5 shadow-2xl max-h-[90vh] flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between shrink-0">
                     <div>
-                        <h3 className="text-lg font-semibold text-white">Bulk Upload Templates</h3>
-                        <p className="text-xs text-slate-400 mt-0.5">Upload up to 20 templates — AI will auto-detect print areas</p>
+                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                            <PackageOpen className="w-5 h-5 text-purple-400" /> Toplu Mockup Aktarımı
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">PNG, JPG ve PSD desteklenir — PSD&apos;ler otomatik analiz edilir</p>
                     </div>
                     <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
                 </div>
 
                 {/* Category */}
-                <div>
-                    <label className="text-xs text-slate-400 mb-1.5 block">Category</label>
-                    <select
-                        value={category}
-                        onChange={e => setCategory(e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none"
-                    >
-                        {CATEGORIES.filter(c => c !== 'all').map(c => (
-                            <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>
-                        ))}
-                    </select>
-                </div>
+                {!isRunning && !isDone && (
+                    <div className="shrink-0">
+                        <label className="text-xs text-slate-400 mb-1.5 block">Kategori (tüm dosyalar için)</label>
+                        <select
+                            value={category}
+                            onChange={e => setCategory(e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none"
+                        >
+                            {CATEGORIES.filter(c => c !== 'all').map(c => (
+                                <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
 
                 {/* Drop zone */}
-                <div
-                    onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={e => { e.preventDefault(); setIsDragging(false); handleFiles(e.dataTransfer.files); }}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-                        isDragging ? 'border-blue-500 bg-blue-500/10' : 'border-slate-600 hover:border-slate-400'
-                    }`}
-                >
-                    <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden"
-                        onChange={e => handleFiles(e.target.files)} />
-                    <Upload className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-                    <p className="text-sm text-slate-300">Drop images here or click to browse</p>
-                    <p className="text-xs text-slate-500 mt-1">JPG, PNG, WEBP — max 20 files</p>
-                </div>
+                {!isRunning && !isDone && (
+                    <div
+                        onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                        onDragLeave={() => setIsDragging(false)}
+                        onDrop={e => { e.preventDefault(); setIsDragging(false); addFiles(e.dataTransfer.files); }}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all shrink-0 ${
+                            isDragging ? 'border-purple-500 bg-purple-500/10' : 'border-slate-600 hover:border-slate-400'
+                        }`}
+                    >
+                        <input ref={fileInputRef} type="file" multiple accept="image/*,.psd" className="hidden"
+                            onChange={e => addFiles(e.target.files)} />
+                        <Upload className="w-7 h-7 text-slate-500 mx-auto mb-2" />
+                        <p className="text-sm text-slate-300">Dosyaları buraya sürükleyin veya seçin</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                            <span className="text-purple-400">PSD</span> · <span className="text-green-400">PNG</span> · <span className="text-blue-400">JPG</span> — sınırsız dosya
+                        </p>
+                    </div>
+                )}
 
-                {/* File list */}
-                {files.length > 0 && (
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <p className="text-xs text-slate-400">{files.length} file{files.length > 1 ? 's' : ''} selected</p>
-                            <button onClick={() => setFiles([])} className="text-xs text-slate-500 hover:text-red-400">Clear all</button>
+                {/* Progress bar */}
+                {isRunning && (
+                    <div className="shrink-0 space-y-1.5">
+                        <div className="flex justify-between text-xs text-slate-400">
+                            <span>İşleniyor...</span>
+                            <span>{progress.done}/{progress.total}</span>
                         </div>
-                        <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto">
-                            {files.map((f, i) => (
-                                <div key={i} className="relative group aspect-square bg-slate-800 rounded-lg overflow-hidden">
-                                    <img src={URL.createObjectURL(f)} alt={f.name} className="w-full h-full object-cover" />
-                                    <button
-                                        onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
-                                        className="absolute top-1 right-1 p-0.5 bg-black/60 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                    >
-                                        <X className="w-3 h-3 text-white" />
-                                    </button>
-                                    <div className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black/60">
-                                        <p className="text-[8px] text-white truncate">{f.name}</p>
-                                    </div>
-                                </div>
-                            ))}
+                        <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-gradient-to-r from-purple-600 to-blue-600 transition-all duration-300"
+                                style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
+                            />
                         </div>
                     </div>
                 )}
 
-                {/* Results */}
-                {results.length > 0 && (
-                    <div className="space-y-2">
-                        <p className="text-xs font-medium text-slate-300">
-                            ✅ {results.filter(r => r.status === 'success').length} uploaded successfully
-                        </p>
-                        {results.map((r, i) => (
-                            <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
-                                r.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
-                            }`}>
-                                {r.status === 'success' ? '✓' : '✗'} {r.name}
-                                {r.status === 'success' && (
-                                    <span className="text-slate-400 ml-auto">
-                                        Print area: {Math.round(r.printArea.x * 100)}%, {Math.round(r.printArea.y * 100)}% 
-                                        ({Math.round(r.confidence)}% confidence)
-                                    </span>
+                {/* Done summary */}
+                {isDone && (
+                    <div className="shrink-0 flex gap-3">
+                        <div className="flex-1 bg-emerald-600/10 border border-emerald-500/30 rounded-xl p-3 text-center">
+                            <p className="text-2xl font-bold text-emerald-400">{successCount}</p>
+                            <p className="text-xs text-emerald-300 mt-0.5">Başarılı</p>
+                        </div>
+                        {errorCount > 0 && (
+                            <div className="flex-1 bg-red-600/10 border border-red-500/30 rounded-xl p-3 text-center">
+                                <p className="text-2xl font-bold text-red-400">{errorCount}</p>
+                                <p className="text-xs text-red-300 mt-0.5">Hatalı</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* File list */}
+                {entries.length > 0 && (
+                    <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0">
+                        <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+                            <span>{entries.length} dosya</span>
+                            {!isRunning && !isDone && (
+                                <button onClick={() => setEntries([])} className="hover:text-red-400 transition-colors">Temizle</button>
+                            )}
+                        </div>
+                        {entries.map((entry, idx) => (
+                            <div key={idx} className={cn(
+                                'flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-colors',
+                                entry.status === 'success' && 'bg-emerald-500/10',
+                                entry.status === 'error' && 'bg-red-500/10',
+                                entry.status === 'uploading' && 'bg-blue-500/10',
+                                entry.status === 'pending' && 'bg-slate-800/60',
+                            )}>
+                                <FileBadge type={entry.type} />
+                                <span className="flex-1 text-slate-300 truncate">{entry.file.name}</span>
+                                <span className="text-slate-500 shrink-0">{(entry.file.size / 1024 / 1024).toFixed(1)}MB</span>
+                                {entry.status === 'pending' && <span className="text-slate-500 shrink-0">bekliyor</span>}
+                                {entry.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 shrink-0" />}
+                                {entry.status === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                                {entry.status === 'error' && (
+                                    <span className="text-red-400 shrink-0 max-w-[140px] truncate" title={entry.error}>{entry.error}</span>
                                 )}
-                                {r.status === 'error' && <span className="ml-auto">{r.error}</span>}
+                                {!isRunning && !isDone && (
+                                    <button onClick={() => removeEntry(idx)} className="text-slate-600 hover:text-red-400 transition-colors shrink-0">
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                )}
                             </div>
                         ))}
                     </div>
                 )}
 
-                <div className="flex gap-3 pt-2">
+                {/* Actions */}
+                <div className="flex gap-3 shrink-0 pt-1">
                     <button onClick={onClose} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-xl transition-colors">
-                        {results.length > 0 ? 'Close' : 'Cancel'}
+                        {isDone ? 'Kapat' : 'İptal'}
                     </button>
-                    {results.length === 0 && (
+                    {!isDone && (
                         <button
-                            onClick={handleUpload}
-                            disabled={uploading || files.length === 0}
-                            className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
+                            onClick={startUpload}
+                            disabled={isRunning || entries.length === 0}
+                            className="flex-1 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
                         >
-                            {uploading ? (
-                                <><Loader2 className="w-4 h-4 animate-spin" /> Uploading & detecting...</>
-                            ) : (
-                                <><Upload className="w-4 h-4" /> Upload {files.length} Template{files.length > 1 ? 's' : ''}</>
-                            )}
+                            {isRunning
+                                ? <><Loader2 className="w-4 h-4 animate-spin" /> Yükleniyor ({progress.done}/{progress.total})</>
+                                : <><Upload className="w-4 h-4" /> {entries.length} Dosya Yükle</>
+                            }
                         </button>
                     )}
                 </div>

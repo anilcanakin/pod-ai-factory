@@ -128,8 +128,29 @@ Her adım bağımsız — bir katman bulunamazsa sistem durmuyor:
 | Bulunamazsa | Davranış |
 |-------------|----------|
 | Smart object | `detectPrintArea()` ile brightness tahmini |
-| Shadow katmanı | `shadow.png` yok, render engine shadow uygulamaz |
+| Shadow katmanı | **Preset shadow** — `assets/presets/shadows/{category}_shadow.png` uygulanır |
 | Color layer | `defaultColor = '#FFFFFF'` |
+
+### Shadow fallback: Preset + isteğe bağlı AI
+
+**Preset shadow'lar** (`assets/presets/shadows/`):
+```
+tshirt_shadow.png
+hoodie_shadow.png
+sweatshirt_shadow.png
+mug_shadow.png
+sticker_shadow.png
+phone_case_shadow.png
+```
+Kategori başına elle hazırlanmış, neutral wrinkle/fold etkisi veren soft-overlay PNG'ler.
+PSD'den shadow çıkarılamazsa → `template.shadowImagePath = preset/{category}_shadow.png`
+
+**"AI Shadow Üret" butonu** (MockupsClient.tsx — template detay kartında):
+- Sadece `template.shadowImagePath === preset` ise (AI üretilmiş değilse) görünür
+- Tıklanınca `POST /api/mockups/templates/:id/generate-shadow` çağrılır
+- Backend: FAL.ai depth estimation modeli → base görüntüden depth map → shadow PNG üretir
+- Üretilen shadow `shadowImagePath`'e kaydedilir, preset'in yerini alır
+- Maliyet: ~1 FAL çağrısı/şablon, isteğe bağlı
 
 ---
 
@@ -234,6 +255,20 @@ PSD akışı:
 
 ---
 
+## Yeni Route: `POST /api/mockups/templates/:id/generate-shadow`
+
+```
+1. Template'i DB'den yükle (workspaceId kontrolü)
+2. base.png'i FAL.ai depth estimation modeline gönder
+   → depth map PNG döner (aydınlık = yakın, karanlık = uzak)
+3. Depth map'i invert et + blur uygula → shadow overlay etkisi
+4. assets/mockups/{category}/{id}/shadow_ai.png olarak kaydet
+5. template.shadowImagePath güncelle → 'assets/mockups/{category}/{id}/shadow_ai.png'
+6. configJson.meta.shadowSource = 'ai' olarak işaretle
+```
+
+FAL.ai model: `fal-ai/imageutils/depth` veya `fal-ai/monocular-depth-estimation`
+
 ## Kapsam Dışı
 
 - Perspective warp / mesh warp (displacement map ile tasarımı eğme) — gelecek
@@ -252,3 +287,6 @@ PSD akışı:
 5. 25 PNG + 5 PSD karışık batch → tüm PSD'ler `isPsdDerived: true`, tümü başarılı
 6. Bozuk PSD → sadece o dosya error, batch devam ediyor
 7. PNG şablonlarda renk picker görünmüyor (sadece PSD şablonlarda)
+8. Shadow katmanı olmayan PSD → preset shadow otomatik atanmış
+9. "AI Shadow Üret" butonu → shadow_ai.png oluşuyor, preset'in yerini alıyor
+10. Preset shadow ile render vs AI shadow ile render görsel kalite farkı gözlemlenir

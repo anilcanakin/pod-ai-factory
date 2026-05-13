@@ -7,7 +7,7 @@ import { apiMockups, MockupTemplate, MockupConfig, apiGallery, GalleryImage } fr
 import {
     Plus, Trash2, X, Image as ImageIcon, RotateCw, Layers,
     Eye, Download, Search, Loader2, Save, Grid3x3, CheckCircle2,
-    AlertCircle, Package, ChevronDown, ChevronRight, Upload, PackageOpen
+    AlertCircle, Package, ChevronDown, ChevronRight, Upload, PackageOpen, Wand2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
@@ -132,6 +132,7 @@ export function MockupsClient() {
     const [productColors, setProductColors] = useState<Record<string, string>>(() => {
         try { return JSON.parse(localStorage.getItem('mockup_product_colors') || '{}'); } catch { return {}; }
     });
+    const [shadowGenerating, setShadowGenerating] = useState<string | null>(null);
 
     const setProductColor = (templateId: string, color: string) => {
         const next = { ...productColors, [templateId]: color };
@@ -210,6 +211,20 @@ export function MockupsClient() {
             addToast('success', 'Template deleted');
         } catch (err: any) {
             addToast('error', err.message);
+        }
+    };
+
+    const handleGenerateShadow = async (template: MockupTemplate) => {
+        if (!confirm(`"${template.name}" için AI shadow üretilecek (~10-30 sn). Devam edilsin mi?`)) return;
+        setShadowGenerating(template.id);
+        try {
+            await apiMockups.generateShadow(template.id);
+            addToast('success', 'AI shadow oluşturuldu!');
+            loadTemplates();
+        } catch (err: any) {
+            addToast('error', 'Shadow üretilemedi: ' + err.message);
+        } finally {
+            setShadowGenerating(null);
         }
     };
 
@@ -453,6 +468,8 @@ export function MockupsClient() {
                                 }
                             }}
                             onDelete={() => handleDelete(t.id)}
+                            onGenerateShadow={() => handleGenerateShadow(t)}
+                            shadowGenerating={shadowGenerating === t.id}
                             bulkMode={bulkMode}
                             isSelected={bulkSelectedIds.has(t.id)}
                         />
@@ -521,8 +538,9 @@ export function MockupsClient() {
 }
 
 // ─── Template Card ───────────────────────────────────────────────────────────
-function TemplateCard({ template, onSelect, onDelete, bulkMode, isSelected }: {
+function TemplateCard({ template, onSelect, onDelete, onGenerateShadow, shadowGenerating, bulkMode, isSelected }: {
     template: MockupTemplate; onSelect: () => void; onDelete: () => void;
+    onGenerateShadow?: () => void; shadowGenerating?: boolean;
     bulkMode?: boolean; isSelected?: boolean;
 }) {
     return (
@@ -566,12 +584,28 @@ function TemplateCard({ template, onSelect, onDelete, bulkMode, isSelected }: {
                         {template.category.replace('_', ' ')}
                     </span>
                 </div>
-                <button
-                    onClick={e => { e.stopPropagation(); onDelete(); }}
-                    className="p-1.5 text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-300 transition-all"
-                >
-                    <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    {template.configJson?.meta?.isPsdDerived &&
+                     template.configJson?.meta?.shadowSource !== 'ai' && (
+                        <button
+                            onClick={e => { e.stopPropagation(); onGenerateShadow?.(); }}
+                            disabled={shadowGenerating}
+                            title="AI ile gerçekçi shadow üret"
+                            className="p-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 transition-colors disabled:opacity-40"
+                        >
+                            {shadowGenerating
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Wand2 className="w-3.5 h-3.5" />
+                            }
+                        </button>
+                    )}
+                    <button
+                        onClick={e => { e.stopPropagation(); onDelete(); }}
+                        className="p-1.5 text-red-400 hover:text-red-300 transition-all"
+                    >
+                        <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                </div>
             </div>
         </div>
     );

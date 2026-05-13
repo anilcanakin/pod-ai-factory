@@ -52,6 +52,17 @@ const CATEGORY_LABELS: Record<string, string> = {
     video: 'Video'
 };
 
+const SHIRT_COLORS = [
+    { label: 'Beyaz',    hex: '#FFFFFF' },
+    { label: 'Siyah',    hex: '#1a1a1a' },
+    { label: 'Lacivert', hex: '#1B3A6B' },
+    { label: 'Gri',      hex: '#9CA3AF' },
+    { label: 'Kırmızı',  hex: '#DC2626' },
+    { label: 'Yeşil',    hex: '#15803D' },
+    { label: 'Bej',      hex: '#D4B896' },
+    { label: 'Sarı',     hex: '#FBBF24' },
+];
+
 // ─── Toast Notification System ───────────────────────────────────────────────
 type ToastType = 'success' | 'error' | 'info';
 interface Toast { id: number; type: ToastType; message: string }
@@ -117,6 +128,16 @@ export function MockupsClient() {
     const [showEditor, setShowEditor] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const { toasts, addToast } = useToast();
+
+    const [productColors, setProductColors] = useState<Record<string, string>>(() => {
+        try { return JSON.parse(localStorage.getItem('mockup_product_colors') || '{}'); } catch { return {}; }
+    });
+
+    const setProductColor = (templateId: string, color: string) => {
+        const next = { ...productColors, [templateId]: color };
+        setProductColors(next);
+        localStorage.setItem('mockup_product_colors', JSON.stringify(next));
+    };
 
     const { data: renderedMockups, refetch: refetchMockups } = useQuery({
         queryKey: ['rendered-mockups'],
@@ -197,7 +218,13 @@ export function MockupsClient() {
         setBulkRendering(true);
         setBulkResults([]);
         try {
-            const result = await apiMockups.renderBatch(bulkDesignImageId, Array.from(bulkSelectedIds));
+            const firstTemplateId = Array.from(bulkSelectedIds)[0];
+            const result = await apiMockups.renderBatch(
+                bulkDesignImageId,
+                Array.from(bulkSelectedIds),
+                undefined,
+                productColors[firstTemplateId]
+            );
             setBulkResults(result.results);
             const successCount = result.results.filter(r => r.status === 'success').length;
             // Auto-save successful renders to gallery
@@ -478,6 +505,8 @@ export function MockupsClient() {
                     addToast={addToast}
                     designUrl={activeAreaId && areaDesigns[activeAreaId] ? areaDesigns[activeAreaId].imageUrl : (initialDesignUrl || null)}
                     designImageId={activeAreaId && areaDesigns[activeAreaId] ? areaDesigns[activeAreaId].id : (initialDesignImageId || null)}
+                    productColor={productColors[selectedTemplate.id] || selectedTemplate.configJson?.meta?.defaultColor || '#FFFFFF'}
+                    onColorChange={(color: string) => setProductColor(selectedTemplate.id, color)}
                 />
             )}
 
@@ -675,13 +704,15 @@ function FileDropZone({ label, accept, file, preview, onChange }: {
 }
 
 // ─── Template Editor with Konva Canvas ───────────────────────────────────────
-function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, designImageId }: {
+function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, designImageId, productColor, onColorChange }: {
     template: MockupTemplate;
     onClose: () => void;
     onUpdated: (t: MockupTemplate) => void;
     addToast: (type: ToastType, msg: string) => void;
     designUrl?: string | null;
     designImageId?: string | null;
+    productColor?: string;
+    onColorChange?: (color: string) => void;
 }) {
     // Standard v1: config.transform holds rotation/opacity/blendMode
     const config = template.configJson || {
@@ -1169,7 +1200,9 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             const result = await apiMockups.render(
                 primaryId,
                 template.id,
-                renderPayload
+                renderPayload,
+                undefined,
+                productColor
             );
             const renderedUrl = resolveUrl(result.mockupUrl);
             setRenderResult(renderedUrl);
@@ -1569,6 +1602,40 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
 
                         {/* Action Buttons */}
                         <div className="p-4 border-t border-slate-700/60 space-y-2">
+                            {template.configJson?.meta?.isPsdDerived && (
+                                <div className="pb-2 border-b border-slate-700/60">
+                                    <p className="text-[10px] text-slate-400 mb-2 uppercase tracking-wide">Ürün Rengi</p>
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {SHIRT_COLORS.map(c => (
+                                            <button
+                                                key={c.hex}
+                                                title={c.label}
+                                                onClick={() => onColorChange?.(c.hex)}
+                                                className={cn(
+                                                    'w-5 h-5 rounded-full border-2 transition-transform hover:scale-110',
+                                                    productColor === c.hex ? 'border-blue-400 scale-110' : 'border-slate-600',
+                                                )}
+                                                style={{ backgroundColor: c.hex }}
+                                            />
+                                        ))}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="color"
+                                            value={productColor || '#FFFFFF'}
+                                            onChange={e => onColorChange?.(e.target.value)}
+                                            className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={productColor || '#FFFFFF'}
+                                            onChange={e => { if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) onColorChange?.(e.target.value); }}
+                                            placeholder="#FFFFFF"
+                                            className="flex-1 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-[10px] text-white font-mono focus:outline-none focus:border-blue-500"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                             <button
                                 onClick={handleRender}
                                 disabled={rendering || Object.keys(areaDesigns).length === 0}

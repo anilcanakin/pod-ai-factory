@@ -73,7 +73,7 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
 
     // If PSD-derived template + productColor provided: tint gray_base.png → temp file
     let effectiveBasePath = basePath;
-    let tintTmpFile = null;
+    const tmpFiles = [];
 
     const grayBasePath = template.configJson?.meta?.grayBasePath;
     if (productColor && grayBasePath) {
@@ -83,12 +83,13 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
 
         if (fs.existsSync(grayFullPath)) {
             const { r, g, b } = hexToRgb(productColor);
-            tintTmpFile = path.join(os.tmpdir(), `tinted-${Date.now()}.png`);
+            const tintTmpFile = path.join(os.tmpdir(), `tinted-${Date.now()}.png`);
             await sharp(grayFullPath)
                 .tint({ r, g, b })
                 .png()
                 .toFile(tintTmpFile);
             effectiveBasePath = tintTmpFile;
+            tmpFiles.push(tintTmpFile);
         }
     }
 
@@ -235,7 +236,6 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
 
     // 8. Prepare all designs to be composited
     const designComposites = [];
-    const tmpFiles = [];
 
     // Unified logic: if multi-area config exists, use it. Otherwise, use primary printArea.
     const allAreas = (config.printAreas && config.printAreas.length > 0)
@@ -355,9 +355,6 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
 
     // Clean up
     tmpFiles.forEach(f => { try { fs.unlinkSync(f); } catch {} });
-    if (tintTmpFile) {
-        try { fs.unlinkSync(tintTmpFile); } catch {}
-    }
 
     // 10.5. Validate output file before upload
     const outputStats = fs.statSync(outputPath);

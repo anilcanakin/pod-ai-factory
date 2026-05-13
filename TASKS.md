@@ -1,436 +1,298 @@
-# POD AI Factory — Task Board & Project Status
+# POD AI Factory — Görev Panosu & Proje Durumu
 
-Last updated: May 13, 2026 (council review — bug list expanded)
+Son güncelleme: 13 Mayıs 2026
 
 ---
 
-## 🆕 TAMAMLANDI — Mockup Bulk Import & PSD Entegrasyonu (13 Mayıs 2026)
+## 🆕 SON TAMAMLANANLAR — Mockup & PSD Entegrasyonu (13 Mayıs 2026)
 
 ### Neler Eklendi
 - **PSD Analiz Servisi** (`src/services/psd-analyzer.service.js`) — `psd.js` ile smart object bounds → kesin print area, shadow katmanı extraction, greyscale base PNG üretimi
 - **Preset Shadow PNG'leri** (`assets/presets/shadows/`) — `scripts/create-preset-shadows.js` ile 6 kategori için Sharp+SVG tabanlı soft overlay shadow'lar (tshirt, hoodie, sweatshirt, mug, sticker, phone_case)
-- **Bulk Upload PSD Desteği** (`src/routes/mockup-template.routes.js`) — `.psd` fileFilter, 100 dosya limiti, PSD için `analyzePsd()` entegrasyonu, gray_base.png + shadow kaydı, preset shadow fallback, `configJson.meta.isPsdDerived` flag
-- **AI Shadow Generate Route** (`POST /api/mockups/templates/:id/generate-shadow`) — FAL.ai `fal-ai/imageutils/depth` depth estimation → invert+blur → shadow_ai.png, base64 data URL ile fal.ai'ya gönderim
-- **productColor Tint Render** (`src/services/mockup-render.service.js`) — `hexToRgb()`, `productColor` parametresi, gray_base.png + Sharp `.tint()` → geçici dosya → efektif base olarak kullan
-- **API Types** (`frontend/lib/api.ts`) — `productColor` render/renderBatch'e eklendi, `generateShadow()`, `bulkUpload()` (batch 20), `MockupMeta` interface genişletildi
-- **BulkUploadModal Yükseltme** (`MockupsClient.tsx`) — PSD+PNG+JPG desteği, sınırsız dosya, 20'li batch, per-file durum badge (pending/uploading/success/error), progress bar, tamamlanma özeti
-- **Renk Picker** (`MockupsClient.tsx`) — `SHIRT_COLORS` 8 preset, `productColors` state localStorage, TemplateEditor içi color picker (sadece `isPsdDerived` şablonlarda)
-- **AI Shadow Butonu** (`MockupsClient.tsx` TemplateCard) — `Wand2` ikonu, `handleGenerateShadow`, `isPsdDerived && shadowSource !== 'ai'` koşulunda görünür
+- **Bulk Upload PSD Desteği** — `.psd` fileFilter, 100 dosya limiti, PSD için `analyzePsd()` entegrasyonu, gray_base.png + shadow kaydı, `configJson.meta.isPsdDerived` flag
+- **AI Shadow Generate Route** (`POST /api/mockups/templates/:id/generate-shadow`) — FAL.ai `fal-ai/imageutils/depth` depth estimation → invert+blur → shadow_ai.png
+- **productColor Tint Render** — `productColor` parametresi, gray_base.png + Sharp `.tint()` → geçici dosya → base olarak kullan
+- **Renk Picker** — `SHIRT_COLORS` 8 preset, localStorage, sadece `isPsdDerived` şablonlarda görünür
+- **AI Shadow Butonu** — `Wand2` ikonu, `isPsdDerived && shadowSource !== 'ai'` koşulunda görünür
+- **Path traversal güvenlik fix'i** — generate-shadow route'unda
 
 ### Teknik Notlar
 - `psd.js` v3.4.0: layer bounds `node.coords` üzerinde (NOT `node.layer.coords`), pixel data `layer.image.toPng().data` (NOT `toBuffer()`)
-- FAL.ai çağrılarında local path kullanılamaz → base64 `data:image/png;base64,...` formatı kullanılıyor
+- FAL.ai çağrılarında local path kullanılamaz → base64 `data:image/png;base64,...` formatı
 - Shadow fallback: PSD'de shadow layer bulunamazsa `assets/presets/shadows/{category}_shadow.png` otomatik atanır
-- `generate-shadow` route'u Yuppion API gibi external bağımlılığa sahip: FAL_API_KEY gerektirir
-
-### Kalan / Gelecek İşler
-- [ ] PSD'li şablonlarla gerçek Creative Fabrica dosyaları ile end-to-end test
-- [ ] Bulk render modunda per-template productColor desteği (şu an tüm batch için tek renk)
-- [ ] Displacement map / perspective warp (kumaş dokusuna göre tasarımı eğme)
-- [ ] Çoklu smart object tespiti (multi-area PSD)
 
 ---
 
-## ✅ COMPLETED FEATURES
+## ✅ TAMAMLANAN ÖZELLİKLER
 
-### Core Infrastructure
-- Multi-tenant workspace system (User, Workspace, WorkspaceMember, WorkspaceApiKey)
-- Cookie-based auth: POST /api/auth/login, /logout, GET /me
-- Workspace middleware: extracts workspaceId from cookie, attaches to req.workspaceId
-- Per-workspace API key overrides via secrets.service.js (DB first → env fallback)
-- BullMQ + Redis job queue for background asset processing (src/queues/asset.worker.js)
-- Supabase storage bucket auto-created on startup (mockup-outputs, 50MB limit)
-- Per-image cost tracking (Image.cost field, daily/monthly aggregation in /api/status)
-- Daily image cap + concurrent job cap per workspace (stored in Workspace model)
-- Global error handler + health check (GET /health)
+### Temel Altyapı
+- Çok kiracılı workspace sistemi (User, Workspace, WorkspaceMember, WorkspaceApiKey)
+- Cookie tabanlı auth: POST /api/auth/login, /logout, GET /me
+- Workspace middleware: session cookie'sinden workspaceId çıkarır
+- secrets.service.js ile workspace başına API key geçersiz kılmaları (DB önce → env fallback)
+- BullMQ + Redis iş kuyruğu (src/queues/asset.worker.js)
+- Supabase storage bucket otomatik oluşturma (mockup-outputs, 50MB limit)
+- Görsel başına maliyet takibi (Image.cost alanı, günlük/aylık agregasyon)
+- Workspace başına günlük görsel cap + eşzamanlı iş cap
+- Global hata işleyici + health check (GET /health)
 
-### Factory Pipeline (src/routes/factory.routes.js)
-- POST /api/factory/analyze — multi-provider vision (Anthropic → Gemini → OpenAI fallback)
-- POST /api/factory/get-variations — prompt variations with knowledge context injection
-- POST /api/factory/generate — image generation via FAL.ai
-- POST /api/factory/retry/:jobId — retry failed jobs
-- POST /api/factory/etsy-mode — keyword → niche → style → generation workflow
-- GET /api/factory/models — supported model list
-- Bulk upload: up to 8 images, each analyzed separately → variations
-- Prompt history (localStorage, last 10, dropdown UI)
-- "To Mockup" and "To Remove BG" buttons on each generated image
+### Factory Pipeline
+- Çok sağlayıcı vision analizi (Anthropic → Gemini → OpenAI fallback)
+- Prompt varyasyonları + knowledge context enjeksiyonu
+- FAL.ai ile görsel üretim (Flux Dev/Schnell, Ideogram, Recraft)
+- Başarısız işleri yeniden deneme
+- Etsy modu: keyword → niche → style → üretim
+- Toplu yükleme: 8 görsel, ayrı analiz → varyasyonlar
+- Prompt geçmişi (localStorage, son 10)
+- "Mockup'a" ve "BG Kaldır'a" butonları
 
-### Image Generation (src/services/generation.service.js)
-- Flux Dev (quality), Flux Schnell (speed), Ideogram (typography), Recraft (vector)
-- All via FAL.ai provider (src/services/providers/fal.provider.js)
-- Retry logic with exponential backoff for 429 rate limits
-- Daily budget cap enforcement (FAL_COST_PER_IMAGE env var)
+### Gallery & Pipeline
+- Görsel onaylama/reddetme/silme/yeniden üretme
+- Toplu işlemler (seç hepsini, onayla, reddet, pipeline)
+- One-click pipeline: BG Kaldır → Mockup → SEO tek istekte
+  - BG model seçici: birefnet / bria pro / pixelcut
+  - 5 şablona kadar render
+  - Vision → keyword → Claude Haiku → SEO çıktısı
 
-### Gallery (src/routes/gallery.routes.js + GalleryClient.tsx)
-- GET /api/gallery/:jobId — images for a specific job
-- GET /api/gallery/recent — latest 100 images across all workspace jobs
-- POST /:imageId/approve, /reject — approval workflow
-- DELETE /:imageId — delete with workspace auth guard
-- POST /:imageId/regenerate — regenerate from same prompt
-- POST /save-mockup — save mockup render result to gallery
-- Bulk approve/reject/delete/pipeline from toolbar
-- URL state persistence (jobId in URL params)
-- Grid layout: grid-cols-2 md:grid-cols-3 aspect-square cards
+### Araçlar (Tools)
+- BG Kaldırma: BiRefNet / Bria / Pixelcut (5 görsel toplu)
+- Upscale: ESRGAN / AuraSR / Ideogram (1x–8x)
+- Vektörize: Recraft v3 PNG → SVG
+- Birleşik sekme tabanlı arayüz (`?tab=` URL param ile persist)
 
-### One-Click Pipeline (src/routes/pipeline.routes.js + PipelineModal)
-- POST /api/pipeline/one-click — BG Remove → Mockup → SEO in a single synchronous request
-  - BG model selector: birefnet (free), bria pro, pixelcut (added Apr 11)
-  - Renders up to 5 selected templates via Sharp
-  - Vision analysis → keyword expansion → Claude Haiku → SEO output
-  - Results saved to DB (processed job for BG, mockup_gallery job for mockups)
-- POST /api/pipeline/run — enqueue single image to BullMQ (async)
-- POST /api/pipeline/run-job/:jobId — enqueue all approved images, idempotent
-- GET /api/pipeline/status/:jobId — progress check
-- PipelineModal in GalleryClient.tsx: template grid (4 cols), model selector, step toggles
+### Mockup Sistemi
+- Sharp tabanlı compositing motoru
+- Çoklu baskı alanı desteği (printAreas dizisi, tek printArea backward compat)
+- Konva tabanlı DesignPlacementEditor
+- Dark/light şablon varyantı toggle
+- Kling-video ile video mockup
+- Toplu render + per-şablon durum gösterimi
+- "Galeriye Kaydet" + "Pinterest'e Sabitle"
+- PSD desteği: smart object bounds, shadow extraction, renk picker
 
-### Tools (src/routes/tool.routes.js)
-- POST /api/tools/remove-bg — BiRefNet / Bria / Pixelcut
-- POST /api/tools/upscale — ESRGAN / AuraSR / Ideogram (1x–8x)
-- POST /api/tools/vectorize — vector conversion via fal-ai/recraft-v3
-- Dedicated frontend pages: Remove BG (batch up to 5), Upscale, Vector
+### SEO
+- Etsy SEO üretimi: başlık ≤140, açıklama, 13 etiket
+- Etsy 2026 algoritma bilgisi dahil varsayılan KB
+- Haftalık otomatik güncelleme (cron)
+- SEO kopyalama yardımcısı + checklist
+- "Etsy'de Yayımla (Taslak)" butonu
 
-### Mockup System
-- src/routes/mockup-template.routes.js: POST / (upload), GET /, GET /presets, GET /:id, PATCH /:id, DELETE /:id, POST /detect-print-area (AI), POST /bulk-upload, POST /render-video
-- src/routes/mockup.routes.js: POST /render, POST /render-batch
-- src/services/mockup-render.service.js: Sharp-based compositing engine
-- Multi print area support (configJson.printAreas array, backward compat with single printArea)
-- areaDesigns parameter accepted in render (different designs per area — backend ready)
-- Konva-based DesignPlacementEditor.tsx in frontend
-- Design picker from gallery job history
-- Dark/light template variant toggle (darkImagePath field)
-- Video mockup via fal-ai/kling-video (POST /render-video)
-- Bulk render mode with per-template status display
-- "Save to Gallery" and "Pin to Pinterest" buttons on render result
-- Download with descriptive filename (mockup-{templateName}-{timestamp}.png)
+### AI Brain / Kurumsal Bellek
+- Video ingestion: ffmpeg frame extraction + Whisper transkripsiyon + Claude Vision
+- Metin/makale ingestion
+- RAG sorgu testi
+- Auto-merge: SEO içgörülerini SeoKnowledgeBase'e otomatik birleştirir
+- Kategoriler: digital_products, etsy_algorithm, seo_tips, niche_research, pod_apparel, general_etsy
+- Tüm AI üretimine (SEO, Factory, Ideas) evrensel knowledge enjeksiyonu
 
-### SEO (src/routes/seo.routes.js + seo-knowledge.routes.js)
-- POST /api/seo/generate — Etsy SEO (title ≤140 chars, description, 13 tags)
-- GET /api/seo-knowledge — active knowledge base for workspace
-- POST /api/seo-knowledge/auto-update — Claude-powered KB refresh
-- POST /api/seo-knowledge/manual — manual content override
-- POST /api/seo-knowledge/activate/:id — activate specific version
-- Weekly auto-update cron (src/jobs/seo-knowledge-updater.js)
-- Etsy 2026 algorithm knowledge in default KB
-- SEO copy helper: Etsy-paste format, checklist (title length, tag count, description words)
-- "Publish to Etsy (Draft)" button in SEO page (via Playwright browser agent)
+### WPI — Winning Product Intelligence
+- Apify Etsy scraping + Claude derinlemesine niş analizi
+- Redis'te 72h cache
+- WPI verisiyle SEO üretimi
+- Frontend: niş giriş, tarama ilerlemesi, sonuç kartları
 
-### Ideas (src/routes/idea.routes.js)
-- POST /api/ideas/generate — AI ideas from niche/keyword/persona
-- GET / — list workspace ideas
-- POST /:id/status — update status
-- POST /:id/factory — send to factory
-- POST /generate-bulk — bulk generate via Claude Haiku with brain context injection
-- Trending niche chips, sort toggle, bulk send, pending/approved counters
+### Scout
+- Google Trends + Pinterest → Claude Haiku → 5 mikro-niş öneri
+- Önerileri CorporateMemory'ye kaydetme
 
-### Analytics & Exports
-- POST /api/analytics/import — CSV import with ProductPerformance upsert
-- GET /api/analytics/performance — analytics table data
-- POST /api/export/etsy — Etsy-formatted CSV export
-- GET /api/export/job/:jobId/bundle — ZIP bundle
-- Best Listing card, Cost per Approved, week-over-week comparison
+### HQ Dashboard
+- Günlük görev takibi (MOCKUP/SEO/ETSY_DRAFT hedefleri, her biri 100 hedef)
+- Finansal hedef tahmini (draft başına gelir tahmini)
+- FLAGGED görsel taraması (legal guard)
 
-### Overview Dashboard (inline in src/index.js)
-- GET /api/dashboard — runs, images, approved, spend, success rate, recent jobs, top approved, weeklyStats[]
-- GET /api/status — FAL health (30s cache), daily/monthly spend, budget cap
-- Quick actions grid (Factory, Remove BG, SEO, Upload Mockup)
-- Recent mockups section, knowledge entries stat card
-- Weekly bar chart (images vs approved per day)
+### Batch Factory
+- Niche → Claude prompt üretim → FAL.ai → çoklu görsel (async BullMQ)
+- Proxy timeout yok — endpoint <100ms'de yanıt verir
+- 20 görsel maks, iş durumu takibi
 
-### Competitor Intelligence
-- POST /api/radar/scan — Playwright rival Etsy shop scraping (competitor-radar.service.js)
-- GET /api/trends/weekly — weekly keyword trends via Etsy autocomplete + Claude analysis
-- GET /api/trends/seasonal — full-year seasonal calendar
-- Trends page: Hot Niches grid, Upcoming Opportunities, Avoid Now, monthly calendar
+### Style Profiles
+- StyleProfile CRUD (isim, emoji, baseModel, prefix/suffix, negativePrompt, referenceImage, colorPalette)
+- Varsayılan profil ayarı
+- Kilitli seed/DNA'dan yeni profil
 
-### AI Brain / Corporate Memory (src/routes/brain.routes.js)
-- GET / — list memories, GET /knowledge — grouped by type
-- POST /ingest-video — Gemini Vision (legacy), POST /analyze-video — Claude Vision + Whisper
-- POST /add-text — text/article ingestion with structured insights
-- POST /test-knowledge — query RAG with quick question chips
-- GET /summary — entry count + last updated, DELETE /:id
-- Categories: digital_products, etsy_algorithm, seo_tips, niche_research, pod_apparel, general_etsy
-- Auto-merges SEO knowledge after analysis (extractSeoKnowledge)
-- Universal knowledge injection: brain context piped into SEO, Factory, Ideas generators
+### Finansal İzleme
+- FinancialTransaction modeli (gelir/gider)
+- Manuel Etsy satış kaydı
+- Gelir/gider özet raporu
 
-### Autonomous Agent (src/routes/agent.routes.js)
-- POST /api/agent/audit — shop audit → AI action plan (autonomous-manager.service.js, Gemini)
-- POST /api/agent/execute-action — UPDATE_PRICE or UPDATE_SEO via Playwright
+### Otonom Ajan
+- Gemini ile mağaza denetimi → aksiyon planı
+- UPDATE_PRICE / UPDATE_SEO Playwright ile çalıştırma
 
-### Etsy Browser Automation (src/routes/etsy-browser.routes.js)
-- POST /create-draft — Playwright fills Etsy listing form (title/desc/tags/price/images)
-- POST /dispatch — listing-assembler.service.js assembles SEO+mockups → create-draft
-- POST /scrape — scrape seller dashboard listings
-- POST /pin-pinterest — auto-pin to Pinterest via Playwright
-- Etsy Listings page: scan shop, per-listing "Optimize SEO" with before/after comparison
+### Etsy Browser Otomasyonu
+- Playwright: ilan formu doldurma, dispatch, scraping, Pinterest pin
+- Etsy Listings sayfası: ilan tara, "SEO Optimize" (öncesi/sonrası)
 
-### Other Completed
-- Notification system: in-memory per-workspace, bell icon + unread badge in Topbar
-- Product Packs: CRUD + POST /api/packs/:packId/run
-- Settings: workspace config, API key management
-- Billing routes: GET /plans, /usage, POST /checkout, /webhook, /portal, /update-plan
-- Dark/Light mode toggle (localStorage + CSS variable overrides in globals.css)
-- Global keyboard shortcuts: Ctrl+Shift+F/G/S/M (Factory/Gallery/SEO/Mockups)
-- Remove BG: batch processing up to 5 images, gallery picker, URL param preload
+### Diğer Tamamlananlar
+- Bildirim sistemi (workspace başına in-memory, bell + okunmamış badge)
+- Product Packs CRUD
+- Analitik CSV import + performans tablosu
+- Dışa aktarma: ZIP bundle, Etsy CSV
+- Rakip radar (Playwright scraper)
+- Haftalık trendler + sezonluk takvim
+- Apify entegrasyonu (Etsy ürünleri, Pinterest trendleri)
+- Global klavye kısayolları: Ctrl+Shift+F/G/S/M
+- ApiUsage maliyet takip modeli
+- DailyTask otomatik hedef sistemi
+- Dark/light mod toggle
 
 ---
 
-## 🔴 HIGH PRIORITY — Pending
+## 🔴 YÜKSEK ÖNCELİK — Bekleyen
 
-### 1. BUG FIX: listing-assembler.service.js — Wrong Prisma Model
-**File:** `src/services/listing-assembler.service.js` line 27
-**Bug:** `prisma.sEOContent.findFirst(...)` — model `SEOContent` does not exist in schema. The correct model is `SEOData`.
-**Impact:** Every call to `POST /api/etsy-browser/dispatch` will throw a runtime error.
-**Fix:**
-```js
-// Current (broken):
-const seoContent = await prisma.sEOContent.findFirst({
-  where: { jobId: image.jobId }, orderBy: { createdAt: 'desc' }
-});
-// Correct:
-const seoContent = await prisma.sEOData.findFirst({
-  where: { imageId: image.id }
-});
-```
-Also change `seoContent.title/description/tags` references below to match SEOData field names (they're the same, but verify).
+### 1. Etsy Resmi API Entegrasyonu
+**Durum:** Etsy API key onayı bekleniyor.
+**Mevcut geçici çözüm:** Playwright tarayıcı otomasyonu — kırılgan, Etsy UI değişikliklerinde bozulur.
+**Key geldiğinde inşa edilecekler:**
+- `src/routes/etsy.routes.js` oluştur (etsy-browser değil — resmi API için ayrı dosya)
+- `GET /api/etsy/auth` — Etsy OAuth2 URL'sine yönlendir
+- `GET /api/etsy/callback` — kodu access+refresh token ile değiştir, WorkspaceApiKey'e kaydet (provider='etsy')
+- `POST /api/etsy/listings` — resmi Etsy v3 API ile ilan oluştur
+- Token yenileme mantığı (Etsy token'ları 1 saatte sona erer)
+- SEO + Galeri sayfasındaki "Etsy'de Yayımla" butonlarını resmi API kullanacak şekilde değiştir
+- `src/index.js`'de route kaydet
 
-### 2. Etsy Official API Integration
-**Status:** Waiting for Etsy API key approval.
-**Current workaround:** Playwright browser automation fills Etsy forms directly — fragile, breaks on UI changes.
-**When key arrives, build:**
-- Create `src/routes/etsy.routes.js` (NOT etsy-browser — separate file for official API)
-- `GET /api/etsy/auth` — redirect to Etsy OAuth2 URL
-- `GET /api/etsy/callback` — exchange code for access+refresh tokens, store in WorkspaceApiKey (provider='etsy')
-- `POST /api/etsy/listings` — create listing via official Etsy v3 API
-- Token refresh logic (Etsy tokens expire in 1 hour)
-- Replace "Publish to Etsy" buttons in SEO + Gallery to use official API instead of Playwright
-- Register route in src/index.js
+### 2. Yuppion Fulfillment — Gerçek API Entegrasyonu
+**Durum:** Mock uygulama, Yuppion API erişimi bekleniyor.
+**Dosya:** `src/services/fulfillment.service.js`
+**Mevcut:** `createOrder()` API key yoksa sahte `YUP-XXXXX` ID döner. `syncEtsyOrders()` 1 hardcoded mock sipariş döner.
+**API erişimi geldiğinde:**
+- `.env`'ye `YUPPION_API_KEY` ayarla
+- `this.apiUrl` base URL'ini doğrula/güncelle
+- `syncEtsyOrders()` mock'unu Etsy Orders API ile değiştir (Görev #1'den OAuth gerektirir)
+- OrdersClient.tsx'i gerçek sipariş verisini gösterecek şekilde bağla
+- Sipariş durum takibi ekle (polling veya webhook)
 
-### 3. Yuppion Fulfillment — Real API Integration
-**Status:** Mock implementation, waiting for Yuppion API access.
-**File:** `src/services/fulfillment.service.js`
-**Current:** `createOrder()` returns fake `YUP-XXXXX` IDs when API key missing. `syncEtsyOrders()` returns 1 hardcoded mock order.
-**When API access arrives:**
-- Set `YUPPION_API_KEY` in .env
-- Verify/update `this.apiUrl` base URL
-- Replace `syncEtsyOrders()` mock with real Etsy Orders API (needs OAuth from Task #2)
-- Wire OrdersClient.tsx to display real order data from GET /api/fulfillment/orders
-- Add order status tracking (polling or webhooks)
+### 3. Billing Route Etkinleştirme
+**Dosya:** `src/index.js` — `/api/billing` route'u comment'le devre dışı
+**Yapılacaklar:**
+- Stripe Dashboard'da Starter/Pro/Unlimited ürünleri oluştur
+- `.env`'ye STRIPE_PRICE_STARTER, STRIPE_PRICE_PRO, STRIPE_PRICE_UNLIMITED ekle
+- `src/index.js`'deki `// app.use('/api/billing', ...)` satırının comment'ini kaldır
+- Uçtan uca test: checkout → webhook → plan güncelleme
 
 ---
 
-## 🟡 MEDIUM PRIORITY — Pending
+## 🟡 ORTA ÖNCELİK — Bekleyen
 
-### 4. Stripe Billing — Real Price IDs
-**File:** `src/services/billing.service.js` lines 13, 20, 27
-**Current:** `process.env.STRIPE_PRICE_STARTER || 'price_starter_placeholder'`
-**To do:**
-- Create Starter/Pro/Unlimited products in Stripe Dashboard
-- Set STRIPE_PRICE_STARTER, STRIPE_PRICE_PRO, STRIPE_PRICE_UNLIMITED in .env
-- Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET
-- Test end-to-end: checkout → webhook → plan update
-- Currently returns mock checkout URLs in dev (safe for UI testing)
+### 4. PSD Şablonlarla Gerçek Dosya Testi
+- Creative Fabrica / gerçek ürün PSD'leri ile uçtan uca end-to-end test
+- Smart object bounds doğruluğunu gerçek tasarım dosyalarıyla doğrula
+- Render çıktılarını gerçek mockup görselleriyle karşılaştır
 
-### 5. CORS Origin — Hardcoded localhost
-**File:** `src/index.js` line 45
-**Current:** `cors({ origin: 'http://localhost:3001', credentials: true })`
-**Fix:** `cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3001', credentials: true })`
-**Severity:** Will block all production traffic. Must fix before deployment.
+### 5. Bulk Render'da Per-Şablon Renk
+**Mevcut:** Tüm batch için tek `productColor`
+**Yapılacak:** MockupsClient.tsx'te toplu render modunda her şablon için ayrı renk seçici
 
-### 6. Dashboard — Average Generation Time
-**File:** `src/index.js` line 305
-**Current:** `avgGenerationTime: null // placeholder`
-**Fix:** Add timestamp tracking — either `generationStartedAt` on DesignJob, or `durationMs` in JobLog when eventType='GENERATION_DONE'. Compute average in dashboard query.
+### 6. Multi-Area Mockup UI
+**Backend:** Zaten çalışıyor — `areaDesigns` map (alan ID → tasarım görseli) kabul eder ve her birini farklı composite eder
+**Eksik:** Farklı tasarımları farklı şablon baskı alanlarına atamak için frontend UI. Çok panelli şablonlar için gerekli (kapüşonlularda ön/arka/kol).
 
-### 7. areaDesigns — Multi-Area Mockup UI
-**Backend:** Already works — `src/services/mockup-render.service.js` accepts `areaDesigns` map (area ID → design image) and composites each differently.
-**Missing:** Frontend UI to assign different designs to different template print areas. Needed for multi-panel templates (front/back/sleeve on hoodies). Currently same design used for all areas.
+### 7. Per-Model Maliyet Takibi
+**Dosya:** `src/services/generation.service.js`
+**Mevcut:** `FAL_COST_PER_IMAGE` tüm modeller için sabit oran. Flux Dev ~$0.03, Schnell ~$0.003, Ideogram ~$0.08.
+**Düzeltme:** Model→maliyet haritası ekle ve doğru harcama takibi için üretim başına gerçek maliyet kullan.
 
-### 8. Per-Model Cost Tracking
-**File:** `src/services/generation.service.js`
-**Current:** `FAL_COST_PER_IMAGE` is flat rate for all models. Flux Dev costs ~$0.03, Schnell ~$0.003, Ideogram ~$0.08.
-**Fix:** Add model-to-cost map and use actual cost per generation for accurate spend tracking.
+### 8. Vektör Sayfası E2E Doğrulama
+`frontend/app/dashboard/vector/` + `POST /api/tools/vectorize` mevcut. Endpoint'in uçtan uca çalıştığını ve hangi FAL modelinin çağrıldığını doğrula.
+
+### 9. Semantik Arama (Corporate Memory)
+`CorporateMemory.vectorEmbedding` alanı mevcut (Json) ama kosinüs benzerliği uygulanmamış. `/api/brain/test-knowledge` yalnızca metin eşleşmesi yapıyor.
+**Düzeltme:** OpenAI text-embedding-3-small + kosinüs arama ekle (daha iyi RAG kalitesi için).
+
+### 10. CORS Origin
+**Mevcut:** `.env`'den okuyor (`CORS_ORIGIN`) — production'a deploy ederken doğru domain'i ayarlamayı unutma.
 
 ---
 
-## 🔵 LOW PRIORITY / Future
+## 🔵 DÜŞÜK ÖNCELİK / Gelecek
 
-### 9. Production Deployment
-- Fix CORS (Task #5), configure NEXT_PUBLIC_API_BASE_URL for domain
-- Set up production Redis (currently hardcoded localhost:6379)
-- Add DIRECT_URL for Prisma (Supabase pooler vs direct connection)
-- Process manager (PM2) for Node backend
-- SSL/HTTPS setup
+### 11. Production Deployment
+- `CORS_ORIGIN` env'ini production domain'e ayarla
+- Production Redis yapılandır (şu an hardcoded localhost:6379)
+- Production NEXT_PUBLIC_API_BASE_URL ayarla
+- Node backend için process manager (PM2)
+- SSL/HTTPS kurulumu
 
-### 10. API Key Encryption
-WorkspaceApiKey.keyValue stored as plain text. Schema comment: "replace with KMS in production." Encrypt with AES-256 or cloud KMS before handling real customer API keys.
+### 12. API Key Şifreleme
+`WorkspaceApiKey.keyValue` düz metin olarak saklanıyor. Production'da gerçek müşteri API key'leri işlemeden önce AES-256 veya cloud KMS ile şifrele.
 
-### 11. Rate Limiting
-No rate limiting middleware on routes. Add express-rate-limit on /api/factory, /api/generate, /api/tools endpoints. Also enforce workspace.concurrentJobCap in BullMQ queue (field exists in DB but not checked before enqueue).
+### 13. Rate Limiting
+Route'larda rate limiting middleware yok. `/api/factory`, `/api/generate`, `/api/tools` endpoint'lerine express-rate-limit ekle. Ayrıca BullMQ kuyruğunda workspace.concurrentJobCap uygula (alan DB'de var ama enqueue öncesi kontrol edilmiyor).
 
-### 12. Semantic Search on Corporate Memory
-CorporateMemory.vectorEmbedding field exists (Json) but cosine similarity not implemented. /api/brain/test-knowledge does text matching only. Add OpenAI text-embedding-3-small + cosine search for better RAG quality.
+### 14. Pinterest Resmi API
+`pinToPinterest()` Playwright otomasyonu kullanıyor — kırılgan. Pinterest'in OAuth API'si var. Pinleme düzenli iş akışı adımı olursa değiştir.
 
-### 13. Pinterest — Official API
-`pinToPinterest()` uses Playwright automation — fragile. Pinterest has an OAuth API. Replace if pinning becomes a regular workflow step.
+### 15. Otomatik Etsy Performans Senkronizasyonu
+ProductPerformance yalnızca CSV import ile dolduruluyor. Etsy OAuth canlı olduğunda, impressions/visits/favorites/orders'ı otomatik güncellemek için zamanlanmış polling ekle.
 
-### 14. Auto Etsy Performance Sync
-ProductPerformance populated via CSV import only. When Etsy OAuth is live, add scheduled polling to auto-update impressions/visits/favorites/orders.
+### 16. Displacement Map / Perspective Warp
+Kumaş dokusuna göre tasarımı eğme — gerçekçi mockup efekti için.
 
-### 15. Vector Page — Verify E2E
-frontend/app/dashboard/vector/ + POST /api/tools/vectorize exist. Verify the endpoint works end-to-end and check which FAL model is called.
+### 17. Çoklu Smart Object Tespiti
+Multi-area PSD desteği (ön/arka gibi birden fazla smart object olan PSD dosyaları).
 
----
-
-## 🐛 KNOWN BUGS
-
-### Kritik — Hemen Düzeltilmeli
-
-| # | Location | Bug | Severity |
-|---|----------|-----|----------|
-| 1 | `src/services/listing-assembler.service.js:27` | `prisma.sEOContent` — wrong model, should be `prisma.sEOData`. Crashes on every dispatch call. | **Critical** |
-| 6 | `src/routes/mockup.routes.js:13,42` | `productColor` request body'den okunmuyor, `renderMockup()` servisine hiç iletilmiyor. `/render-batch` için de aynı sorun (satır 72, 101). Tint özelliği hiç çalışmıyor. Fix: `const { ..., productColor } = req.body;` ve `renderMockup({ ..., productColor })` | **Critical** |
-| 7 | `src/services/psd-analyzer.service.js:47-65` | `toPng()` PNG-header'lı buffer döndürüyor, Sharp'a `raw` format olarak veriliyor → runtime crash. Fix: `layer.image.toBuffer()` kullanılmalı (raw RGBA döndürür). | **Critical** |
-| 8 | `src/routes/mockup-template.routes.js:369-493` | `bulk-upload` sonrasında `req._templateDir` (tmp klasörü) temizlenmiyor. Her istekte `tmp_upload/{uuid}/` kalıyor. Fix: `res.json(...)` öncesine `try { fs.rmSync(req._templateDir, { recursive: true, force: true }); } catch {}` ekle. | **Critical** |
-
-### Önemli — Kısa Vadede Ele Alınmalı
-
-| # | Location | Bug | Severity |
-|---|----------|-----|----------|
-| 2 | `src/index.js:45` | CORS origin hardcoded to `http://localhost:3001` — blocks all prod traffic | **Deploy blocker** |
-| 9 | `src/routes/mockup-template.routes.js:577-585` | `generate-shadow` route base64 data URL ile FAL.ai'ya gönderiyor. FAL.ai `fal-ai/imageutils/depth` modeli data URL desteklemiyor, public HTTP URL bekliyor. Fix: `uploadToStorage` ile Supabase'e yükle, dönen public URL'yi FAL.ai'ya gönder. | **Important** |
-| 10 | `frontend/app/dashboard/mockups/MockupsClient.tsx:2161` | `startUpload` tamamlandığında `onSuccess()` hata olsa bile çağrılıyor → modal kapanıyor. Kullanıcı hata mesajlarını göremeden modal kapanır. Fix: `onSuccess` yerine sadece `loadTemplates()` çağır, modal kapatmayı kullanıcıya bırak. | **Important** |
-| 11 | `frontend/app/dashboard/mockups/MockupsClient.tsx:236` | Bulk render'da tüm template'lere sadece ilk seçili template'in `productColor`'ı uygulanıyor. UI'da uyarı yok. En azından "Bulk render tek renk kullanır" uyarısı ekle. | **Important** |
-| 12 | `src/services/psd-analyzer.service.js:144` | `extractFillColor` / `COLOR_KEYWORDS` implemente edilmemiş. `defaultColor` her zaman `#FFFFFF` dönüyor. Kabul edilmiş basitleştirme — ileride eklenecek. | **Important** |
-
-### Minor — İyileştirme Önerisi
-
-| # | Location | Bug | Severity |
-|---|----------|-----|----------|
-| 3 | `src/index.js:305` | `avgGenerationTime: null` hardcoded placeholder | Minor |
-| 4 | `src/services/fulfillment.service.js:60` | `syncEtsyOrders()` returns 1 hardcoded mock order regardless of workspace | Minor (expected) |
-| 5 | `src/services/billing.service.js:121,198` | Checkout + portal return mock localhost URLs when Stripe not configured | Minor (dev only) |
-| 13 | `frontend/app/dashboard/mockups/MockupsClient.tsx:2191` | `BulkUploadModal` kategori select, backend'deki `VALID_CATEGORIES` (6 kategori) ile uyumsuz. `women/men/couple` seçilirse backend 400 döner. | Minor |
-| 14 | `frontend/app/dashboard/mockups/MockupsClient.tsx:2091` | `API_BASE` iki yerde tanımlanmış, farklı fallback değerleriyle (`localhost:3000` vs `localhost:3001`). Dosya başındaki tek tanımla birleştir. | Minor |
+### 18. YouTube Servisi Entegrasyonu
+`src/services/youtube.service.js` mevcut. Frontend Brain sayfasına YouTube URL'den içerik ingestion ekleme.
 
 ---
 
-## 📝 DEVELOPMENT NOTES
+## 🐛 BİLİNEN HATALAR
 
-### Tech Stack
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| Backend | Node.js + Express | Express 5 |
-| Frontend | Next.js App Router + React | Next 14, React 19 |
-| Database | PostgreSQL + Prisma ORM | Prisma 5.15 |
-| Job Queue | BullMQ + Redis | BullMQ 5.70 |
-| Storage | Supabase Storage + local assets/ | |
-| Vision AI | Anthropic Claude, Gemini, OpenAI | Multi-provider fallback |
-| Image Gen | FAL.ai (Flux Dev/Schnell, Ideogram, Recraft) | |
-| BG Remove | BiRefNet, Bria, Pixelcut | via FAL.ai |
-| Upscale | ESRGAN, AuraSR, Ideogram | via FAL.ai |
-| Browser | Playwright + Chromium | Etsy/Pinterest automation |
-| UI | Tailwind v4, Radix UI, Lucide, Konva, Recharts | |
+| # | Konum | Hata | Önem |
+|---|-------|------|------|
+| 1 | `src/services/fulfillment.service.js:60` | `syncEtsyOrders()` workspace'den bağımsız 1 hardcoded mock sipariş döner | Minor (beklenen) |
+| 2 | `src/services/billing.service.js:121,198` | Stripe yapılandırılmamışsa checkout + portal mock localhost URL döner | Minor (yalnızca dev) |
+| 3 | `src/index.js` | Billing route comment'li — deploy öncesi etkinleştirilmeli | Orta |
 
-### Ports
-- **Backend:** http://localhost:3001 (PORT in .env — note: index.js defaults to 3000 but .env overrides to 3001)
+*Önceden belgelenen kritik hatalar (listing-assembler prisma.sEOContent, avgGenerationTime null) — düzeltildi.*
+
+---
+
+## 📝 GELİŞTİRME NOTLARI
+
+### Portlar
+- **Backend:** http://localhost:3001 (`.env`'deki PORT — index.js varsayılanı 3000 ama .env 3001'e zorlar)
 - **Frontend:** http://localhost:3000
-- **Redis:** localhost:6379 (hardcoded, no env config)
-- **PostgreSQL:** via DATABASE_URL in .env
+- **Redis:** localhost:6379 (hardcoded, env config yok — production için değiştir)
+- **PostgreSQL:** `.env`'deki DATABASE_URL üzerinden
 
-### Running the Project
-```bash
-npm run dev            # Kills ports 3000+3001, starts both servers
-npm run dev:backend    # Backend with nodemon (ignores assets/)
-npm run dev:frontend   # Frontend Next.js dev server
-npm start              # Production mode (both)
-```
+### Mimari Kararlar
 
-### Environment Variables
-```env
-# Database
-DATABASE_URL=postgresql://...
-DIRECT_URL=postgresql://...          # For Prisma migrations via Supabase pooler
+**Çok kiracılı izolasyon:** Her DB sorgusu `req.workspaceId` ile filtreler (workspace middleware tarafından session cookie'sinden ayarlanır). Yeni route'lar MUTLAKA workspace kapsam filtrelemesi içermelidir.
 
-# Server
-PORT=3001
+**Sağlayıcı fallback:** Vision: Anthropic → Gemini → OpenAI (otomatik fallback). Üretim: kullanıcı seçimli model, otomatik fallback yok.
 
-# AI Providers
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-GOOGLE_GEMINI_API_KEY=...            # Also accepts GOOGLE_API_KEY
-FAL_API_KEY=...                      # Flux, Schnell, Ideogram, Recraft, BiRefNet, Bria, upscalers
-PIXELCUT_API_KEY=...
+**API key çözümü (secrets.service.js):** WorkspaceApiKey DB → process.env → throw. Her workspace global key'leri geçersiz kılabilir.
 
-# Storage
-SUPABASE_URL=...
-SUPABASE_SERVICE_KEY=...
+**Etsy entegrasyonu (mevcut):** Playwright tarayıcı otomasyonu geçici çözüm olarak. Kalıcı Chrome oturumuyla Etsy'ye giriş yapar ve formları doldurur. Kırılgan — Etsy UI değişiklikleri sessizce bozar. Resmi API onaylandığında etsy-browser.service.js yalnızca scraping için tutulacak.
 
-# Billing (optional — falls back to mock URLs)
-STRIPE_SECRET_KEY=...
-STRIPE_WEBHOOK_SECRET=...
-STRIPE_PRICE_STARTER=price_...
-STRIPE_PRICE_PRO=price_...
-STRIPE_PRICE_UNLIMITED=price_...
+**Pipeline modları:**
+- `/api/pipeline/one-click` = eşzamanlı (isteği bloke eder)
+- `/api/pipeline/run` ve `/run-job/:jobId` = async via BullMQ
+- `/api/batch/generate` = async via BullMQ (toplu niche üretimi)
 
-# Cost Control
-DAILY_BUDGET_CAP=5.00
-FAL_COST_PER_IMAGE=0.003
+**Knowledge enjeksiyonu:** Brain belleği SEO, Factory ve Ideas üreticilerine knowledge-context.service.js üzerinden context olarak enjekte edilir. SEO KB haftalık cron ile otomatik yenilenir.
 
-# Frontend
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+**WPI Redis cache:** Tarama sonuçları `wpi:scan:<scanId>` key'i altında 72h TTL ile Redis'te saklanır. Bu, aynı niş için tekrarlanan taramalarda Apify maliyetinden tasarruf sağlar.
 
-# Fulfillment (mock until key received)
-YUPPION_API_KEY=...
-DEFAULT_LISTING_PRICE=19.99
+**Batch Factory:** `/api/batch/generate` → DesignJob anında oluşturulur → ağır iş (Claude + FAL) `batch-setup` kuyruğuna gider. Endpoint <100ms'de yanıt verir, proxy timeout riski yok.
 
-# Etsy (pending approval)
-ETSY_API_KEY=...
-ETSY_API_SECRET=...
-ETSY_REDIRECT_URI=...
+**Image.seed alanı:** Mockup referansı için `designImageId` saklamak amacıyla yeniden kullanılmıştır.
 
-# Browser Automation
-BROWSER_USER_DATA=...                # Persistent Chrome profile path
-BROWSER_EXE=...                      # Chrome executable path
-```
+**DesignJob.mode değerleri:**
+- `'standard'` — normal factory üretimi
+- `'etsy'` — Etsy modu üretimi
+- `'batch'` — batch factory üretimi
+- `'mockup_gallery'` — render edilmiş mockuplar (galeriden ayırt etmek için)
 
-### Key Architectural Decisions
+### Prisma Şeması — 21 Model
+User, Workspace, WorkspaceMember, WorkspaceApiKey, DesignJob, Image, Mockup, SEOData, VisionAnalysis, JobLog, Idea, ProductPerformance, ProductPack, ProductPackItem, SeoKnowledgeBase, MockupTemplate, CorporateMemory, ApiUsage, DailyTask, StyleProfile, FinancialTransaction
 
-**Multi-tenant isolation:** Every DB query filters by `req.workspaceId` (set by workspace middleware from session cookie). New routes MUST include workspace scoping.
-
-**Provider fallback:** Vision: Anthropic → Gemini → OpenAI (auto-fallback). Generation: user-selected model, no auto-fallback.
-
-**API key resolution (secrets.service.js):** WorkspaceApiKey DB → process.env → throw. Each workspace can override global keys.
-
-**Etsy integration (current):** Playwright browser automation as workaround. Logs into Etsy with a persistent Chrome session and fills forms. Fragile — Etsy UI changes break it silently. Official API integration is Task #2.
-
-**Pipeline modes:** `/api/pipeline/one-click` = synchronous (blocks request). `/api/pipeline/run` and `/run-job/:jobId` = async via BullMQ.
-
-**Knowledge injection:** Brain memories are injected as context into SEO, Factory, and Ideas generators via knowledge-context.service.js. SEO Knowledge Base is auto-refreshed weekly via cron.
-
-**Adding a backend route:**
-1. Create `src/routes/feature.routes.js`
-2. Register in `src/index.js`: `app.use('/api/feature', require('./routes/feature.routes'))`
-3. All queries MUST filter by `req.workspaceId`
-
-**Adding a frontend page:**
-1. `frontend/app/dashboard/page-name/page.tsx` (thin server component)
-2. `frontend/app/dashboard/page-name/PageNameClient.tsx` ('use client', all logic)
-3. Add nav entry to `frontend/components/layout/Sidebar.tsx`
-4. Add API functions to `frontend/lib/api.ts`
-
-**DB migrations:**
-```bash
-npx prisma migrate dev --name descriptive_name
-npx prisma generate
-```
-
-### Prisma Schema — 17 Models
-User, Workspace, WorkspaceMember, WorkspaceApiKey, DesignJob, Image, Mockup, SEOData, VisionAnalysis, JobLog, Idea, ProductPerformance, ProductPack, ProductPackItem, SeoKnowledgeBase, MockupTemplate, CorporateMemory
-
-### Design System
+### Tasarım Sistemi
 - Accent: Electric Violet `#7c3aed` → `var(--accent)`
-- Background: `#08090a`, Cards: `bg-[#111827]`
-- Primary CTA: `bg-gradient-to-r from-purple-600 to-blue-600`
-- Font: Geist sans + Geist Mono
-- Sidebar: 220px fixed, left border active highlight
-- Tokens in `frontend/app/globals.css` — use existing tokens only
+- Arka Plan: `#08090a`, Kartlar: `bg-[#111827]`
+- Birincil CTA: `bg-gradient-to-r from-purple-600 to-blue-600`
+- Yazı Tipi: Geist sans + Geist Mono
+- Sidebar: 220px sabit, sol border aktif vurgu
+- Token'lar `frontend/app/globals.css`'de — yalnızca mevcut token'ları kullan

@@ -303,6 +303,11 @@ export interface MockupRender {
 }
 export interface MockupMeta {
     view: string; background: string; color: string; hasHumanModel: boolean;
+    isPsdDerived?: boolean;
+    grayBasePath?: string;
+    defaultColor?: string;
+    shadowSource?: 'psd' | 'preset' | 'ai';
+    layerMap?: { smartObject?: string | null; shadow?: string | null };
 }
 export interface MockupConfig {
     printArea: MockupPrintArea;
@@ -357,16 +362,43 @@ export const apiMockups = {
         request<{ message: string }>(`/mockups/templates/${id}`, { method: 'DELETE' }),
 
     // Render
-    render: (imageId: string, templateId: string, placement?: { scale: number; offsetX: number; offsetY: number; rotation: number }, areaDesigns?: Record<string, { imageId: string; imageUrl: string }>) =>
+    render: (imageId: string, templateId: string, placement?: { scale: number; offsetX: number; offsetY: number; rotation: number }, areaDesigns?: Record<string, { imageId: string; imageUrl: string }>, productColor?: string) =>
         request<MockupRecord>('/mockups/render', {
             method: 'POST',
-            body: JSON.stringify({ imageId, templateId, placement, areaDesigns }),
+            body: JSON.stringify({ imageId, templateId, placement, areaDesigns, productColor }),
         }),
-    renderBatch: (imageId: string, templateIds: string[], placement?: { scale: number; offsetX: number; offsetY: number; rotation: number }) =>
+    renderBatch: (imageId: string, templateIds: string[], placement?: { scale: number; offsetX: number; offsetY: number; rotation: number }, productColor?: string) =>
         request<{ message: string; results: { templateId: string; templateName: string; status: string; url?: string; error?: string }[] }>('/mockups/render-batch', {
             method: 'POST',
-            body: JSON.stringify({ imageId, templateIds, placement }),
+            body: JSON.stringify({ imageId, templateIds, placement, productColor }),
         }),
+    generateShadow: (templateId: string) =>
+        request<{ success: boolean; shadowImagePath: string; template: MockupTemplate }>(`/mockups/templates/${templateId}/generate-shadow`, {
+            method: 'POST',
+        }),
+    bulkUpload: async (files: File[], category: string, onProgress?: (done: number, total: number) => void): Promise<{ results: any[]; total: number; success: number }> => {
+        const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+        const BATCH_SIZE = 20;
+        const allResults: any[] = [];
+
+        for (let i = 0; i < files.length; i += BATCH_SIZE) {
+            const batch = files.slice(i, i + BATCH_SIZE);
+            const fd = new FormData();
+            batch.forEach(f => fd.append('images', f));
+            fd.append('category', category);
+
+            const res = await fetch(`${API_BASE}/api/mockups/templates/bulk-upload`, {
+                method: 'POST',
+                credentials: 'include',
+                body: fd,
+            });
+            const data = await res.json();
+            allResults.push(...(data.results || []));
+            onProgress?.(Math.min(i + BATCH_SIZE, files.length), files.length);
+        }
+
+        return { results: allResults, total: files.length, success: allResults.filter((r: any) => r.status === 'success').length };
+    },
     renderVideo: (mockupImageUrl: string, motionType: 'subtle' | 'rotate' | 'wave' | 'zoom' = 'subtle', duration: number = 5) =>
         request<{ videoUrl: string; duration: string; motionType: string }>('/mockups/templates/render-video', {
             method: 'POST',

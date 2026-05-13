@@ -599,8 +599,12 @@ router.post('/:id/generate-shadow', async (req, res) => {
             .png()
             .toBuffer();
 
+        const ASSETS_ROOT = path.resolve(__dirname, '../../assets') + path.sep;
         const templateDir = path.dirname(basePath);
         const shadowPath = path.join(templateDir, 'shadow_ai.png');
+        if (!path.resolve(shadowPath).startsWith(ASSETS_ROOT)) {
+            return res.status(400).json({ error: 'Invalid template path' });
+        }
         fs.writeFileSync(shadowPath, shadowBuffer);
 
         const shadowImagePath = template.baseImagePath.replace(/[^/\\]+$/, 'shadow_ai.png').replace(/\\/g, '/');

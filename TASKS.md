@@ -1,6 +1,6 @@
 # POD AI Factory — Task Board & Project Status
 
-Last updated: May 13, 2026
+Last updated: May 13, 2026 (council review — bug list expanded)
 
 ---
 
@@ -283,13 +283,34 @@ frontend/app/dashboard/vector/ + POST /api/tools/vectorize exist. Verify the end
 
 ## 🐛 KNOWN BUGS
 
+### Kritik — Hemen Düzeltilmeli
+
 | # | Location | Bug | Severity |
 |---|----------|-----|----------|
 | 1 | `src/services/listing-assembler.service.js:27` | `prisma.sEOContent` — wrong model, should be `prisma.sEOData`. Crashes on every dispatch call. | **Critical** |
+| 6 | `src/routes/mockup.routes.js:13,42` | `productColor` request body'den okunmuyor, `renderMockup()` servisine hiç iletilmiyor. `/render-batch` için de aynı sorun (satır 72, 101). Tint özelliği hiç çalışmıyor. Fix: `const { ..., productColor } = req.body;` ve `renderMockup({ ..., productColor })` | **Critical** |
+| 7 | `src/services/psd-analyzer.service.js:47-65` | `toPng()` PNG-header'lı buffer döndürüyor, Sharp'a `raw` format olarak veriliyor → runtime crash. Fix: `layer.image.toBuffer()` kullanılmalı (raw RGBA döndürür). | **Critical** |
+| 8 | `src/routes/mockup-template.routes.js:369-493` | `bulk-upload` sonrasında `req._templateDir` (tmp klasörü) temizlenmiyor. Her istekte `tmp_upload/{uuid}/` kalıyor. Fix: `res.json(...)` öncesine `try { fs.rmSync(req._templateDir, { recursive: true, force: true }); } catch {}` ekle. | **Critical** |
+
+### Önemli — Kısa Vadede Ele Alınmalı
+
+| # | Location | Bug | Severity |
+|---|----------|-----|----------|
 | 2 | `src/index.js:45` | CORS origin hardcoded to `http://localhost:3001` — blocks all prod traffic | **Deploy blocker** |
+| 9 | `src/routes/mockup-template.routes.js:577-585` | `generate-shadow` route base64 data URL ile FAL.ai'ya gönderiyor. FAL.ai `fal-ai/imageutils/depth` modeli data URL desteklemiyor, public HTTP URL bekliyor. Fix: `uploadToStorage` ile Supabase'e yükle, dönen public URL'yi FAL.ai'ya gönder. | **Important** |
+| 10 | `frontend/app/dashboard/mockups/MockupsClient.tsx:2161` | `startUpload` tamamlandığında `onSuccess()` hata olsa bile çağrılıyor → modal kapanıyor. Kullanıcı hata mesajlarını göremeden modal kapanır. Fix: `onSuccess` yerine sadece `loadTemplates()` çağır, modal kapatmayı kullanıcıya bırak. | **Important** |
+| 11 | `frontend/app/dashboard/mockups/MockupsClient.tsx:236` | Bulk render'da tüm template'lere sadece ilk seçili template'in `productColor`'ı uygulanıyor. UI'da uyarı yok. En azından "Bulk render tek renk kullanır" uyarısı ekle. | **Important** |
+| 12 | `src/services/psd-analyzer.service.js:144` | `extractFillColor` / `COLOR_KEYWORDS` implemente edilmemiş. `defaultColor` her zaman `#FFFFFF` dönüyor. Kabul edilmiş basitleştirme — ileride eklenecek. | **Important** |
+
+### Minor — İyileştirme Önerisi
+
+| # | Location | Bug | Severity |
+|---|----------|-----|----------|
 | 3 | `src/index.js:305` | `avgGenerationTime: null` hardcoded placeholder | Minor |
 | 4 | `src/services/fulfillment.service.js:60` | `syncEtsyOrders()` returns 1 hardcoded mock order regardless of workspace | Minor (expected) |
 | 5 | `src/services/billing.service.js:121,198` | Checkout + portal return mock localhost URLs when Stripe not configured | Minor (dev only) |
+| 13 | `frontend/app/dashboard/mockups/MockupsClient.tsx:2191` | `BulkUploadModal` kategori select, backend'deki `VALID_CATEGORIES` (6 kategori) ile uyumsuz. `women/men/couple` seçilirse backend 400 döner. | Minor |
+| 14 | `frontend/app/dashboard/mockups/MockupsClient.tsx:2091` | `API_BASE` iki yerde tanımlanmış, farklı fallback değerleriyle (`localhost:3000` vs `localhost:3001`). Dosya başındaki tek tanımla birleştir. | Minor |
 
 ---
 

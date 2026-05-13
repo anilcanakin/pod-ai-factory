@@ -135,12 +135,14 @@ router.post('/',
 
             // Build configJson — Standard v1 shape
             const preset = CATEGORY_PRESETS[category] || CATEGORY_PRESETS.tshirt;
+            const singlePrintArea = await detectPrintArea(path.join(finalDir, baseFile.filename));
+            const autoBlendMode = singlePrintArea.blendMode || 'multiply';
             let configJson = {
-                printArea: preset.printArea,
+                printArea: singlePrintArea,
                 transform: {
                     rotation: 0,
                     opacity: 0.92,
-                    blendMode: 'multiply',
+                    blendMode: autoBlendMode,
                 },
                 render: {
                     renderMode: 'flat',
@@ -150,7 +152,7 @@ router.post('/',
                 meta: {
                     view: 'front',
                     background: 'studio',
-                    color: 'white',
+                    color: autoBlendMode === 'screen' ? 'dark' : 'light',
                     hasHumanModel: false,
                 },
             };
@@ -406,6 +408,8 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
 
                 let printArea, baseImageFilename, shadowImagePath, configMeta, printAreaConfidence;
 
+                let detectedBlendMode = 'multiply';
+
                 if (isPsd) {
                     const analysis = await analyzePsd(file.path, category);
 
@@ -422,6 +426,7 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
 
                     printArea = analysis.printArea;
                     printAreaConfidence = 100;
+                    detectedBlendMode = analysis.blendMode || 'multiply';
                     configMeta = {
                         grayBasePath: `assets/mockups/${category}/${templateId}/gray_base.png`,
                         defaultColor: analysis.defaultColor,
@@ -444,8 +449,11 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
                         height: printAreaResult.height,
                     };
                     printAreaConfidence = printAreaResult.confidence;
+                    detectedBlendMode = printAreaResult.blendMode || 'multiply';
                     configMeta = {
-                        view: 'front', background: 'studio', color: 'white', hasHumanModel: false,
+                        view: 'front', background: 'studio',
+                        color: detectedBlendMode === 'screen' ? 'dark' : 'light',
+                        hasHumanModel: false,
                         isPsdDerived: false,
                     };
                 }
@@ -460,7 +468,7 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
                         shadowImagePath,
                         configJson: {
                             printArea,
-                            transform: { rotation: 0, opacity: isPsd ? 0.92 : 1, blendMode: 'multiply' },
+                            transform: { rotation: 0, opacity: isPsd ? 0.92 : 1, blendMode: detectedBlendMode },
                             render: { renderMode: 'flat' },
                             meta: configMeta,
                         },

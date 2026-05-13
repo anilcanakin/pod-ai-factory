@@ -440,13 +440,19 @@ async function detectPrintArea(imagePath) {
     const y = Math.max(0.05, Math.min(0.55, centerY - printH / 2));
     
     const confidence = Math.round((bestScore / 255) * 100);
-    
+
+    // Tüm piksellerin ortalama parlaklığı → blend mode kararı
+    // Koyu zemin (siyah/lacivert tişört) → screen, açık zemin (beyaz/krem) → multiply
+    const avgBrightness = Array.from(data).reduce((sum, v) => sum + v, 0) / data.length;
+    const blendMode = avgBrightness > 127 ? 'multiply' : 'screen';
+
     return {
         x: parseFloat(x.toFixed(3)),
         y: parseFloat(y.toFixed(3)),
         width: parseFloat(printW.toFixed(3)),
         height: parseFloat(printH.toFixed(3)),
-        confidence: Math.min(95, Math.max(20, confidence))
+        confidence: Math.min(95, Math.max(20, confidence)),
+        blendMode,
     };
 }
 

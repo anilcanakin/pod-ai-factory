@@ -141,8 +141,15 @@ async function analyze(psdFilePath, category = 'tshirt') {
         if (shadowBuffer) shadowLayerName = shadowLayer.name;
     }
 
-    // 5. Default color (best-effort — falls back to white)
-    const defaultColor = '#FFFFFF';
+    // 5. Ortalama parlaklıktan blend mode tespiti
+    // Gray buffer zaten elimizde — küçük boyuta resize et, ortalama brightness hesapla
+    const { data: brightnessData, info: bInfo } = await sharp(grayBuffer)
+        .resize(50, 50, { fit: 'fill' })
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+    const avgBrightness = Array.from(brightnessData).reduce((s, v) => s + v, 0) / (bInfo.width * bInfo.height);
+    const blendMode = avgBrightness > 127 ? 'multiply' : 'screen';
+    const defaultColor = avgBrightness > 127 ? '#FFFFFF' : '#1a1a1a';
 
     return {
         printArea,
@@ -150,6 +157,7 @@ async function analyze(psdFilePath, category = 'tshirt') {
         grayBuffer,
         shadowBuffer,
         defaultColor,
+        blendMode,
         layerMap: {
             smartObject: smartLayerName,
             shadow: shadowLayerName,

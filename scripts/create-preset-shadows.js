@@ -36,7 +36,7 @@ async function makeShadow({ name, w, h }) {
         <rect width="${w}" height="${h}" fill="url(#botfold)"/>
     </svg>`;
 
-    await sharp(Buffer.from(svg))
+    await sharp(Buffer.from(svg), { density: 96 })
         .png()
         .toFile(path.join(OUT, `${name}_shadow.png`));
 

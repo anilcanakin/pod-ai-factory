@@ -4,6 +4,13 @@ Son güncelleme: 13 Mayıs 2026
 
 ---
 
+## Onay Kuralları
+
+- Kod yazarken, test çalıştırırken, commit atarken onay sorma — direkt yap.
+- Sadece destructive git işlemlerinde (force push, hard reset, branch silme) sor.
+
+---
+
 ## AI Asistan Kuralları
 
 - **Düzenlemeden önce oku.** Herhangi bir değişiklik yapmadan önce dosyanın tamamını oku. Tüm düzenlemeleri önce planla, sonra TEK ve eksiksiz bir düzenleme yap. Aynı dosya bir oturumda 3+ kez düzenlendiyse dur ve orijinal gereksinimleri yeniden oku.

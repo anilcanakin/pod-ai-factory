@@ -35,7 +35,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             filePath: req.file.path,
             originalName: req.file.originalname,
             mimeType: req.file.mimetype,
-            workspaceId: req.workspaceId
+            workspaceId: req.workspaceId || 'default-workspace'
         }, {
             attempts: 5,
             backoff: { type: 'exponential', delay: 30000 } // 30 sn den başla
@@ -62,7 +62,7 @@ router.post('/youtube', async (req, res) => {
         await knowledgeQueue.add('process-youtube', {
             type: 'YOUTUBE',
             url: url,
-            workspaceId: req.workspaceId
+            workspaceId: req.workspaceId || 'default-workspace'
         }, {
             attempts: 3,
             backoff: { type: 'exponential', delay: 20000 }
@@ -251,7 +251,7 @@ router.get('/ingest-jobs', async (req, res) => {
         ]);
 
         const all = [...active, ...waiting, ...completed, ...failed];
-        const SOURCE_TYPES = new Set(['YOUTUBE_SMART', 'YOUTUBE', 'SOCIAL_MEDIA', 'RADAR_TREND', 'FILE']);
+        const SOURCE_TYPES = new Set(['YOUTUBE_SMART', 'YOUTUBE', 'SOCIAL_MEDIA', 'RADAR_TREND', 'FILE', 'SOCIAL_PROOF', 'EXPERT_PROOF']);
         const youtubeJobs = all.filter(j => SOURCE_TYPES.has(j.data?.type));
 
         const result = await Promise.all(youtubeJobs.map(async j => {

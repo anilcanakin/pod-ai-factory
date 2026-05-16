@@ -88,6 +88,8 @@ require('./jobs/radar-worker').startCron();
 require('./jobs/playwright-health-cron').startCron();
 // Etsy sipariş polling — 30 dakikada bir yeni sipariş kontrolü + Telegram + Yuppion
 require('./jobs/order-poller.job').startCron();
+// Power Seller Monitor — her 6 saatte bir takip edilen top mağazaları tara
+require('./jobs/power-seller-monitor.cron').startCron();
 
 // Storage asset explicit workspace scoped protection
 app.use('/assets/outputs/:filename', async (req, res, next) => {
@@ -415,6 +417,7 @@ app.use('/api/hq', generalLimiter, require('./routes/hq.routes'));
 app.use('/api/finance', generalLimiter, require('./routes/finance.routes'));
 app.use('/api/batch',  aiContentLimiter, require('./routes/batch.routes'));
 app.use('/api/styles', generalLimiter, require('./routes/style.routes'));
+app.use('/api/power-seller', generalLimiter, require('./routes/power-seller.routes'));
 
 
 app.use((err, req, res, next) => {

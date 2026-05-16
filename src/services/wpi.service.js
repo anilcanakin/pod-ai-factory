@@ -19,6 +19,7 @@ const prisma = require('../lib/prisma');
 const anthropic = require('../lib/anthropic');
 const redis     = require('../config/redis');
 const { getContextForAI } = require('./knowledge.service');
+const { expandKeywords }  = require('./keyword-research.service');
 
 // ─── Config ────────────────────────────────────────────────────────────────────
 const MIN_SALES_FOR_WINNER    = 8;    // ignore products with < N sales
@@ -67,6 +68,24 @@ function _matchCollection(title = '', keyword = '') {
         if (col.keywords.some(kw => haystack.includes(kw))) return col;
     }
     return null;
+}
+
+// ─── eHunter-tarzı gelir/velocity metrikleri ─────────────────────────────────
+// Etsy review rate ~2-3% → satış tahmini: reviews * 40
+// Doğrudan satış verisi varsa onu kullan; yoksa review'dan tahmin et.
+
+function _computeEhunterMetrics(product) {
+    const sales = product.sales         || 0;
+    const price = product.price         || 0;
+    const revs  = product.reviewCount   || product.shopReviewCount || 0;
+    const favs  = product.favoriteCount || 0;
+
+    const effectiveSales          = sales > 0 ? sales : Math.round(revs * 40);
+    const estimatedTotalRevenue   = Math.round(effectiveSales * price);
+    const estimatedMonthlyRevenue = Math.round(estimatedTotalRevenue / 12);
+    const velocityScore           = Math.round(sales * 2 + revs * 3 + favs * 0.5);
+
+    return { estimatedTotalRevenue, estimatedMonthlyRevenue, velocityScore };
 }
 
 // ─── Snapshot helpers (stored in CorporateMemory) ─────────────────────────────
@@ -276,7 +295,7 @@ function _detectInstantWinners(products) {
  * Instant winner için özel Brain prompt:
  * "Bu ürün zaten Best Seller — biz buna nasıl bir Competitive Edge ekleyebiliriz?"
  */
-async function _compareWithBrainInstant(product, keyword, workspaceId) {
+async function _compareWithBrainInstant(product, keyword, workspaceId, { marketContext = null, scoutContext = null, autocompleteHints = null } = {}) {
     const [memories, seoKb, academyContext] = await Promise.all([
         prisma.corporateMemory.findMany({
             where: {
@@ -309,6 +328,17 @@ async function _compareWithBrainInstant(product, keyword, workspaceId) {
         return s;
     }).join('\n');
 
+    const marketBlock = marketContext
+        ? `\nMARKET BAĞLAMI:
+- Top 5 rakip ortalama yorum: ${marketContext.avgTopReviews}
+- Nişte ortalama fiyat: $${marketContext.avgPrice}
+- Rekabet seviyesi: ${marketContext.competitionLevel}
+- Rakipler yenilebilir mi: ${marketContext.isBeatable ? 'Evet' : 'Zor'}`
+        : '';
+
+    const scoutBlock  = scoutContext    ? `\nTREND NİŞLER (Scout):\n${scoutContext}`                : '';
+    const acBlock     = autocompleteHints ? `\nETSY ARAMA: ${autocompleteHints}`                     : '';
+
     const prompt = `Sen deneyimli bir Etsy POD stratejisti ve yaratıcı direktörsün.
 
 RAKİP ÜRÜN — ANLIK WINNER:
@@ -317,6 +347,7 @@ RAKİP ÜRÜN — ANLIK WINNER:
 - Toplam Satış: ${product.sales || 0} adet
 - Mağaza: ${product.shopName}
 - Niche Keyword: "${keyword}"
+${marketBlock}${scoutBlock}${acBlock}
 
 GÜÇLÜ SİNYALLER:
 ${signalLines}
@@ -379,6 +410,67 @@ SADECE JSON döndür:
     }
 }
 
+// ─── Market Context Analyzer ──────────────────────────────────────────────────
+
+/**
+ * Ürün listesinden rakip yoğunluğu ve fiyat tabanı hesaplar.
+ * competitionLevel: LOW (<150) | MEDIUM (150-499) | HIGH (500-999) | VERY_HIGH (1000+)
+ * priceFloor: true → avg fiyat $20 altında (POD marjı sıkışık)
+ * isBeatable: true → solo satıcı girebilir (top5 avg review < 400)
+ */
+function _analyzeMarketContext(products) {
+    if (!products.length) {
+        return { avgTopReviews: 0, avgPrice: 0, isBeatable: true, competitionLevel: 'LOW', priceFloor: false };
+    }
+
+    // Listing-level reviews (shahidirfan) → competition proxy.
+    // shop_total_rating_count (getdataforme) is shop-wide, NOT listing-level — kept in shopReviewCount.
+    // If all listing reviewCounts are 0, the niche is data-limited (not necessarily unbeatable).
+    const sorted = [...products].sort((a, b) => (b.reviewCount ?? 0) - (a.reviewCount ?? 0));
+    const top5   = sorted.slice(0, 5);
+
+    const avgTopReviews = top5.length
+        ? Math.round(top5.reduce((s, p) => s + (p.reviewCount ?? 0), 0) / top5.length)
+        : 0;
+
+    // Outlier temizle: $150 üzeri POD için anlamsız (özel sipariş vs)
+    const rawPrices = products.map(p => p.price);
+    console.log(`[WPI] Raw prices from scraper:`, rawPrices.slice(0, 8));
+    // Cents detection: shahidirfan bazı fiyatları cents cinsinden döndürebilir (2799 = $27.99)
+    const likelyInCents = rawPrices.filter(p => p > 0).every(p => p > 200);
+    const normalizedPrices = likelyInCents ? rawPrices.map(p => p / 100) : rawPrices;
+    if (likelyInCents) console.log(`[WPI] Fiyatlar cents formatında görünüyor → /100 normalizasyon uygulandı`);
+    const prices   = normalizedPrices.filter(p => p > 0 && p < 150);
+    const avgPrice = prices.length
+        ? Math.round(prices.reduce((s, p) => s + p, 0) / prices.length * 100) / 100
+        : 0;
+
+    const isBeatable       = avgTopReviews < 400;
+    const competitionLevel = avgTopReviews >= 1000 ? 'VERY_HIGH'
+                           : avgTopReviews >= 500  ? 'HIGH'
+                           : avgTopReviews >= 150  ? 'MEDIUM'
+                           : 'LOW';
+    const priceFloor = avgPrice > 0 && avgPrice < 20;
+
+    return { avgTopReviews, avgPrice, isBeatable, competitionLevel, priceFloor };
+}
+
+// ─── Scout Context Loader ─────────────────────────────────────────────────────
+
+async function _getScoutContext(workspaceId) {
+    try {
+        const records = await prisma.corporateMemory.findMany({
+            where:   { workspaceId, type: 'WPI_SCOUT', isActive: true },
+            orderBy: { createdAt: 'desc' },
+            take:    6,
+        });
+        if (!records.length) return null;
+        return records
+            .map(r => `• ${r.analysisResult?.niche ?? r.title}: ${(r.analysisResult?.reasoning ?? '').slice(0, 120)}`)
+            .join('\n');
+    } catch { return null; }
+}
+
 // ─── Brain comparison ──────────────────────────────────────────────────────────
 
 /**
@@ -387,7 +479,7 @@ SADECE JSON döndür:
  * Returns { confidence, reasoning, designSuggestion, niche, targetKeywords,
  *           colorPalette, competitiveEdge }
  */
-async function _compareWithBrain(product, keyword, workspaceId) {
+async function _compareWithBrain(product, keyword, workspaceId, { marketContext = null, scoutContext = null, autocompleteHints = null } = {}) {
     // Fetch relevant brain memories (VISUAL + STRATEGY + SEO categories)
     const [memories, seoKb, academyContext] = await Promise.all([
         prisma.corporateMemory.findMany({
@@ -417,15 +509,37 @@ async function _compareWithBrain(product, keyword, workspaceId) {
 
     const academyLines = academyContext || '(Academy henüz boş)';
 
+    const marketBlock = marketContext
+        ? `\nMARKET BAĞLAMI (rakip yoğunluğu):
+- Top 5 rakip ortalama yorum: ${marketContext.avgTopReviews}
+- Nişte ortalama fiyat: $${marketContext.avgPrice}
+- Rekabet seviyesi: ${marketContext.competitionLevel}${marketContext.priceFloor ? '\n- ⚠️ Ortalama fiyat $20 altında — POD marjı sıkışık' : ''}
+- Rakipler yenilebilir mi: ${marketContext.isBeatable ? 'Evet (solo satıcı girebilir)' : 'Zor (çok olgun pazar)'}`
+        : '';
+
+    const scoutBlock = scoutContext
+        ? `\nGÜNCEL TREND NİŞLER (Scout verisi):\n${scoutContext}`
+        : '';
+
+    const autocompleteBlock = autocompleteHints
+        ? `\nETSY ARAMA ÖNERİLERİ (talep sinyali): ${autocompleteHints}`
+        : '';
+
+    const shopReviewLine = (product.shopReviewCount ?? 0) > 0
+        ? `- Mağaza Toplam Yorumu: ${product.shopReviewCount} (niş aktifliğini gösterir)`
+        : '';
+
     const prompt = `Sen deneyimli bir Etsy POD stratejisti ve tasarımcısısın.
 
 RAKİP ÜRÜN ANALİZİ:
 - Başlık: "${product.title}"
 - Fiyat: $${product.price}
 - Toplam Satış: ${product.trendData.salesCount} adet
-- Son 48 saatte yeni satış: ${product.trendData.salesDelta > 0 ? product.trendData.salesDelta + ' adet' : 'Veri yok (ilk tarama)'}
+- Ürün Yorumu: ${product.reviewCount || 0} (listing bazlı)
+${shopReviewLine}- Son 48 saatte yeni satış: ${product.trendData.salesDelta > 0 ? product.trendData.salesDelta + ' adet' : 'Veri yok (ilk tarama)'}
 - Niche Keyword: "${keyword}"
 - Mağaza: ${product.shopName}
+${marketBlock}${scoutBlock}${autocompleteBlock}
 
 bizim KNOWLEDGE BASE:
 ${brainLines}
@@ -436,13 +550,16 @@ ${seoLines}
 ACADEMY KURALLARI (Strateji / Kurallar / SEO Taktikleri — BUNLARA AYKIRI HİÇBİR ŞEY ÖNERME):
 ${academyLines}
 
+NOT: Ürün yorumu 0 ise bu, scraper'ın listing bazlı veri döndürmediği anlamına gelir — mağaza toplam yorumu nişin canlılığını gösterir. Tasarım fırsatına odaklan.
+
 SORU: BİZ bu nişte daha iyi/farklı bir ürün yapabilir miyiz?
 
-Değerlendirme kriterleri:
-- Tasarım kalitesi fırsatı (rakip görseli sıradan mı?)
-- Fiyat konumlandırma boşluğu
-- KB'deki trend/stil bilgisiyle örtüşme
-- Mevsimsel fırsat (Nisan 2026: 4th of July yaklaşıyor, World Cup 2026 başlıyor)
+Değerlendirme kriterleri (ağırlık sırası):
+1. Tasarım kalitesi fırsatı — rakip başlığına göre tasarım sıradan mı / biz farklılaşabilir miyiz?
+2. Fiyat konumlandırma — $18-28 hedef bandında yer var mı?
+3. KB'deki trend/stil bilgisiyle örtüşme
+4. Mevsimsel fırsat (Mayıs 2026: 4th of July yaklaşıyor, World Cup 2026 başlıyor, yaz sezonu)
+Confidence ≥ 50 ise "girmeye değer fırsat" sayılır. Tasarımın kötü olduğu ama nişin canlı olduğu durumlarda 50-65 arası ver.
 
 SADECE JSON döndür:
 {
@@ -559,14 +676,18 @@ async function _saveWinner(workspaceId, product, keyword, brainResult, actionCar
                 status:      'PENDING',          // PENDING | APPROVED | REJECTED
                 keyword,
                 product: {
-                    title:      product.title,
-                    price:      product.price,
-                    sales:      product.trendData.salesCount,
-                    salesDelta: product.trendData.salesDelta,
-                    imageUrl:   product.imageUrl,
-                    listingUrl: product.listingUrl,
-                    shopName:   product.shopName,
-                    category:   product.category ?? null,
+                    title:        product.title,
+                    price:        product.price,
+                    sales:        product.trendData.salesCount,
+                    salesDelta:   product.trendData.salesDelta,
+                    imageUrl:     product.imageUrl,
+                    listingUrl:   product.listingUrl,
+                    shopName:     product.shopName,
+                    category:     product.category ?? null,
+                    reviewCount:    product.reviewCount    || 0,
+                    shopReviewCount: product.shopReviewCount || 0,
+                    favoriteCount:  product.favoriteCount  || 0,
+                    shopRating:     product.shopRating     || null,
                 },
                 trendData:      product.trendData,
                 brainComparison: brainResult,
@@ -627,6 +748,19 @@ async function _scanSingleKeyword(workspaceId, keyword, kwIdx, {
         kwResult.productsScraped = podProducts.length;
         if (onProgress) await onProgress(keyword, { phase: 'filtering', aiDone: 0, aiTotal: 0 });
 
+        // ── 1c. Market bağlamı + autocomplete + scout (paralel) ───────────────
+        const marketContext = _analyzeMarketContext(podProducts);
+        console.log(`[WPI]   ↳ Market: ${marketContext.competitionLevel} (top5 avg reviews: ${marketContext.avgTopReviews}, avg price: $${marketContext.avgPrice})`);
+
+        const [scoutContext, autocompleteRaw] = await Promise.all([
+            _getScoutContext(workspaceId),
+            expandKeywords([keyword]).catch(() => [keyword]),
+        ]);
+        const extras           = autocompleteRaw.filter(s => s && s !== keyword);
+        const autocompleteHints = extras.length > 0 ? extras.slice(0, 8).join(', ') : null;
+        if (autocompleteHints) console.log(`[WPI]   ↳ Autocomplete: ${autocompleteHints}`);
+        const brainOpts = { marketContext, scoutContext, autocompleteHints };
+
         // ── 2. Snapshot + trending detection ──────────────────────────────────
         const [prevSnapshot] = await Promise.all([
             _loadPreviousSnapshot(workspaceId, keyword),
@@ -675,7 +809,7 @@ async function _scanSingleKeyword(workspaceId, keyword, kwIdx, {
             }
             const productKey  = product.listingUrl || product.url || '';
             const cached      = await _getCachedBrain(productKey, keyword);
-            const brainResult = cached || await _compareWithBrainInstant(product, keyword, workspaceId);
+            const brainResult = cached || await _compareWithBrainInstant(product, keyword, workspaceId, brainOpts);
             if (!cached && brainResult.confidence > 0) await _setCachedBrain(productKey, keyword, brainResult);
             aiDone++;
             if (onProgress) await onProgress(keyword, { phase: 'ai_analysis', aiDone, aiTotal });
@@ -698,6 +832,9 @@ async function _scanSingleKeyword(workspaceId, keyword, kwIdx, {
                     imageUrl: product.imageUrl, listingUrl: product.listingUrl, shopName: product.shopName,
                     category: product.category ?? null, isBestSeller: product.isBestSeller,
                     inCartCount: product.inCartCount, isPopularNow: product.isPopularNow,
+                    reviewCount: product.reviewCount || 0, shopReviewCount: product.shopReviewCount || 0,
+                    favoriteCount: product.favoriteCount || 0, shopRating: product.shopRating || null,
+                    ..._computeEhunterMetrics(product),
                 },
                 trendData: product.trendData, brainComparison: brainResult, actionCard,
             };
@@ -717,7 +854,7 @@ async function _scanSingleKeyword(workspaceId, keyword, kwIdx, {
         const trendingResults = await _processChunks(trendingSlice, AI_CHUNK_SIZE, async (product) => {
             const productKey  = product.listingUrl || product.url || '';
             const cached      = await _getCachedBrain(productKey, keyword);
-            const brainResult = cached || await _compareWithBrain(product, keyword, workspaceId);
+            const brainResult = cached || await _compareWithBrain(product, keyword, workspaceId, brainOpts);
             if (!cached && brainResult.confidence > 0) await _setCachedBrain(productKey, keyword, brainResult);
             aiDone++;
             if (onProgress) await onProgress(keyword, { phase: 'ai_analysis', aiDone, aiTotal });
@@ -740,6 +877,9 @@ async function _scanSingleKeyword(workspaceId, keyword, kwIdx, {
                     sales: product.trendData.salesCount, salesDelta: product.trendData.salesDelta,
                     imageUrl: product.imageUrl, listingUrl: product.listingUrl,
                     shopName: product.shopName, category: product.category ?? null,
+                    reviewCount: product.reviewCount || 0, shopReviewCount: product.shopReviewCount || 0,
+                    favoriteCount: product.favoriteCount || 0, shopRating: product.shopRating || null,
+                    ..._computeEhunterMetrics({ ...product, sales: product.trendData.salesCount }),
                 },
                 trendData: product.trendData, brainComparison: brainResult, actionCard,
             };
@@ -749,6 +889,90 @@ async function _scanSingleKeyword(workspaceId, keyword, kwIdx, {
             }
             kwResult.actionCards.push(entry);
             winnersThisKw++;
+        }
+
+        // ── 5. OPPORTUNITY fallback: sinyal yoksa (baseline veya düşük kaliteli scrape) en iyi ürünleri analiz et ─
+        if (winnersThisKw === 0 && podProducts.length > 0) {
+            const BASELINE_TOP_N = 5;
+            // Sales verisi yoksa reviewCount/favoriteCount ile sırala — Apify her zaman satış döndürmüyor
+            // URL başına tek ürün (dedup) — aynı listing'i tekrar tekrar analiz ettirme
+            const seenUrls = new Set();
+            const topBySales = [...podProducts]
+                .sort((a, b) => {
+                    // Prefer listing-level reviews; fall back to shopReviewCount (shop-wide) for getdataforme
+                    const revA = (a.reviewCount ?? 0) || (a.shopReviewCount ?? 0);
+                    const revB = (b.reviewCount ?? 0) || (b.shopReviewCount ?? 0);
+                    const scoreA = revA * 10 + (a.favoriteCount ?? 0) * 5 + (a.sales ?? 0) * 2;
+                    const scoreB = revB * 10 + (b.favoriteCount ?? 0) * 5 + (b.sales ?? 0) * 2;
+                    return scoreB - scoreA;
+                })
+                .filter(p => {
+                    const key = p.listingUrl || p.title;
+                    if (seenUrls.has(key)) return false;
+                    seenUrls.add(key);
+                    return true;
+                })
+                .slice(0, BASELINE_TOP_N);
+
+            console.log(`[WPI]   ↳ BASELINE FALLBACK: top ${topBySales.length} ürün AI'ya gönderiliyor`);
+            if (onProgress) await onProgress(keyword, { phase: 'ai_analysis', aiDone: 0, aiTotal: topBySales.length });
+
+            let bfDone = 0;
+            const bfResults = await _processChunks(topBySales, AI_CHUNK_SIZE, async (product) => {
+                if (!product.trendData) {
+                    product.trendData = {
+                        salesCount: product.sales || 0, salesDelta: 0,
+                        trendPeriod: 'BASELINE', isTrending: false, isBaseline: true, trendScore: product.sales || 0,
+                    };
+                }
+
+                // Fallback actor (automation-lab) sadece başlık+fiyat döndürür — sinyalsiz de analiz yap
+                const productKey  = product.listingUrl || product.url || '';
+                const cached      = await _getCachedBrain(productKey, keyword);
+                const brainResult = cached || await _compareWithBrain(product, keyword, workspaceId, brainOpts);
+                if (!cached && brainResult.confidence > 0) await _setCachedBrain(productKey, keyword, brainResult);
+                bfDone++;
+                if (onProgress) await onProgress(keyword, { phase: 'ai_analysis', aiDone: bfDone, aiTotal: topBySales.length });
+                console.log(`[WPI-BF]   ↳ "${product.title.slice(0, 40)}" ${brainResult.confidence}%`);
+                return { product, brainResult };
+            });
+
+            // Baseline için eşiği düşür — automation-lab sinyalsiz veri döndürür (0 review/sales)
+            const BF_CONFIDENCE_MIN = 45;
+            for (const { product, brainResult } of bfResults) {
+                if (winnersThisKw >= MAX_WINNERS_PER_KW) break;
+                if (brainResult.confidence < BF_CONFIDENCE_MIN) continue;
+                const url = product.listingUrl || product.url || '';
+                if (processedUrls.has(url)) continue;
+                processedUrls.add(url);
+
+                // actionCard'ı OPPORTUNITY olarak işaretle
+                const actionCard = {
+                    ..._buildActionCard(product, keyword, brainResult),
+                    headline:   'MARKET OPPORTUNITY',
+                    actionType: 'OPPORTUNITY',
+                };
+                const entry = {
+                    keyword,
+                    product: {
+                        title: product.title, price: product.price,
+                        sales: product.sales || 0, salesDelta: 0,
+                        imageUrl: product.imageUrl, listingUrl: product.listingUrl,
+                        shopName: product.shopName, category: product.category ?? null,
+                        reviewCount: product.reviewCount || 0, shopReviewCount: product.shopReviewCount || 0,
+                        favoriteCount: product.favoriteCount || 0, shopRating: product.shopRating || null,
+                        ..._computeEhunterMetrics(product),
+                    },
+                    trendData: product.trendData, brainComparison: brainResult, actionCard,
+                };
+                if (saveWinners) {
+                    const record = await _saveWinner(workspaceId, product, keyword, brainResult, actionCard);
+                    entry.id = record.id;
+                }
+                kwResult.actionCards.push(entry);
+                winnersThisKw++;
+            }
+            console.log(`[WPI]   ↳ BASELINE FALLBACK: ${winnersThisKw} kart üretildi`);
         }
 
         kwResult.winnersFound = kwResult.actionCards.length;

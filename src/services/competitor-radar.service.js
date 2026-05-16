@@ -1,10 +1,38 @@
 const { scrapeEtsyProducts } = require('./apify.service');
 const brainService = require('./multimodal-brain.service');
 
-const COMPETITOR_TTL_DAYS = 90;
+const COMPETITOR_TTL_DAYS  = 90;
+// Fiyat asimetri eşiği: max/min > bu oran ise "geniş fiyat aralığı" sinyali
+const PRICE_GAP_RATIO      = 4;
+
+// Fiyat asimetri analizi — İllüzyonist Power Seller tespiti
+function _analyzePriceAsymmetry(products) {
+    const prices = products.map(p => p.price).filter(p => p > 0);
+    if (prices.length < 3) return null;
+
+    const sorted   = [...prices].sort((a, b) => a - b);
+    const minPrice = sorted[0];
+    const maxPrice = sorted[sorted.length - 1];
+    const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
+    const medPrice = sorted[Math.floor(sorted.length / 2)];
+    const gapRatio = maxPrice / (minPrice || 1);
+
+    const isIllusionist = gapRatio >= PRICE_GAP_RATIO;
+
+    return {
+        minPrice: Math.round(minPrice * 100) / 100,
+        maxPrice: Math.round(maxPrice * 100) / 100,
+        avgPrice: Math.round(avgPrice * 100) / 100,
+        medPrice: Math.round(medPrice * 100) / 100,
+        gapRatio: Math.round(gapRatio * 10) / 10,
+        isIllusionist,
+        // Çok satılan fiyat dilimi (mod bucket, $5 aralıklar)
+        sweetSpot: Math.round(medPrice / 5) * 5,
+    };
+}
 
 class CompetitorRadarService {
-    _buildMemoryText(shopName, shopUrl, products) {
+    _buildMemoryText(shopName, shopUrl, products, priceData) {
         const listingLines = products
             .filter(d => d.title)
             .slice(0, 20)
@@ -27,11 +55,17 @@ class CompetitorRadarService {
             .map(([w]) => w)
             .join(', ');
 
+        const priceSection = priceData ? `
+PRICE ANALYSIS:
+- Min: $${priceData.minPrice} | Max: $${priceData.maxPrice} | Avg: $${priceData.avgPrice} | Median: $${priceData.medPrice}
+- Gap Ratio: ${priceData.gapRatio}x | Sweet Spot: ~$${priceData.sweetSpot}
+${priceData.isIllusionist ? `⚠️ ILLUSIONIST POWER SELLER: Fiyat aralığı ${priceData.gapRatio}x — düşük fiyatlı ürünlerle trafik çekip yüksek fiyatlıya yönlendiriyor.` : ''}` : '';
+
         return `Competitor Shop: ${shopName}
 Shop URL: ${shopUrl}
 Scan Date: ${new Date().toISOString().split('T')[0]}
 Total Listings Scanned: ${products.length}
-
+${priceSection}
 TOP LISTINGS:
 ${listingLines}
 
@@ -62,6 +96,8 @@ STRATEGIC NOTES:
                 return { success: false, error: `"${shopName}" için ürün bulunamadı.`, designs: [] };
             }
 
+            const priceData  = _analyzePriceAsymmetry(finalProducts);
+
             const designs = finalProducts.map(p => ({
                 id: p.listingId,
                 title: p.title,
@@ -72,7 +108,7 @@ STRATEGIC NOTES:
 
             // Brain'e 90 günlük TTL ile kaydet (fire-and-forget)
             const expiresAt = new Date(Date.now() + COMPETITOR_TTL_DAYS * 24 * 60 * 60 * 1000);
-            const memoryText = this._buildMemoryText(shopName, shopUrl, finalProducts);
+            const memoryText = this._buildMemoryText(shopName, shopUrl, finalProducts, priceData);
 
             brainService.addTextKnowledge(
                 workspaceId,
@@ -87,7 +123,7 @@ STRATEGIC NOTES:
                 console.warn('[Radar] Brain kayıt hatası:', err.message);
             });
 
-            return { success: true, designs };
+            return { success: true, designs, priceAnalysis: priceData };
         } catch (error) {
             console.error('[Radar] Tarama hatası:', error.message);
             return { success: false, error: error.message };

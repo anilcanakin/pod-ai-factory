@@ -29,6 +29,7 @@ import {
     Telescope,
     PackageSearch,
     BarChart2,
+    Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SHORTCUT_LABELS } from '@/hooks/useKeyboardShortcuts';
@@ -37,6 +38,7 @@ const navItems = [
     { href: '/dashboard/hq',            label: 'Ana Merkez',    icon: Zap },
     { href: '/dashboard/overview',      label: 'Genel Bakış',   icon: LayoutDashboard },
     { href: '/dashboard/wpi',           label: 'WPI / Radar',   icon: Target },
+    { href: '/dashboard/power-seller',  label: 'Power Seller',  icon: Eye },
     { href: '/dashboard/ideas',         label: 'Fikirler',      icon: Lightbulb },
     { href: '/dashboard/trends',        label: 'Trendler',      icon: TrendingUp },
     { href: '/dashboard/etsy-mode',     label: 'Etsy Modu',     icon: PackageSearch },

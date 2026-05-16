@@ -30,8 +30,8 @@ const anthropic = require('../lib/anthropic');
 // ─── Actor IDs ────────────────────────────────────────────────────────────────
 const ACTORS = {
     ETSY_PRODUCTS:    process.env.APIFY_ACTOR_ETSY          || 'shahidirfan/etsy-scraper',
-    ETSY_FALLBACK:    process.env.APIFY_ACTOR_ETSY_FALLBACK  || 'apify/etsy-scraper',
-    ETSY_KEYWORDS:    process.env.APIFY_ACTOR_KEYWORDS        || 'apify/etsy-scraper',
+    ETSY_FALLBACK:    process.env.APIFY_ACTOR_ETSY_FALLBACK  || 'automation-lab/etsy-scraper',
+    ETSY_KEYWORDS:    process.env.APIFY_ACTOR_KEYWORDS        || 'automation-lab/etsy-scraper',
     // Hızlı keyword araştırma için optimize actor (8s / 144 sonuç).
     // .env'de APIFY_ACTOR_ETSY_SEARCH=getdat/etsy-product-search-scraper şeklinde set et.
     ETSY_SEARCH:      process.env.APIFY_ACTOR_ETSY_SEARCH    || null,
@@ -44,7 +44,7 @@ const ACTORS = {
 const TIMEOUTS = { KEYWORDS: 300, PRODUCTS: 300, PINTEREST: 120, SEARCH: 60 };
 
 // ─── Bellek (MB) ──────────────────────────────────────────────────────────────
-const MEMORY = { KEYWORDS: 512, PRODUCTS: 1024, PINTEREST: 1024 };
+const MEMORY = { KEYWORDS: 512, PRODUCTS: 512, PINTEREST: 1024 };
 
 // ─── 2026 Trend Keyword Listesi ───────────────────────────────────────────────
 const TRENDS_2026 = [
@@ -262,9 +262,13 @@ function _normaliseEtsyItem(item) {
         listingUrl:   item.url        || item.listingUrl  || '',
         sales,
         rating:       item.rating                        ?? null,
-        shopName:     item.shop?.name ?? item.shopName   ?? '',
-        reviewCount:  parseInt(item.num_reviews ?? item.reviewCount ?? item.reviews_count ?? item.reviewsCount ?? item.numberOfReviews ?? 0, 10),
-        favoriteCount: parseInt(item.num_favorites ?? item.favoriteCount ?? item.favoritesCount ?? item.favorites ?? 0, 10),
+        shopName:     (typeof item.shop === 'string' ? item.shop : item.shop?.name) ?? item.shopName ?? '',
+        // Listing-level reviews (shahidirfan: num_reviews — getdataforme: yok → 0 kalır)
+        reviewCount:     parseInt(item.num_reviews ?? item.reviews_count ?? item.reviewsCount ?? item.numberOfReviews ?? 0, 10),
+        // Shop-level total ratings (getdataforme: shop_total_rating_count)
+        shopReviewCount: parseInt(item.shop_total_rating_count ?? item.shopReviewCount ?? 0, 10),
+        favoriteCount:   parseInt(item.num_favorites ?? item.favoriteCount ?? item.favoritesCount ?? item.favorites ?? 0, 10),
+        shopRating:      item.shop_average_rating ?? item.rating ?? null,
         listingDate:  item.listing_creation_date ?? item.creation_tsz ?? item.created_at ?? item.createdAt ?? item.listing_date ?? null,
         // ── Instant Intelligence signals ─────────────────────────────────
         isBestSeller: !!(item.is_best_seller ?? item.isBestSeller ?? item.bestseller ?? false),
@@ -291,24 +295,25 @@ async function scrapeEtsyProducts(keyword, maxResults = 50) {
             { waitSecs: TIMEOUTS.PRODUCTS, memory: MEMORY.PRODUCTS, maxItems: maxResults }  // maxItems URL param olarak gider
         );
         console.log(`[Apify] ✓ Primary scraper: ${items.length} ürün / "${keyword}"`);
-        return items.map(_normaliseEtsyItem);
+        if (items.length > 0) return items.map(_normaliseEtsyItem);
+        // 0 sonuç = primary boş döndü, fallback'e geç
+        console.log(`[Apify] ⚡ Primary 0 sonuç — fallback devreye giriyor.`);
     } catch (primaryErr) {
-        const isPaymentIssue = primaryErr instanceof X402ConfigError
-                            || primaryErr instanceof ApifyPaymentError;
-        if (!isPaymentIssue) throw primaryErr;
-
-        // Sessiz fallback — kullanıcıya hata gösterme
+        // Primary actor başarısız olursa her durumda fallback'e geç:
+        // x402 ödeme hatası, HTTP 400/5xx, timeout — hepsi fallback'i tetikler.
         console.log(
-            `[Apify] ⚡ Fallback devreye girdi — ${ACTORS.ETSY_FALLBACK} ` +
-            `(Neden: ${primaryErr.constructor.name})`
+            `[Apify] ⚡ Primary başarısız → fallback: ${ACTORS.ETSY_FALLBACK} ` +
+            `(${primaryErr.constructor.name}: ${primaryErr.message?.slice(0, 80)})`
         );
     }
 
-    // ── Fallback ──────────────────────────────────────────────────────────────
-    const fallbackItems = await _runActor(
+    // ── Fallback ─────────────────────────────────────────────────────────────
+    // REST API (run-sync-get-dataset-items) kullan — SDK'dan çok daha hızlı.
+    // getdataforme/etsy-product-search-scraper: keywords array gerektirir.
+    const fallbackItems = await _runActorWithX402(
         ACTORS.ETSY_FALLBACK,
-        { search: keyword },
-        { waitSecs: TIMEOUTS.PRODUCTS, memory: MEMORY.PRODUCTS, maxItems: maxResults }
+        { keywords: [keyword] },
+        { waitSecs: 60, memory: MEMORY.PRODUCTS, maxItems: maxResults }
     );
     console.log(`[Apify] ✓ Fallback scraper: ${fallbackItems.length} ürün / "${keyword}"`);
     return fallbackItems.map(_normaliseEtsyItem);
@@ -467,7 +472,7 @@ async function researchEtsyKeywords(keywords, countryCode = 'US') {
         const combinedQuery = kwArray.join(' ');
         const products = await _runActor(
             ACTORS.ETSY_KEYWORDS,
-            { search: combinedQuery },
+            { searchQuery: combinedQuery },
             { waitSecs: TIMEOUTS.KEYWORDS, memory: MEMORY.KEYWORDS, maxItems: 30 }
         );
 

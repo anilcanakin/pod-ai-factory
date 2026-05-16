@@ -186,8 +186,8 @@ Brain sayfasında YouTube sekmesi zaten mevcut (URL + kanal tarama).
 PM2 SSH sunucuda çalışıyor: `factory-backend` (id:0) + `factory-frontend` (id:1).
 ⚠️ **factory-backend 4470 restart** — crash loop var, kök nedeni araştırılmalı (`pm2 logs factory-backend --lines 50`).
 
-### 10. API Key Şifreleme
-`WorkspaceApiKey.keyValue` düz metin. Production'da AES-256 veya cloud KMS ile şifrele.
+### ~~10. API Key Şifreleme~~ ✅
+AES-256-GCM zaten `secrets.service.js`'de mevcuttu. `migrate-encrypt-keys.js` ile 1 Etsy key şifrelendi. ENCRYPTION_KEY SSH `.env`'de.
 
 ### ~~11. Rate Limiting~~ ✅
 `express-rate-limit` eklendi. 4 katman: auth (15/5dk), aiHeavy (60/dk), aiContent (40/dk), general (300/dk). `src/config/rate-limit.middleware.js`.

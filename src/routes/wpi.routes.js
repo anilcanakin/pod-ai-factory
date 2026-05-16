@@ -5,32 +5,51 @@ const seoMotor = require('../services/seo.service');
 const redis   = require('../config/redis');
 const { ApifyPaymentError, X402ConfigError } = require('../services/apify.service');
 
-// ─── Redis scan store ─────────────────────────────────────────────────────────
-// In-memory Map yerine Redis: TTL sayesinde manuel temizlik yok,
-// birden fazla sunucu instance'ı arasında paylaşılabilir.
+// ─── Scan state store ────────────────────────────────────────────────────────
+// Redis birincil depolama; Redis kota aşımı/hata durumunda in-memory Map devreye girer.
 
-const SCAN_TTL = 259_200;                          // 72 saat (saniye)
-const scanKey  = id => `wpi:scan:${id}`;           // wpi:scan:<scanId>
+const SCAN_TTL  = 259_200;                         // 72 saat (saniye)
+const scanKey   = id => `wpi:scan:${id}`;
+const _memStore = new Map();                        // Redis fallback
 
 async function _getScan(scanId) {
-    const raw = await redis.get(scanKey(scanId));
-    return raw ? JSON.parse(raw) : null;
-}
-
-// Tek bir key'i 72h TTL ile yazar.
-async function _setScan(scanId, state) {
-    await redis.set(scanKey(scanId), JSON.stringify(state), 'EX', SCAN_TTL);
-}
-
-// Pipeline: aynı roundtrip'te birden fazla Redis komutu gönderir.
-// Kullanım: progress güncelleme + opsiyonel ek komutları atomik olarak yazmak.
-async function _pipelineScan(scanId, state, extraCmds = []) {
-    const pipe = redis.pipeline();
-    pipe.set(scanKey(scanId), JSON.stringify(state), 'EX', SCAN_TTL);
-    for (const [cmd, ...args] of extraCmds) {
-        pipe[cmd](...args);
+    try {
+        const raw = await redis.get(scanKey(scanId));
+        if (raw) return JSON.parse(raw);
+    } catch (e) {
+        console.warn(`[WPI] Redis GET hatası: ${e.message?.slice(0, 80)}`);
     }
-    await pipe.exec();
+    const mem = _memStore.get(scanId);
+    console.log(`[WPI] _getScan ${scanId}: Redis yok, memStore=${mem ? 'BULUNDU' : 'YOK'} (toplam: ${_memStore.size})`);
+    return mem ?? null;
+}
+
+async function _setScan(scanId, state) {
+    let redisOk = false;
+    try {
+        const result = await redis.set(scanKey(scanId), JSON.stringify(state), 'EX', SCAN_TTL);
+        redisOk = result === 'OK';
+    } catch (e) {
+        console.warn(`[WPI] Redis SET hatası → memStore kullanılıyor: ${e.message?.slice(0, 80)}`);
+    }
+    if (!redisOk) {
+        _memStore.set(scanId, state);
+        console.log(`[WPI] memStore kayıt: ${scanId}, mevcut kayıtlar: ${_memStore.size}`);
+        setTimeout(() => _memStore.delete(scanId), 7_200_000);
+    }
+}
+
+async function _pipelineScan(scanId, state, extraCmds = []) {
+    // _setScan zaten kendi fallback'ini yönetiyor (throw → memStore)
+    await _setScan(scanId, state);
+    // extraCmds (sadd, srem, expire) — best-effort, hata görmezden gel
+    if (extraCmds.length) {
+        try {
+            const pipe = redis.pipeline();
+            for (const [cmd, ...args] of extraCmds) pipe[cmd](...args);
+            await pipe.exec();
+        } catch {}
+    }
 }
 
 // ─── Hata helper ─────────────────────────────────────────────────────────────
@@ -274,6 +293,127 @@ router.post('/action-cards/:id/seo-optimize', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/wpi/rescan
+ * Aynı keyword listesini yeniden tarar. Bir önceki snapshot varsa delta hesaplanır.
+ * Body: { keywords: string[], saveWinners?: boolean }
+ */
+router.post('/rescan', async (req, res) => {
+    const { keywords = [], saveWinners = true } = req.body;
+    if (!keywords.length) {
+        return res.status(400).json({ error: 'keywords array required' });
+    }
+
+    const workspaceId = req.workspaceId || 'default-workspace';
+    const scanId      = `wpi_rescan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const kwStatuses  = Object.fromEntries(keywords.map(kw => [kw, 'queued']));
+
+    const initState = {
+        status: 'running', isRescan: true,
+        progress: { total: keywords.length, done: 0, currentKeyword: keywords[0], phase: 'scraping', aiDone: 0, aiTotal: 0, keywordStatuses: kwStatuses },
+        result: null, error: null, startedAt: Date.now(),
+    };
+    await _setScan(scanId, initState);
+    res.json({ success: true, scanId, status: 'running', total: keywords.length, isRescan: true });
+
+    (async () => {
+        try {
+            const result = await wpi.scan(workspaceId, keywords, {
+                saveWinners,
+                onKeywordStart: async (kw, idx) => {
+                    const cur = await _getScan(scanId); if (!cur) return;
+                    cur.progress = { ...cur.progress, currentKeyword: kw, done: idx, phase: 'scraping', aiDone: 0, aiTotal: 0, keywordStatuses: { ...cur.progress.keywordStatuses, [kw]: 'running' } };
+                    await _setScan(scanId, cur);
+                },
+                onKeywordDone: async (kw, idx, { timedOut = false } = {}) => {
+                    const cur = await _getScan(scanId); if (!cur) return;
+                    cur.progress = { ...cur.progress, done: idx + 1, phase: 'done', keywordStatuses: { ...cur.progress.keywordStatuses, [kw]: timedOut ? 'timeout' : 'done' } };
+                    await _setScan(scanId, cur);
+                },
+                onProgress: async (kw, update) => {
+                    const cur = await _getScan(scanId); if (!cur) return;
+                    cur.progress = { ...cur.progress, phase: update.phase, aiDone: update.aiDone, aiTotal: update.aiTotal };
+                    await _setScan(scanId, cur);
+                },
+            });
+            await _setScan(scanId, { ...initState, status: 'done', result, progress: null });
+        } catch (err) {
+            await _setScan(scanId, { ...initState, status: 'error', error: err.message, progress: null }).catch(() => {});
+            console.error(`[WPI] Rescan ${scanId} failed:`, err.message);
+        }
+    })();
+});
+
+/**
+ * GET /api/wpi/performance
+ * WPI tahminleri vs gerçek satış — feedback loop özeti.
+ */
+router.get('/performance', async (req, res) => {
+    try {
+        const workspaceId = req.workspaceId || 'default-workspace';
+        const prisma = require('../lib/prisma');
+
+        const [approvedCards, wpiJobs, incomeTransactions] = await Promise.all([
+            prisma.corporateMemory.findMany({
+                where: { workspaceId, type: 'WPI_WINNER' },
+                orderBy: { createdAt: 'desc' },
+                take: 50,
+                select: { id: true, title: true, createdAt: true, analysisResult: true },
+            }),
+            prisma.designJob.findMany({
+                where: { workspaceId, mode: 'wpi' },
+                orderBy: { createdAt: 'desc' },
+                take: 50,
+                select: { id: true, keyword: true, niche: true, createdAt: true, status: true },
+            }),
+            prisma.financialTransaction.findMany({
+                where: { workspaceId, type: 'INCOME' },
+                orderBy: { createdAt: 'desc' },
+                take: 100,
+                select: { amount: true, description: true, createdAt: true },
+            }),
+        ]);
+
+        const totalRevenue = incomeTransactions.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+
+        const cards = approvedCards.map(c => ({
+            id:         c.id,
+            keyword:    c.analysisResult?.keyword,
+            confidence: c.analysisResult?.brainComparison?.confidence ?? 0,
+            actionType: c.analysisResult?.actionCard?.actionType,
+            status:     c.analysisResult?.status ?? 'PENDING',
+            approvedAt: c.analysisResult?.approvedAt ?? null,
+            createdAt:  c.createdAt,
+        }));
+
+        const pendingCount  = cards.filter(c => c.status === 'PENDING').length;
+        const approvedCount = cards.filter(c => c.status === 'APPROVED').length;
+        const rejectedCount = cards.filter(c => c.status === 'REJECTED').length;
+        const avgConfidence = cards.length
+            ? Math.round(cards.reduce((s, c) => s + c.confidence, 0) / cards.length)
+            : 0;
+
+        res.json({
+            success: true,
+            summary: {
+                totalCards:     cards.length,
+                pending:        pendingCount,
+                approved:       approvedCount,
+                rejected:       rejectedCount,
+                avgConfidence,
+                totalWpiJobs:   wpiJobs.length,
+                totalRevenue:   parseFloat(totalRevenue.toFixed(2)),
+                revenueEntries: incomeTransactions.length,
+            },
+            cards:    cards.slice(0, 20),
+            wpiJobs:  wpiJobs.slice(0, 10),
+        });
+    } catch (err) {
+        console.error('[WPI performance]', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 /** GET /api/wpi/config */
 router.get('/config', (req, res) => {
     res.json({
@@ -429,8 +569,15 @@ router.get('/niche-products', async (req, res) => {
             return res.json({ ...JSON.parse(cached), fromCache: true });
         }
 
+        // 4 dakikalık timeout — Apify çok uzun beklememeli
+        const APIFY_TIMEOUT_MS = 4 * 60 * 1000;
         const apify    = require('../services/apify.service');
-        const products = await apify.scrapeEtsyProducts(String(niche), parseInt(maxResults, 10));
+        const products = await Promise.race([
+            apify.scrapeEtsyProducts(String(niche), parseInt(maxResults, 10)),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Apify zaman aşımı (4 dk) — daha sonra tekrar dene')), APIFY_TIMEOUT_MS)
+            ),
+        ]);
 
         const now = Date.now();
         const enriched = products.map(p => {

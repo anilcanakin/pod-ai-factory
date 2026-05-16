@@ -176,6 +176,9 @@ const worker = new Worker('batch-generation', processBatch, {
 worker.on('failed', (job, err) => {
     console.error(`[BatchWorker] Job ${job?.id} failed: ${err.message}`);
 });
+worker.on('error', (err) => {
+    console.error('[BatchWorker] Worker hatası:', err.message);
+});
 
 console.log('[BatchWorker] ✔ Dinleniyor → batch-generation (concurrency:1, delay:2s/image)');
 
@@ -198,6 +201,9 @@ const setupWorker = new Worker('batch-setup', async (job) => {
 
 setupWorker.on('failed', (job, err) => {
     console.error(`[BatchSetup] Job ${job?.id} failed: ${err.message}`);
+});
+setupWorker.on('error', (err) => {
+    console.error('[BatchSetupWorker] Worker hatası:', err.message);
 });
 
 console.log('[BatchSetupWorker] ✔ Dinleniyor → batch-setup (concurrency:2)');

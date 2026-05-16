@@ -99,26 +99,34 @@ export function SEOClient() {
         if (!result) return;
         setPublishing(true);
         try {
-            const response = await fetch('/api/etsy-browser/create-draft', {
-                method: 'POST',
+            const statusRes  = await fetch('/api/etsy/status', { credentials: 'include' });
+            const statusData = await statusRes.json();
+
+            if (!statusData.connected) {
+                toast.error("Etsy bağlı değil. Settings sayfasından Etsy'ye bağlanın.");
+                return;
+            }
+
+            const response = await fetch('/api/etsy/listings', {
+                method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({
-                    title: result.title,
+                    title:       result.title,
                     description: result.description,
-                    tags: result.tags,
-                    imageUrls: sourceImage ? [sourceImage] : []
-                })
+                    tags:        result.tags,
+                    imageUrls:   sourceImage ? [sourceImage] : [],
+                }),
             });
             const data = await response.json();
             if (data.success) {
-                setPublishResult('Etsy\'de taslak oluşturuldu!');
+                setPublishResult(`Etsy'de taslak oluşturuldu! ${data.listingUrl ? `(${data.listingUrl})` : ''}`);
                 toast.success('Etsy\'de taslak ilan oluşturuldu!');
             } else {
                 toast.error(data.error || 'Taslak oluşturulamadı');
             }
         } catch (err: unknown) {
-            toast.error('Tarayıcı otomasyonuna bağlanılamadı');
+            toast.error('Etsy\'e bağlanılamadı');
         } finally {
             setPublishing(false);
         }

@@ -301,6 +301,12 @@ export interface MockupRender {
     displacementMapPath?: string | null;
     perspective?: unknown | null;
 }
+export interface CatalogColorMatch {
+    color: { name: string; hex: string };
+    distance: number;
+    matched: boolean;
+}
+
 export interface MockupMeta {
     view: string; background: string; color: string; hasHumanModel: boolean;
     isPsdDerived?: boolean;
@@ -308,6 +314,9 @@ export interface MockupMeta {
     defaultColor?: string;
     shadowSource?: 'psd' | 'preset' | 'ai';
     layerMap?: { smartObject?: string | null; shadow?: string | null };
+    yuppionModelId?: string;
+    detectedColor?: string;
+    catalogColorMatch?: CatalogColorMatch | null;
 }
 export interface MockupConfig {
     printArea: MockupPrintArea;
@@ -367,14 +376,19 @@ export const apiMockups = {
             method: 'POST',
             body: JSON.stringify({ imageId, templateId, placement, areaDesigns, productColor }),
         }),
-    renderBatch: (imageId: string, templateIds: string[], placement?: { scale: number; offsetX: number; offsetY: number; rotation: number }, productColor?: string) =>
-        request<{ message: string; results: { templateId: string; templateName: string; status: string; url?: string; error?: string }[] }>('/mockups/render-batch', {
+    renderBatch: (imageId: string, templateIds: string[], placement?: { scale: number; offsetX: number; offsetY: number; rotation: number }, productColor?: string, productColors?: Record<string, string>, skipNoMatch?: boolean) =>
+        request<{ message: string; results: { templateId: string; templateName: string; status: string; url?: string; error?: string; reason?: string }[] }>('/mockups/render-batch', {
             method: 'POST',
-            body: JSON.stringify({ imageId, templateIds, placement, productColor }),
+            body: JSON.stringify({ imageId, templateIds, placement, productColor, productColors, skipNoMatch }),
         }),
     generateShadow: (templateId: string) =>
         request<{ success: boolean; shadowImagePath: string; template: MockupTemplate }>(`/mockups/templates/${templateId}/generate-shadow`, {
             method: 'POST',
+        }),
+    matchCatalogColor: (templateId: string, yuppionModelId?: string) =>
+        request<{ success: boolean; detectedColor: string | null; catalogColorMatch: { color: { name: string; hex: string }; distance: number; matched: boolean } | null; template: MockupTemplate }>(`/mockups/templates/${templateId}/match-catalog-color`, {
+            method: 'POST',
+            body: JSON.stringify({ yuppionModelId }),
         }),
     bulkUpload: async (files: File[], category: string, onProgress?: (done: number, total: number) => void): Promise<{ results: any[]; total: number; success: number }> => {
         const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
@@ -665,9 +679,9 @@ export const apiEtsy = {
         method: 'POST',
         body: JSON.stringify(pin)
     }),
-    dispatch: (designId: string) => request<{ success: boolean; message: string }>('/etsy-browser/dispatch', {
+    dispatch: (imageId: string) => request<{ success: boolean; message: string; listingId?: number; listingUrl?: string }>('/etsy/dispatch', {
         method: 'POST',
-        body: JSON.stringify({ designId })
+        body: JSON.stringify({ imageId })
     }),
 };
 
@@ -687,6 +701,54 @@ export const apiFulfillment = {
         method: 'POST',
         body: JSON.stringify({ externalOrderId: orderId })
     }),
+};
+
+// ─── Yuppion Product Catalog ──────────────────────────────────
+export interface YuppionColor {
+    name: string;
+    hex: string;
+    inStock?: boolean;
+}
+
+export interface YuppionProduct {
+    modelId: string;
+    name: string;
+    category: string;
+    priority?: string;
+    sizes: string[];
+    colors: YuppionColor[];
+}
+
+export interface CatalogSummary {
+    lastUpdated: string | null;
+    totalProducts: number;
+    totalColors: number;
+    byCategory: Record<string, number>;
+}
+
+export const apiCatalog = {
+    getAll: () => request<{ summary: CatalogSummary; products: YuppionProduct[] }>('/fulfillment/catalog'),
+    getColors: (modelId: string) => request<YuppionProduct>(`/fulfillment/catalog/${modelId}/colors`),
+    updateColors: (modelId: string, colors: YuppionColor[]) =>
+        request<{ success: boolean; product: YuppionProduct }>(`/fulfillment/catalog/${modelId}/colors`, {
+            method: 'PATCH',
+            body: JSON.stringify({ colors }),
+        }),
+    importJson: (products: YuppionProduct[]) =>
+        request<{ success: boolean; imported: number }>('/fulfillment/catalog/import', {
+            method: 'POST',
+            body: JSON.stringify({ format: 'json', products }),
+        }),
+    importCsv: (csv: string) =>
+        request<{ success: boolean; imported: number; errors: string[]; models: number }>('/fulfillment/catalog/import', {
+            method: 'POST',
+            body: JSON.stringify({ format: 'csv', csv }),
+        }),
+    mergeColors: (modelId: string, colorNames: string[]) =>
+        request<{ success: boolean; product: YuppionProduct }>(`/fulfillment/catalog/${modelId}/merge-colors`, {
+            method: 'POST',
+            body: JSON.stringify({ colorNames }),
+        }),
 };
 
 // ─── Competitor Radar ──────────────────────────────────────
@@ -715,6 +777,10 @@ export interface WpiProduct {
     sales: number;
     rating: number | null;
     shopName: string;
+    reviewCount?: number;
+    shopReviewCount?: number;
+    favoriteCount?: number;
+    shopRating?: number | null;
 }
 
 export interface WpiTrendData {

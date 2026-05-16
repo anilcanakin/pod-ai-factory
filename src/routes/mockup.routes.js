@@ -69,7 +69,7 @@ router.post('/render-batch', async (req, res) => {
     try {
         if (!req.workspaceId) return res.status(401).json({ error: 'Unauthorized' });
 
-        const { imageId, templateIds, placement } = req.body;
+        const { imageId, templateIds, placement, productColors, skipNoMatch } = req.body;
         if (!imageId || !templateIds || !Array.isArray(templateIds) || templateIds.length === 0) {
             return res.status(400).json({ error: 'imageId and templateIds[] are required' });
         }
@@ -97,13 +97,29 @@ router.post('/render-batch', async (req, res) => {
 
         const results = [];
         for (const template of templates) {
+            // skipNoMatch: katalogda eşleşmeyen JPG/PNG template'leri atla
+            if (skipNoMatch && !template.configJson?.meta?.isPsdDerived) {
+                const match = template.configJson?.meta?.catalogColorMatch;
+                if (match && match.matched === false) {
+                    results.push({
+                        templateId: template.id,
+                        templateName: template.name,
+                        status: 'skipped',
+                        reason: `Katalog rengi eşleşmedi (${template.configJson?.meta?.detectedColor || '?'})`,
+                    });
+                    continue;
+                }
+            }
+
             try {
+                const perTemplateColor = productColors?.[template.id];
                 const mockupUrl = await renderMockup({
                     designPath,
                     template,
                     imageId,
                     workspaceId: req.workspaceId,
                     placement,
+                    ...(perTemplateColor && { productColor: perTemplateColor }),
                 });
                 const mockup = await prisma.mockup.create({
                     data: { imageId, templateId: template.id, mockupUrl }

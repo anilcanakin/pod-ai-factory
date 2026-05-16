@@ -1,5 +1,5 @@
-import { SettingsClient } from './SettingsClient';
+import SettingsWrapper from './SettingsWrapper';
 
 export default function SettingsPage() {
-    return <SettingsClient />;
+    return <SettingsWrapper />;
 }

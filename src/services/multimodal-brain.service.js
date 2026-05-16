@@ -329,7 +329,7 @@ Be specific and actionable. Focus on what can be immediately applied.`
 
     // ─── Text Knowledge Ingestion ──────────────────────────────────────────────
 
-    async addTextKnowledge(workspaceId, title, textContent, source = 'manual', category = null) {
+    async addTextKnowledge(workspaceId, title, textContent, source = 'manual', category = null, expiresAt = null) {
         console.log(`[Brain] Processing text note: ${title}`);
         await ensureWorkspace(workspaceId);
         const client = new Anthropic();
@@ -381,7 +381,8 @@ Be specific and immediately actionable.`
                     seoUpdated: false
                 },
                 sourceUrl: source,
-                ...(vectorEmbedding && { vectorEmbedding })
+                ...(vectorEmbedding && { vectorEmbedding }),
+                ...(expiresAt && { expiresAt })
             }
         });
         console.log('[Brain] Memory saved for id:', memory.id);

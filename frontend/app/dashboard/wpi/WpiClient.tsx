@@ -331,17 +331,29 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
                     </div>
                 </div>
 
-                {/* Sol alt — Fiyat + Satış overlay */}
+                {/* Sol alt — Fiyat + Satış + Yorum overlay */}
                 <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5 flex-wrap">
                     <span className="px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-sm text-white text-[11px] font-bold">
                         ${card.product.price}
                     </span>
-                    <span className="px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-sm text-white text-[11px]">
-                        {td.salesCount} satış
-                        {td.salesDelta > 0 && (
-                            <span className="text-emerald-400 font-bold ml-1">+{td.salesDelta}</span>
-                        )}
-                    </span>
+                    {td.salesCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-sm text-white text-[11px]">
+                            {td.salesCount} satış
+                            {td.salesDelta > 0 && (
+                                <span className="text-emerald-400 font-bold ml-1">+{td.salesDelta}</span>
+                            )}
+                        </span>
+                    )}
+                    {(card.product.reviewCount ?? 0) > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-sm text-white text-[11px]">
+                            ★ {card.product.reviewCount} yorum
+                        </span>
+                    )}
+                    {(card.product.reviewCount ?? 0) === 0 && (card.product.shopReviewCount ?? 0) > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-sm text-slate-300 text-[11px]">
+                            ★ {card.product.shopReviewCount} mağaza
+                        </span>
+                    )}
                     {td.trendPeriod === 'HOT_NOW' && (
                         <span className="px-2 py-0.5 rounded-full bg-orange-500/80 backdrop-blur-sm text-white text-[9px] font-bold uppercase">
                             Anlık Sinyal
@@ -350,6 +362,11 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
                     {td.salesDelta > 0 && td.trendPeriod === '48h' && (
                         <span className="px-2 py-0.5 rounded-full bg-emerald-500/80 backdrop-blur-sm text-white text-[9px] font-bold">
                             ↑ 48h trend
+                        </span>
+                    )}
+                    {((card.product as any).estimatedMonthlyRevenue ?? 0) > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-900/70 backdrop-blur-sm text-emerald-300 text-[9px] font-medium">
+                            ~${(card.product as any).estimatedMonthlyRevenue}/ay
                         </span>
                     )}
                 </div>
@@ -1190,6 +1207,11 @@ function RadarDiscoveryCard({
                                                                         ♥ {p.favoriteCount}
                                                                     </span>
                                                                 )}
+                                                                {(p as any).estimatedMonthlyRevenue > 0 && (
+                                                                    <span className="text-[9px] text-emerald-400 px-1.5 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10">
+                                                                        ~${(p as any).estimatedMonthlyRevenue}/ay
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                             {/* Actions */}
                                                             <div className="flex gap-1 pt-0.5">
@@ -1582,9 +1604,12 @@ export function WpiClient() {
             const start = await apiWpi.startScan(keywords, { saveWinners, maxPerKeyword: maxPerKw });
 
             await new Promise<void>((resolve, reject) => {
+                let consecutiveErrors = 0;
+                const MAX_ERRORS = 5;
                 const interval = setInterval(async () => {
                     try {
                         const poll = await apiWpi.pollScan(start.scanId);
+                        consecutiveErrors = 0;
                         if (poll.status === 'running' && poll.progress) {
                             setScanProgress(poll.progress);
                         } else if (poll.status === 'done' && poll.result) {
@@ -1598,8 +1623,12 @@ export function WpiClient() {
                             reject(new Error(poll.error || 'Scan başarısız'));
                         }
                     } catch (pollErr: any) {
-                        clearInterval(interval);
-                        reject(pollErr);
+                        consecutiveErrors++;
+                        if (consecutiveErrors >= MAX_ERRORS) {
+                            clearInterval(interval);
+                            reject(pollErr);
+                        }
+                        // transient network error — bir sonraki poll'a devam et
                     }
                 }, 3000);
             });

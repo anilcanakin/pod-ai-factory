@@ -1,0 +1,987 @@
+{
+  "lastUpdated": "2026-05-15",
+  "note": "Yuppion aktif ürün kataloğu. POST /api/fulfillment/catalog/import ile JSON veya CSV import edilerek güncellenebilir.",
+  "products": [
+    {
+      "modelId": "BC3001",
+      "name": "Bella+Canvas 3001 Unisex Jersey Tee",
+      "category": "tshirt",
+      "priority": "high",
+      "sizes": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#000000",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Dark Grey Heather",
+          "hex": "#4A4A4A",
+          "inStock": true
+        },
+        {
+          "name": "Athletic Heather",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Red",
+          "hex": "#C41E3A",
+          "inStock": true
+        },
+        {
+          "name": "Forest",
+          "hex": "#1D4E2A",
+          "inStock": true
+        },
+        {
+          "name": "Royal",
+          "hex": "#1F5EA6",
+          "inStock": true
+        },
+        {
+          "name": "True Royal",
+          "hex": "#2563EB",
+          "inStock": true
+        },
+        {
+          "name": "Berry",
+          "hex": "#7C2D6E",
+          "inStock": true
+        },
+        {
+          "name": "Soft Cream",
+          "hex": "#F5F0E8",
+          "inStock": true
+        },
+        {
+          "name": "Natural",
+          "hex": "#EDE8D0",
+          "inStock": true
+        },
+        {
+          "name": "Sand Dune",
+          "hex": "#C4A882",
+          "inStock": true
+        },
+        {
+          "name": "Autumn",
+          "hex": "#C85A2E",
+          "inStock": true
+        },
+        {
+          "name": "Mauve",
+          "hex": "#C4A0A0",
+          "inStock": true
+        },
+        {
+          "name": "Lavender Blue",
+          "hex": "#9BB7D4",
+          "inStock": true
+        },
+        {
+          "name": "Aqua",
+          "hex": "#6DD5D5",
+          "inStock": true
+        },
+        {
+          "name": "Leaf",
+          "hex": "#4A7C59",
+          "inStock": true
+        },
+        {
+          "name": "Vintage White",
+          "hex": "#F0EAD6",
+          "inStock": true
+        },
+        {
+          "name": "Charity Pink",
+          "hex": "#F4A0B0",
+          "inStock": true
+        },
+        {
+          "name": "Discontinued",
+          "hex": "#888888",
+          "inStock": false
+        }
+      ]
+    },
+    {
+      "modelId": "CC1717",
+      "name": "Comfort Colors 1717 Garment-Dyed Tee",
+      "category": "tshirt",
+      "priority": "high",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#F8F4EE",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Butter",
+          "hex": "#F5E6A0",
+          "inStock": true
+        },
+        {
+          "name": "Chalky Mint",
+          "hex": "#B8D8C8",
+          "inStock": true
+        },
+        {
+          "name": "Chambray",
+          "hex": "#7BA8C4",
+          "inStock": true
+        },
+        {
+          "name": "Crimson",
+          "hex": "#A81C2A",
+          "inStock": true
+        },
+        {
+          "name": "Flo Blue",
+          "hex": "#5B9EC9",
+          "inStock": true
+        },
+        {
+          "name": "Granite",
+          "hex": "#6B6B6B",
+          "inStock": true
+        },
+        {
+          "name": "Ivory",
+          "hex": "#F0E8D0",
+          "inStock": true
+        },
+        {
+          "name": "Light Green",
+          "hex": "#8FC08F",
+          "inStock": true
+        },
+        {
+          "name": "Melon",
+          "hex": "#F2896C",
+          "inStock": true
+        },
+        {
+          "name": "Moss",
+          "hex": "#7A8C5A",
+          "inStock": true
+        },
+        {
+          "name": "Mustard",
+          "hex": "#D4A017",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1A2744",
+          "inStock": true
+        },
+        {
+          "name": "Neon Pink",
+          "hex": "#FF6E8C",
+          "inStock": true
+        },
+        {
+          "name": "Orchid",
+          "hex": "#C080A0",
+          "inStock": true
+        },
+        {
+          "name": "Pepper",
+          "hex": "#4A4A4A",
+          "inStock": true
+        },
+        {
+          "name": "Peony",
+          "hex": "#E87090",
+          "inStock": true
+        },
+        {
+          "name": "Sand Dollar",
+          "hex": "#DDD0B0",
+          "inStock": true
+        },
+        {
+          "name": "Seafoam",
+          "hex": "#88C8B8",
+          "inStock": true
+        },
+        {
+          "name": "Violet",
+          "hex": "#7B5EA7",
+          "inStock": true
+        },
+        {
+          "name": "Washed Denim",
+          "hex": "#6080A0",
+          "inStock": true
+        },
+        {
+          "name": "Watermelon",
+          "hex": "#F06070",
+          "inStock": true
+        },
+        {
+          "name": "Yam",
+          "hex": "#C4603A",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "G18500",
+      "name": "Gildan 18500 Heavy Blend Hoodie",
+      "category": "hoodie",
+      "priority": "high",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Sport Grey",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Dark Heather",
+          "hex": "#4A4A4A",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Royal",
+          "hex": "#1F5EA6",
+          "inStock": true
+        },
+        {
+          "name": "Cardinal Red",
+          "hex": "#8B1C2A",
+          "inStock": true
+        },
+        {
+          "name": "Forest Green",
+          "hex": "#1D4E2A",
+          "inStock": true
+        },
+        {
+          "name": "Safety Orange",
+          "hex": "#FF6000",
+          "inStock": true
+        },
+        {
+          "name": "Sand",
+          "hex": "#C4A882",
+          "inStock": true
+        },
+        {
+          "name": "Azalea",
+          "hex": "#E87090",
+          "inStock": true
+        },
+        {
+          "name": "Old Gold",
+          "hex": "#C4A020",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "G18000",
+      "name": "Gildan 18000 Heavy Blend Crewneck Sweatshirt",
+      "category": "sweatshirt",
+      "priority": "high",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Sport Grey",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Dark Heather",
+          "hex": "#4A4A4A",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Royal",
+          "hex": "#1F5EA6",
+          "inStock": true
+        },
+        {
+          "name": "Cardinal Red",
+          "hex": "#8B1C2A",
+          "inStock": true
+        },
+        {
+          "name": "Forest Green",
+          "hex": "#1D4E2A",
+          "inStock": true
+        },
+        {
+          "name": "Sand",
+          "hex": "#C4A882",
+          "inStock": true
+        },
+        {
+          "name": "Old Gold",
+          "hex": "#C4A020",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "G5000",
+      "name": "Gildan 5000 Heavy Cotton T-Shirt",
+      "category": "tshirt",
+      "priority": "medium",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Sport Grey",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Dark Heather",
+          "hex": "#4A4A4A",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Royal",
+          "hex": "#1F5EA6",
+          "inStock": true
+        },
+        {
+          "name": "Red",
+          "hex": "#C41E3A",
+          "inStock": true
+        },
+        {
+          "name": "Forest Green",
+          "hex": "#1D4E2A",
+          "inStock": true
+        },
+        {
+          "name": "Maroon",
+          "hex": "#5E1A2A",
+          "inStock": true
+        },
+        {
+          "name": "Purple",
+          "hex": "#5B2D8E",
+          "inStock": true
+        },
+        {
+          "name": "Safety Orange",
+          "hex": "#FF6000",
+          "inStock": true
+        },
+        {
+          "name": "Sand",
+          "hex": "#C4A882",
+          "inStock": true
+        },
+        {
+          "name": "Daisy",
+          "hex": "#F5C842",
+          "inStock": true
+        },
+        {
+          "name": "Azalea",
+          "hex": "#E87090",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "G64000",
+      "name": "Gildan 64000 Softstyle T-Shirt",
+      "category": "tshirt",
+      "priority": "medium",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Sport Grey",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Dark Heather",
+          "hex": "#4A4A4A",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Royal",
+          "hex": "#1F5EA6",
+          "inStock": true
+        },
+        {
+          "name": "Red",
+          "hex": "#C41E3A",
+          "inStock": true
+        },
+        {
+          "name": "Forest Green",
+          "hex": "#1D4E2A",
+          "inStock": true
+        },
+        {
+          "name": "Antique Cherry Red",
+          "hex": "#8B2A3A",
+          "inStock": true
+        },
+        {
+          "name": "Maroon",
+          "hex": "#5E1A2A",
+          "inStock": true
+        },
+        {
+          "name": "Azalea",
+          "hex": "#E87090",
+          "inStock": true
+        },
+        {
+          "name": "Natural",
+          "hex": "#EDE8D0",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "BC3480",
+      "name": "Bella+Canvas 3480 Women's Jersey Tee",
+      "category": "tshirt",
+      "priority": "medium",
+      "sizes": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Dark Grey Heather",
+          "hex": "#4A4A4A",
+          "inStock": true
+        },
+        {
+          "name": "Athletic Heather",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Forest",
+          "hex": "#1D4E2A",
+          "inStock": true
+        },
+        {
+          "name": "Berry",
+          "hex": "#7C2D6E",
+          "inStock": true
+        },
+        {
+          "name": "Soft Cream",
+          "hex": "#F5F0E8",
+          "inStock": true
+        },
+        {
+          "name": "Mauve",
+          "hex": "#C4A0A0",
+          "inStock": true
+        },
+        {
+          "name": "Charity Pink",
+          "hex": "#F4A0B0",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "BC3501",
+      "name": "Bella+Canvas 3501 Unisex Long Sleeve",
+      "category": "long_sleeve",
+      "priority": "medium",
+      "sizes": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Dark Grey Heather",
+          "hex": "#4A4A4A",
+          "inStock": true
+        },
+        {
+          "name": "Athletic Heather",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Forest",
+          "hex": "#1D4E2A",
+          "inStock": true
+        },
+        {
+          "name": "Royal",
+          "hex": "#1F5EA6",
+          "inStock": true
+        },
+        {
+          "name": "Natural",
+          "hex": "#EDE8D0",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "G5400",
+      "name": "Gildan 5400 Heavy Cotton Long Sleeve",
+      "category": "long_sleeve",
+      "priority": "low",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Sport Grey",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Royal",
+          "hex": "#1F5EA6",
+          "inStock": true
+        },
+        {
+          "name": "Forest Green",
+          "hex": "#1D4E2A",
+          "inStock": true
+        },
+        {
+          "name": "Red",
+          "hex": "#C41E3A",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "BC6008",
+      "name": "Bella+Canvas 6008 Women's Jersey Tank",
+      "category": "tank",
+      "priority": "low",
+      "sizes": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Dark Grey Heather",
+          "hex": "#4A4A4A",
+          "inStock": true
+        },
+        {
+          "name": "Athletic Heather",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Berry",
+          "hex": "#7C2D6E",
+          "inStock": true
+        },
+        {
+          "name": "Mauve",
+          "hex": "#C4A0A0",
+          "inStock": true
+        },
+        {
+          "name": "Charity Pink",
+          "hex": "#F4A0B0",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "G5200",
+      "name": "Gildan 5200 Heavy Cotton Tank Top",
+      "category": "tank",
+      "priority": "low",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Sport Grey",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Red",
+          "hex": "#C41E3A",
+          "inStock": true
+        },
+        {
+          "name": "Forest Green",
+          "hex": "#1D4E2A",
+          "inStock": true
+        },
+        {
+          "name": "Safety Orange",
+          "hex": "#FF6000",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "G4200",
+      "name": "Gildan 4200 DryBlend Jersey Polo",
+      "category": "polo",
+      "priority": "low",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Sport Grey",
+          "hex": "#9CA3AF",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Royal",
+          "hex": "#1F5EA6",
+          "inStock": true
+        },
+        {
+          "name": "Red",
+          "hex": "#C41E3A",
+          "inStock": true
+        },
+        {
+          "name": "Forest Green",
+          "hex": "#1D4E2A",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "H4980",
+      "name": "Hanes 4980 Perfect-T T-Shirt",
+      "category": "tshirt",
+      "priority": "low",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Light Steel",
+          "hex": "#B0B8C0",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Deep Red",
+          "hex": "#8B1C2A",
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "modelId": "FOTL3931",
+      "name": "Fruit of the Loom 3931 HD Cotton Tee",
+      "category": "tshirt",
+      "priority": "low",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "inStock": true
+        },
+        {
+          "name": "Black",
+          "hex": "#1C1C1C",
+          "inStock": true
+        },
+        {
+          "name": "Smoke Grey",
+          "hex": "#8A8A8A",
+          "inStock": true
+        },
+        {
+          "name": "Navy",
+          "hex": "#1B2A4A",
+          "inStock": true
+        },
+        {
+          "name": "Fiesta Red",
+          "hex": "#C41E3A",
+          "inStock": true
+        },
+        {
+          "name": "Military Green",
+          "hex": "#4A5A3A",
+          "inStock": true
+        }
+      ]
+    }
+  ]
+}

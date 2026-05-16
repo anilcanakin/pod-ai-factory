@@ -26,6 +26,14 @@ async function geminiCooldown() {
 
 // Ensures the workspace row exists before any FK-dependent insert.
 // Called with any workspaceId that might be a synthetic fallback (e.g. 'default-workspace').
+function _getMediaType(filePath) {
+    const ext = (filePath || '').split('.').pop().toLowerCase();
+    if (ext === 'png')  return 'image/png';
+    if (ext === 'webp') return 'image/webp';
+    if (ext === 'gif')  return 'image/gif';
+    return 'image/jpeg';
+}
+
 async function ensureWorkspace(workspaceId) {
     await prisma.workspace.upsert({
         where: { id: workspaceId },
@@ -56,9 +64,10 @@ class BrainService {
         await ensureWorkspace(workspaceId);
 
         const imageData = Buffer.from(fs.readFileSync(imagePath)).toString('base64');
+        const mediaType = _getMediaType(imagePath);
 
         // 1. Vision Interpretation
-        const analysis = await this.analyzeVision(imageData);
+        const analysis = await this.analyzeVision(imageData, mediaType);
         
         const synthesis = `SOCIAL INTELLIGENCE REPORT: ${title}\nSTYLE: ${analysis.style}\nPALETTE: ${analysis.palette}\nTYPOGRAPHY: ${analysis.fontType}\nTEXT: ${analysis.extractedText}\nDESIGN RULE: ${analysis.designRule}`;
 
@@ -96,9 +105,10 @@ class BrainService {
         await ensureWorkspace(workspaceId);
 
         const imageData = Buffer.from(fs.readFileSync(imagePath)).toString('base64');
+        const mediaType = _getMediaType(imagePath);
 
         // 1. Vision Extraction using Expert Prompting
-        const analysis = await this.analyzeExpertVision(imageData);
+        const analysis = await this.analyzeExpertVision(imageData, mediaType);
         
         const synthesis = `EXPERT STRATEGY RECOMMENDATION: ${title}
 RECOMMENDED NICHE: ${analysis.recommendedNiche}
@@ -139,14 +149,14 @@ ${analysis.aiStrategy}`;
     }
 
     // Claude (primary) vision call — returns parsed JSON
-    async _analyzeWithClaude(base64Image, prompt) {
+    async _analyzeWithClaude(base64Image, prompt, mediaType = 'image/jpeg') {
         const response = await anthropic.messages.create({
             model: 'claude-haiku-4-5-20251001',
             max_tokens: 512,
             messages: [{
                 role: 'user',
                 content: [
-                    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
+                    { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Image } },
                     { type: 'text', text: prompt }
                 ]
             }]
@@ -156,13 +166,13 @@ ${analysis.aiStrategy}`;
     }
 
     // Gemini (fallback) vision call — returns parsed JSON
-    async _analyzeWithGemini(base64Image, prompt) {
+    async _analyzeWithGemini(base64Image, prompt, mediaType = 'image/jpeg') {
         if (!genAI) throw new Error('Gemini key not configured');
         const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
         await geminiCooldown();
         const result = await model.generateContent([
             prompt,
-            { inlineData: { data: base64Image, mimeType: 'image/jpeg' } }
+            { inlineData: { data: base64Image, mimeType: mediaType } }
         ]);
         if (result.response.usageMetadata) {
             await billingService.logUsage('gemini', 'gemini-1.5-flash', result.response.usageMetadata, 'default-workspace', { feature: 'brain_vision' });
@@ -171,16 +181,16 @@ ${analysis.aiStrategy}`;
         return JSON.parse(text);
     }
 
-    async analyzeVision(base64Image) {
+    async analyzeVision(base64Image, mediaType = 'image/jpeg') {
         const prompt = `Analyze this social media design for POD intelligence. Return ONLY valid JSON (no markdown): { "style": "...", "palette": "...", "fontType": "...", "extractedText": "...", "mood": "...", "designRule": "..." }`;
 
         try {
             console.log('[BrainService] analyzeVision → Claude (primary)');
-            return await this._analyzeWithClaude(base64Image, prompt);
+            return await this._analyzeWithClaude(base64Image, prompt, mediaType);
         } catch (err) {
             console.warn(`[BrainService] Claude vision failed (${err.message}), trying Gemini...`);
             try {
-                return await this._analyzeWithGemini(base64Image, prompt);
+                return await this._analyzeWithGemini(base64Image, prompt, mediaType);
             } catch (geminiErr) {
                 console.error('[BrainService] Both providers failed:', geminiErr.message);
                 return { style: 'Unknown', palette: 'Unknown', fontType: 'Unknown', extractedText: '', mood: 'Unknown', designRule: 'N/A' };
@@ -188,7 +198,7 @@ ${analysis.aiStrategy}`;
         }
     }
 
-    async analyzeExpertVision(base64Image) {
+    async analyzeExpertVision(base64Image, mediaType = 'image/jpeg') {
         const prompt = `Analyze this Instagram subscription / Expert strategy post for POD.
 Return ONLY a valid JSON object (no markdown):
 {
@@ -200,11 +210,11 @@ Return ONLY a valid JSON object (no markdown):
 
         try {
             console.log('[BrainService] analyzeExpertVision → Claude (primary)');
-            return await this._analyzeWithClaude(base64Image, prompt);
+            return await this._analyzeWithClaude(base64Image, prompt, mediaType);
         } catch (err) {
             console.warn(`[BrainService] Claude expert vision failed (${err.message}), trying Gemini...`);
             try {
-                return await this._analyzeWithGemini(base64Image, prompt);
+                return await this._analyzeWithGemini(base64Image, prompt, mediaType);
             } catch (geminiErr) {
                 console.error('[BrainService] Both providers failed:', geminiErr.message);
                 return { recommendedNiche: 'Unknown', keywords: [], designNotes: 'None', aiStrategy: 'Follow expert trend.' };

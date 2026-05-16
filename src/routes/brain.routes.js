@@ -203,50 +203,21 @@ router.post('/test-knowledge', async (req, res) => {
         const workspaceId = req.workspaceId || 'default-workspace';
         const Anthropic = require('@anthropic-ai/sdk');
         const { getKnowledge } = require('../services/seo-knowledge.service');
+        const { getVectorContext } = require('../services/knowledge-context.service');
 
-        // 1. Generate embedding for the query using OpenAI text-embedding-3-small
-        const embeddingResponse = await openai.embeddings.create({
-            model: 'text-embedding-3-small',
-            input: question
-        });
-        const embedding = embeddingResponse.data[0].embedding;
+        // Semantic search — JS cosine similarity (pgvector gerekmez)
+        const [knowledgeContext, seoKnowledge] = await Promise.all([
+            getVectorContext(question, workspaceId, 8, 0.35),
+            getKnowledge(workspaceId),
+        ]);
 
-        // 2. Semantic search via pgvector cosine similarity
-        let memories;
-        try {
-            memories = await prisma.$queryRaw`
-                SELECT id, type, title, content, category, "analysisResult",
-                       1 - ("vectorEmbedding"::text::vector <=> ${JSON.stringify(embedding)}::vector) AS similarity
-                FROM "CorporateMemory"
-                WHERE "workspaceId" = ${workspaceId}
-                  AND "isActive" = true
-                  AND "vectorEmbedding" IS NOT NULL
-                ORDER BY "vectorEmbedding"::text::vector <=> ${JSON.stringify(embedding)}::vector
-                LIMIT 5
-            `;
-        } catch (pgErr) {
-            // Fallback to recency-based search if pgvector is unavailable
-            console.warn('[Brain] pgvector search failed, falling back to recency search:', pgErr.message);
-            memories = await prisma.corporateMemory.findMany({
-                where: { workspaceId, isActive: true },
-                orderBy: { createdAt: 'desc' },
-                take: 5
-            });
-        }
-
-        const seoKnowledge = await getKnowledge(workspaceId);
-
-        const knowledgeContext = memories
-            .map(m => {
-                const ar = m.analysisResult;
-                const structured = ar?.synthesis
-                    || (ar?.actionableRules?.map(r => `IF ${r.condition} THEN ${r.action}`).join('\n'))
-                    || null;
-                // YOUTUBE_SMART ve diğer kayıtlar içeriği doğrudan m.content'te saklar
-                return structured || m.content || '';
-            })
-            .filter(Boolean)
-            .join('\n\n---\n\n');
+        // Kaynak sayısını raporlamak için ayrıca sorgula
+        const memories = await prisma.corporateMemory.findMany({
+            where:   { workspaceId, isActive: true },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+            select:  { id: true, title: true, category: true, similarity: false },
+        }).catch(() => []);
 
         const client = new Anthropic();
         const response = await client.messages.create({
@@ -258,8 +229,8 @@ Yanıtların somut ve uygulanabilir olsun.
 Bilgi tabanındaki Türkçe içerikleri de analiz et ve kullanıcıya Türkçe yanıt ver.
 Sorunun dilinde yanıt ver (Türkçe soruysa Türkçe, İngilizce soruysa İngilizce).
 
-BİLGİ TABANI (${memories.length} kayıt):
-${knowledgeContext.slice(0, 4000)}
+SEMANTİK ARAMA SONUÇLARI (soruyla en alakalı ${knowledgeContext ? 'kayıtlar' : '— bulunamadı'}):
+${knowledgeContext.slice(0, 4000) || '(İlgili kayıt bulunamadı)'}
 
 SEO BİLGİSİ:
 ${seoKnowledge.slice(0, 2000)}`,

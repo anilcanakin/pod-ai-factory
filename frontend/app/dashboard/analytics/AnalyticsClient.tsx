@@ -11,7 +11,7 @@ import { FileDropzone } from '@/components/shared/FileDropzone';
 import {
     BarChart3, Eye, MousePointerClick, Heart, ShoppingBag,
     DollarSign, TrendingUp, Upload, Loader2, ChevronUp, ChevronDown,
-    Trophy, FileDown, ArrowUp, ArrowDown
+    Trophy, FileDown, ArrowUp, ArrowDown, RefreshCw
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
@@ -26,7 +26,26 @@ type SortDir = 'asc' | 'desc';
 export function AnalyticsClient({ onSendToBrainstorm }: { onSendToBrainstorm?: (nicheOrTitle: string) => void }) {
     const queryClient = useQueryClient();
     const [uploading, setUploading] = useState(false);
+    const [syncing, setSyncing] = useState(false);
     const [csvFile, setCsvFile] = useState<File | null>(null);
+
+    const handleEtsySync = async () => {
+        setSyncing(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/etsy/sync-performance`, {
+                method: 'POST',
+                credentials: 'include',
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Sync failed');
+            toast.success(`${data.synced}/${data.total} ilan güncellendi`);
+            queryClient.invalidateQueries({ queryKey: ['analytics'] });
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Etsy sync başarısız');
+        } finally {
+            setSyncing(false);
+        }
+    };
     const [sortField, setSortField] = useState<keyof PerformanceRecord>('score');
     const [sortDir, setSortDir] = useState<SortDir>('desc');
 
@@ -139,6 +158,14 @@ export function AnalyticsClient({ onSendToBrainstorm }: { onSendToBrainstorm?: (
                     >
                         {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                         {uploading ? 'Importing…' : 'Import Stats'}
+                    </button>
+                    <button
+                        onClick={handleEtsySync}
+                        disabled={syncing}
+                        className="w-full flex items-center justify-center gap-2 py-2 border border-slate-600 hover:border-slate-500 text-slate-300 hover:text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                    >
+                        {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                        {syncing ? 'Syncing…' : 'Etsy\'den Senkronize Et'}
                     </button>
                 </div>
 

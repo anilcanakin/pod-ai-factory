@@ -2,14 +2,15 @@
 
 import React from 'react';
 
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 import { apiStatus } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
     Shield, Wifi, WifiOff, ShieldAlert, AlertTriangle,
     Key, Cpu, Server, Globe, ExternalLink, RefreshCw, LineChart,
-    BookOpen, Loader2
+    BookOpen, Loader2, Store, CheckCircle2, XCircle, LogOut
 } from 'lucide-react';
 
 type FalStatus = 'online' | 'offline' | 'auth_error' | 'payload_error';
@@ -33,11 +34,131 @@ function InfoRow({ label, value, mono = false }: { label: string; value: React.R
 }
 
 export function SettingsClient() {
+    const searchParams = useSearchParams();
     const { data: status, isLoading, refetch, isFetching } = useQuery({
         queryKey: ['status'],
         queryFn: apiStatus.get,
         refetchInterval: 30000,
     });
+
+    // ── Etsy OAuth ──────────────────────────────────────────────────────────────
+    const [etsyStatus, setEtsyStatus] = React.useState<{
+        connected: boolean; shopId?: string; shopName?: string;
+    } | null>(null);
+    const [etsyLoading, setEtsyLoading]         = React.useState(false);
+    const [etsyConnecting, setEtsyConnecting]   = React.useState(false);
+    const [etsyDisconnecting, setEtsyDisconnecting] = React.useState(false);
+    const [etsySetupInfo, setEtsySetupInfo]         = React.useState<{
+        shippingProfiles: { id: number; title: string }[];
+        returnPolicies:   { id: number; accepts_returns: boolean }[];
+    } | null>(null);
+    const [etsySetupLoading, setEtsySetupLoading]   = React.useState(false);
+
+    const loadEtsyStatus = React.useCallback(async () => {
+        setEtsyLoading(true);
+        try {
+            const res  = await fetch('/api/etsy/status', { credentials: 'include' });
+            const data = await res.json();
+            setEtsyStatus(data);
+        } catch {
+            setEtsyStatus({ connected: false });
+        } finally {
+            setEtsyLoading(false);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        loadEtsyStatus();
+    }, [loadEtsyStatus]);
+
+    React.useEffect(() => {
+        const etsyParam = searchParams.get('etsy');
+        if (etsyParam === 'connected') {
+            toast.success('Etsy mağazanız başarıyla bağlandı!');
+            loadEtsyStatus();
+            window.history.replaceState({}, '', '/dashboard/settings');
+        } else if (etsyParam === 'denied') {
+            toast.error('Etsy erişimi reddedildi.');
+            window.history.replaceState({}, '', '/dashboard/settings');
+        } else if (etsyParam === 'error') {
+            const reason = searchParams.get('reason') || 'Bilinmeyen hata';
+            toast.error(`Etsy bağlantı hatası: ${reason}`);
+            window.history.replaceState({}, '', '/dashboard/settings');
+        }
+    }, [searchParams, loadEtsyStatus]);
+
+    const handleEtsyConnect = async () => {
+        setEtsyConnecting(true);
+        try {
+            const res  = await fetch('/api/etsy/auth', { credentials: 'include' });
+            const data = await res.json();
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                toast.error(data.error || 'OAuth URL alınamadı');
+                setEtsyConnecting(false);
+            }
+        } catch {
+            toast.error('Etsy bağlantısı başlatılamadı');
+            setEtsyConnecting(false);
+        }
+    };
+
+    const handleEtsySetupInfo = async () => {
+        setEtsySetupLoading(true);
+        try {
+            const res  = await fetch('/api/etsy/setup-info', { credentials: 'include' });
+            const data = await res.json();
+            if (data.error) { toast.error(data.error); return; }
+            setEtsySetupInfo(data);
+        } catch {
+            toast.error('Setup bilgisi alınamadı');
+        } finally {
+            setEtsySetupLoading(false);
+        }
+    };
+
+    const [creatingReturnPolicy, setCreatingReturnPolicy] = React.useState(false);
+    const handleCreateReturnPolicy = async (acceptsReturns: boolean) => {
+        setCreatingReturnPolicy(true);
+        try {
+            const res  = await fetch('/api/etsy/return-policies', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    accepts_returns:   acceptsReturns,
+                    accepts_exchanges: acceptsReturns,
+                    return_deadline:   acceptsReturns ? 30 : null,
+                }),
+            });
+            const data = await res.json();
+            if (data.error) { toast.error(data.error); return; }
+            toast.success(`Return policy oluşturuldu! ID: ${data.id}`);
+            setEtsySetupInfo(prev => prev ? {
+                ...prev,
+                returnPolicies: [...prev.returnPolicies, { id: data.id, accepts_returns: data.accepts_returns }],
+            } : null);
+        } catch {
+            toast.error('Return policy oluşturulamadı');
+        } finally {
+            setCreatingReturnPolicy(false);
+        }
+    };
+
+    const handleEtsyDisconnect = async () => {
+        setEtsyDisconnecting(true);
+        try {
+            await fetch('/api/etsy/disconnect', { method: 'DELETE', credentials: 'include' });
+            toast.success('Etsy bağlantısı kesildi');
+            setEtsyStatus({ connected: false });
+        } catch {
+            toast.error('Bağlantı kesilemedi');
+        } finally {
+            setEtsyDisconnecting(false);
+        }
+    };
+    // ───────────────────────────────────────────────────────────────────────────
 
     const [editingKey, setEditingKey] = React.useState<string | null>(null);
     const [keyValue, setKeyValue] = React.useState('');
@@ -304,6 +425,142 @@ export function SettingsClient() {
                     </div>
                     <p className="text-[10px] text-slate-500">
                         Stored in browser localStorage as <code className="bg-slate-800 px-1 rounded">fal_daily_limit</code>. Displayed as the cap in Overview and header spend indicators.
+                    </p>
+                </div>
+            </div>
+
+            {/* Etsy Bağlantısı */}
+            <div className="bg-[#1e293b] border border-slate-700 rounded-xl overflow-hidden mt-7">
+                <div className="px-5 py-4 border-b border-slate-700">
+                    <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                        <Store className="w-4 h-4 text-orange-400" /> Etsy Bağlantısı
+                    </h2>
+                </div>
+                <div className="p-5 space-y-4">
+                    {etsyLoading ? (
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Durum kontrol ediliyor…
+                        </div>
+                    ) : etsyStatus?.connected ? (
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
+                                        <CheckCircle2 className="w-4.5 h-4.5 text-orange-400" />
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-medium text-slate-200">
+                                            {etsyStatus.shopName || 'Mağaza bağlı'}
+                                        </div>
+                                        {etsyStatus.shopId && (
+                                            <div className="text-xs text-slate-500 font-mono">Shop ID: {etsyStatus.shopId}</div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleEtsySetupInfo}
+                                        disabled={etsySetupLoading}
+                                        className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 border border-slate-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+                                    >
+                                        {etsySetupLoading
+                                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            : <Key className="w-3.5 h-3.5" />
+                                        }
+                                        Setup ID&apos;leri Al
+                                    </button>
+                                    <button
+                                        onClick={handleEtsyDisconnect}
+                                        disabled={etsyDisconnecting}
+                                        className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 border border-red-400/20 hover:border-red-400/40 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+                                    >
+                                        {etsyDisconnecting
+                                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            : <LogOut className="w-3.5 h-3.5" />
+                                        }
+                                        Bağlantıyı Kopar
+                                    </button>
+                                </div>
+                            </div>
+
+                            {etsySetupInfo && (
+                                <div className="bg-slate-900/60 border border-slate-700 rounded-lg p-4 space-y-3 text-xs font-mono">
+                                    <div>
+                                        <div className="text-slate-400 mb-1.5 font-sans font-medium text-[11px] uppercase tracking-wider">Shipping Profiles</div>
+                                        {etsySetupInfo.shippingProfiles.length === 0
+                                            ? <span className="text-slate-500">Henüz shipping profile yok — Etsy&apos;den oluştur</span>
+                                            : etsySetupInfo.shippingProfiles.map(p => (
+                                                <div key={p.id} className="flex items-center justify-between py-1 border-b border-slate-800 last:border-0">
+                                                    <span className="text-slate-300">{p.title}</span>
+                                                    <span className="text-orange-400 select-all">ETSY_SHIPPING_PROFILE_ID={p.id}</span>
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
+                                    <div>
+                                        <div className="text-slate-400 mb-1.5 font-sans font-medium text-[11px] uppercase tracking-wider">Return Policies</div>
+                                        {etsySetupInfo.returnPolicies.length === 0
+                                            ? (
+                                                <div className="space-y-2">
+                                                    <span className="text-slate-500">API üzerinden oluşturulanlar bulunamadı.</span>
+                                                    <div className="flex gap-2 mt-1">
+                                                        <button
+                                                            onClick={() => handleCreateReturnPolicy(false)}
+                                                            disabled={creatingReturnPolicy}
+                                                            className="text-[10px] px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded border border-slate-600 disabled:opacity-40"
+                                                        >
+                                                            {creatingReturnPolicy ? '...' : 'İade Yok (Oluştur)'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleCreateReturnPolicy(true)}
+                                                            disabled={creatingReturnPolicy}
+                                                            className="text-[10px] px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded border border-slate-600 disabled:opacity-40"
+                                                        >
+                                                            {creatingReturnPolicy ? '...' : '30 Gün İade (Oluştur)'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )
+                                            : etsySetupInfo.returnPolicies.map(p => (
+                                                <div key={p.id} className="flex items-center justify-between py-1 border-b border-slate-800 last:border-0">
+                                                    <span className="text-slate-300">{p.accepts_returns ? 'İade kabul' : 'İade yok'}</span>
+                                                    <span className="text-orange-400 select-all">ETSY_RETURN_POLICY_ID={p.id}</span>
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 font-sans">Turuncu değerleri kopyalayıp <code className="bg-slate-800 px-1 rounded">.env</code> dosyasına ekle.</p>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center">
+                                    <XCircle className="w-4.5 h-4.5 text-slate-500" />
+                                </div>
+                                <div>
+                                    <div className="text-sm font-medium text-slate-300">Etsy bağlı değil</div>
+                                    <div className="text-xs text-slate-500">Resmi API ile ilan oluşturmak için bağlan</div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleEtsyConnect}
+                                disabled={etsyConnecting}
+                                className="flex items-center gap-1.5 text-xs font-medium text-white bg-orange-600 hover:bg-orange-500 disabled:bg-orange-600/50 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                                {etsyConnecting
+                                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Yönlendiriliyor…</>
+                                    : <><ExternalLink className="w-3.5 h-3.5" /> Etsy&apos;ye Bağlan</>
+                                }
+                            </button>
+                        </div>
+                    )}
+                    <p className="text-xs text-slate-500 bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
+                        Etsy OAuth2 PKCE akışı kullanır. API key onaylandıktan sonra <code className="bg-slate-700 px-1 rounded">ETSY_API_KEY</code>,{' '}
+                        <code className="bg-slate-700 px-1 rounded">ETSY_REDIRECT_URI</code>,{' '}
+                        <code className="bg-slate-700 px-1 rounded">ETSY_SHIPPING_PROFILE_ID</code> ve{' '}
+                        <code className="bg-slate-700 px-1 rounded">ETSY_RETURN_POLICY_ID</code> değerlerini <code className="bg-slate-700 px-1 rounded">.env</code>&apos;ye ekle.
                     </p>
                 </div>
             </div>

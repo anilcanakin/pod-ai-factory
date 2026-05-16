@@ -179,7 +179,8 @@ async function _fetchYouTubePublishDate(videoId) {
 }
 
 async function processKnowledge(job) {
-    const { type, filePath, url, originalName, workspaceId = 'default-workspace' } = job.data;
+    const { type, filePath, url, originalName } = job.data;
+    const workspaceId = job.data.workspaceId || 'default-workspace';
     console.log(`[KnowledgeWorker] İşlenen tip: ${type} | JobID: ${job.id}`);
 
     let content = '';
@@ -579,7 +580,8 @@ function extractFrames(videoPath) {
  * Metin chunk'larını embedding ile CorporateMemory'ye kaydet.
  * Eski Supabase etsy_knowledge tablosu yerine Prisma kullanılıyor.
  */
-async function chunkAndEmbed(fullText, metadata, workspaceId = 'default-workspace', title = 'Knowledge Entry') {
+async function chunkAndEmbed(fullText, metadata, workspaceId, title = 'Knowledge Entry') {
+    workspaceId = workspaceId || 'default-workspace';
     console.log(`[Brain] Chunk embedding başlıyor. Toplam karakter: ${fullText.length}, workspaceId: ${workspaceId}`);
 
     // workspace'in DB'de var olduğundan emin ol
@@ -635,6 +637,13 @@ const worker = new Worker('knowledge-ingestion', processKnowledge, {
     concurrency: 1,
     lockDuration: 300000,
     lockRenewTime: 150000
+});
+
+worker.on('failed', (job, err) => {
+    console.error(`[KnowledgeWorker] Job ${job?.id} failed: ${err.message}`);
+});
+worker.on('error', (err) => {
+    console.error('[KnowledgeWorker] Worker hatası:', err.message);
 });
 
 console.log('[KnowledgeWorker] ✔  Kuyruk dinleniyor → knowledge-ingestion (LockDuration: 5m, Audio Compression: ON)');

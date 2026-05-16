@@ -1,8 +1,8 @@
-const cron    = require('node-cron');
 const prisma  = require('../lib/prisma');
 const { scanAllStores } = require('../services/power-seller-monitor.service');
 
-const INITIAL_DELAY_MS = 2 * 60 * 1000; // sunucu başlangıcından 2dk sonra
+const INTERVAL_MS      = 6 * 60 * 60 * 1000; // 6 saatte bir
+const INITIAL_DELAY_MS = 2 * 60 * 1000;       // sunucu başlangıcından 2dk sonra
 
 async function runScan() {
     console.log('[PowerSeller Cron] Tarama başladı...');
@@ -28,12 +28,12 @@ async function runScan() {
 }
 
 function startCron() {
-    // Her 6 saatte bir çalıştır
-    cron.schedule('0 */6 * * *', runScan);
-    console.log('[PowerSeller Cron] ✅ Her 6 saatte bir aktif.');
+    setTimeout(() => {
+        runScan();
+        setInterval(runScan, INTERVAL_MS);
+    }, INITIAL_DELAY_MS);
 
-    // Başlangıçta gecikmeli çalıştır
-    setTimeout(runScan, INITIAL_DELAY_MS);
+    console.log('[PowerSeller Cron] ✅ Her 6 saatte bir aktif.');
 }
 
 module.exports = { startCron, runScan };

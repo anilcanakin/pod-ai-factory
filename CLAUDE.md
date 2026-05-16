@@ -1,6 +1,6 @@
 # POD AI Factory — CLAUDE.md
 
-Son güncelleme: 13 Mayıs 2026
+Son güncelleme: 15 Mayıs 2026
 
 ---
 
@@ -8,6 +8,22 @@ Son güncelleme: 13 Mayıs 2026
 
 - Kod yazarken, test çalıştırırken, commit atarken onay sorma — direkt yap.
 - Sadece destructive git işlemlerinde (force push, hard reset, branch silme) sor.
+
+---
+
+## ⚠️ Altyapı DNA — Her AI Asistanın Bilmesi Gereken
+
+Bu proje **tamamen kendi SSH sunucusunda** çalışır. Hiçbir bulut servisi yok:
+
+| Servis | Durum | Gerçek konum |
+|--------|-------|--------------|
+| Veritabanı (PostgreSQL) | ✅ SSH sunucuda | `100.96.119.102:5432` — `sudo -u postgres psql` |
+| Dosya depolama | ✅ SSH sunucuda | `assets/uploads/`, `assets/outputs/`, `assets/mockups/` |
+| Job Queue (Redis) | ✅ Upstash cloud | `equal-warthog-71312.upstash.io:6379` — BullMQ için |
+| Supabase | ❌ HİÇ YOK | Önerilmez, kullanılmaz, söz bile edilmez |
+| S3 / CDN / Object Storage | ❌ HİÇ YOK | Her şey yerel `assets/` dizininde |
+
+**Yeni bir AI asistanın yapmaması gerekenler:** Supabase, Redis Cloud, S3, Vercel Blob, Firebase Storage veya herhangi bir bulut storage/DB servisi önermek. Tüm öneriler kendi SSH sunucusunu varsaymalıdır.
 
 ---
 
@@ -50,9 +66,9 @@ POD AI Factory, minimum insan müdahalesiyle bir Etsy Print-on-Demand işini yü
 |--------|-----------|--------|
 | Backend | Node.js + Express 5 | `src/index.js`, port 3001 |
 | Frontend | Next.js 14 App Router + React 19 | `frontend/`, port 3000 |
-| Veritabanı | PostgreSQL + Prisma ORM 5.15 | 21 model |
-| Job Queue | BullMQ + Redis | localhost:6379 |
-| Depolama | Supabase Storage + yerel `assets/` | bucket: mockup-outputs |
+| Veritabanı | PostgreSQL + Prisma ORM 5.15 | 21 model — SSH sunucu `100.96.119.102:5432` |
+| Job Queue | BullMQ + Redis | **Upstash cloud Redis** (`equal-warthog-71312.upstash.io:6379`) |
+| Depolama | Yerel `assets/` dizini | SSH sunucusunda — Supabase/S3/CDN YOK |
 | Vision AI | Anthropic Claude (birincil) → Google Gemini → OpenAI | Otomatik fallback zinciri |
 | Görsel Üretim | FAL.ai — Flux Dev, Flux Schnell, Ideogram, Recraft | |
 | BG Kaldırma | BiRefNet (ücretsiz), Bria Pro, Pixelcut | hepsi FAL.ai üzerinden |
@@ -177,7 +193,7 @@ pod-ai-factory/
 │   │   ├── secrets.service.js          # API key çözümü: DB → env → throw
 │   │   ├── seo.service.js              # Etsy SEO içerik üretimi
 │   │   ├── seo-knowledge.service.js    # SEO KB yönetimi
-│   │   ├── storage.service.js          # Supabase dosya yükleme + URL çözümü
+│   │   ├── storage.service.js          # Yerel dosya yükleme + URL çözümü (assets/uploads/)
 │   │   ├── style.service.js            # StyleProfile CRUD
 │   │   ├── style-manager.service.js    # Stil preset yönetimi
 │   │   ├── task.service.js             # DailyTask CRUD
@@ -584,7 +600,7 @@ pod-ai-factory/
 | `prompt.service.js` | Prompt sentezi ve şablon yönetimi |
 | `mockup-render.service.js` | Sharp compositing motoru: base yükle → tasarımı yeniden boyutlandır → composite → dışa aktar. Çoklu baskı alanı (printAreas dizisi) desteği. `productColor` parametresi ile PSD gray_base → Sharp `.tint()` → renk değiştirme |
 | `psd-analyzer.service.js` | psd.js v3.4.0: smart object bounds (`node.coords`), shadow katmanı extraction, greyscale base PNG üretimi |
-| `storage.service.js` | Supabase dosya yükleme + asset URL çözümü |
+| `storage.service.js` | Yerel dosya yükleme + URL çözümü — `assets/uploads/` dizinine kopyalar/indirir |
 | `seo-knowledge.service.js` | SEO KB yönetimi: Claude ile otomatik üretim, manuel geçersiz kılma, getKnowledge() |
 | `seo.service.js` | Etsy SEO içerik üretimi (başlık ≤140, açıklama, 13 etiket) |
 | `knowledge-context.service.js` | **Merkezi context sağlayıcı** — brain belleği + SEO KB getirir ve AI çağrılarına enjekte eder. Fonksiyonlar: getSeoContext(), getFactoryContext(), getIdeasContext(), getRelevantContext(topic), getKnowledgeSummary() |
@@ -661,8 +677,8 @@ pod-ai-factory/
 
 ```env
 # Veritabanı
-DATABASE_URL=postgresql://...         # Prisma birincil (Supabase pooled)
-DIRECT_URL=postgresql://...           # Prisma doğrudan (migration'lar için)
+DATABASE_URL=postgresql://...         # Prisma — kendi SSH sunucusu (100.96.119.102:5432)
+DIRECT_URL=postgresql://...           # Prisma doğrudan bağlantı (migration'lar için)
 
 # Sunucu
 PORT=3001                             # index.js varsayılan 3000 — .env ile 3001'e zorla
@@ -675,8 +691,7 @@ FAL_API_KEY=...                       # Flux, Schnell, Ideogram, Recraft, BiRefN
 PIXELCUT_API_KEY=...
 
 # Depolama
-SUPABASE_URL=...
-SUPABASE_SERVICE_KEY=...              # index.js'de kullanılır (SUPABASE_SERVICE_ROLE_KEY değil)
+# Not: Supabase kullanılmıyor. Tüm storage yerel assets/ dizininde.
 
 # Maliyet Kontrolü
 DAILY_BUDGET_CAP=5.00                 # FAL günlük harcama üst limiti
@@ -778,7 +793,7 @@ Kullanıcı Mockups sayfasında şablon + tasarım seçer
       2. Tasarım görselini getir
       3. printArea yerleşimini uygula (normalize 0–1 koordinatlar)
       4. Blend mode ile composite et
-      5. assets/outputs/ veya Supabase'e kaydet
+      5. assets/outputs/ dizinine kaydet
   → Sonuç TemplateEditor'da gösterilir (indir + galeriye kaydet + Pinterest)
 ```
 

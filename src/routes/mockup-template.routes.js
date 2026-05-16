@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const { detectPrintArea } = require('../services/mockup-render.service');
 const { analyze: analyzePsd } = require('../services/psd-analyzer.service');
+const catalogSvc = require('../services/yuppion-catalog.service');
 
 const prisma = require('../lib/prisma');
 
@@ -18,13 +19,21 @@ if (!fs.existsSync(MOCKUPS_BASE)) {
 }
 
 // Allowed categories — Standard v1
-const VALID_CATEGORIES = ['tshirt', 'sweatshirt', 'hoodie', 'mug', 'sticker', 'phone_case'];
+const VALID_CATEGORIES = [
+    'tshirt', 'sweatshirt', 'hoodie', 'long_sleeve', 'tank',
+    'polo', 'women', 'men', 'couple', 'family', 'kids',
+    'with_people', 'without_people', 'hat', 'bag',
+    'mug', 'sticker', 'phone_case', 'video',
+];
 
 // Apparel presets — Standard v1
 const CATEGORY_PRESETS = {
     tshirt: { printArea: { x: 0.35, y: 0.24, width: 0.30, height: 0.34 } },
     hoodie: { printArea: { x: 0.34, y: 0.26, width: 0.31, height: 0.35 } },
     sweatshirt: { printArea: { x: 0.35, y: 0.24, width: 0.30, height: 0.34 } },
+    long_sleeve: { printArea: { x: 0.35, y: 0.24, width: 0.30, height: 0.34 } },
+    tank: { printArea: { x: 0.36, y: 0.22, width: 0.28, height: 0.38 } },
+    polo: { printArea: { x: 0.37, y: 0.25, width: 0.26, height: 0.28 } },
     mug: { printArea: { x: 0.29, y: 0.36, width: 0.38, height: 0.26 } },
     sticker: { printArea: { x: 0.10, y: 0.10, width: 0.80, height: 0.80 } },
     phone_case: { printArea: { x: 0.12, y: 0.15, width: 0.76, height: 0.70 } },
@@ -125,45 +134,105 @@ router.post('/',
             }
             fs.rmSync(req._templateDir, { recursive: true, force: true });
 
-            const baseImagePath = `assets/mockups/${category}/${templateId}/${baseFile.filename}`;
             const maskFile = req.files?.maskImage?.[0];
             const shadowFile = req.files?.shadowImage?.[0];
-            const maskImagePath = maskFile ? `assets/mockups/${category}/${templateId}/${maskFile.filename}` : null;
-            const shadowImagePath = shadowFile ? `assets/mockups/${category}/${templateId}/${shadowFile.filename}` : null;
-
             const name = req.body.name || 'Untitled Template';
 
-            // Build configJson — Standard v1 shape
-            const preset = CATEGORY_PRESETS[category] || CATEGORY_PRESETS.tshirt;
-            const singlePrintArea = await detectPrintArea(path.join(finalDir, baseFile.filename));
-            const autoBlendMode = singlePrintArea.blendMode || 'multiply';
-            let configJson = {
-                printArea: singlePrintArea,
-                transform: {
-                    rotation: 0,
-                    opacity: 0.92,
-                    blendMode: autoBlendMode,
-                },
-                render: {
-                    renderMode: 'flat',
-                    displacementMapPath: null,
-                    perspective: null,
-                },
-                meta: {
-                    view: 'front',
-                    background: 'studio',
-                    color: autoBlendMode === 'screen' ? 'dark' : 'light',
-                    hasHumanModel: false,
-                },
-            };
+            const isPsd = path.extname(baseFile.filename).toLowerCase() === '.psd';
+            let baseImagePath, maskImagePath, shadowImagePath, configJson;
 
-            // Merge user-provided configJson
+            if (isPsd) {
+                // ── PSD path: analyze → extract base PNG, gray_base, shadow ──
+                console.log('[MockupTemplate POST] PSD detected — running psd-analyzer...');
+                const psdResult = await analyzePsd(path.join(finalDir, baseFile.filename), category);
+
+                // Save base PNG (flattened render)
+                const basePngName = 'base.png';
+                fs.writeFileSync(path.join(finalDir, basePngName), psdResult.baseBuffer);
+
+                // Save grayscale base for color tinting
+                const grayPngName = 'gray_base.png';
+                fs.writeFileSync(path.join(finalDir, grayPngName), psdResult.grayBuffer);
+
+                // Save shadow layer if found, else leave null
+                let psdShadowName = null;
+                if (psdResult.shadowBuffer) {
+                    psdShadowName = 'shadow_psd.png';
+                    fs.writeFileSync(path.join(finalDir, psdShadowName), psdResult.shadowBuffer);
+                }
+
+                // Remove the raw .psd (save space — PNG is our working file)
+                try { fs.unlinkSync(path.join(finalDir, baseFile.filename)); } catch {}
+
+                baseImagePath    = `assets/mockups/${category}/${templateId}/${basePngName}`;
+                maskImagePath    = maskFile ? `assets/mockups/${category}/${templateId}/${maskFile.filename}` : null;
+                shadowImagePath  = psdShadowName
+                    ? `assets/mockups/${category}/${templateId}/${psdShadowName}`
+                    : (shadowFile ? `assets/mockups/${category}/${templateId}/${shadowFile.filename}` : null);
+
+                const autoBlendMode = psdResult.blendMode || 'multiply';
+                configJson = {
+                    printArea: psdResult.printArea,
+                    ...(psdResult.printAreas && psdResult.printAreas.length > 1 && { printAreas: psdResult.printAreas }),
+                    transform: { rotation: 0, opacity: 0.92, blendMode: autoBlendMode },
+                    render: { renderMode: 'flat', displacementMapPath: null, perspective: null },
+                    meta: {
+                        view: 'front',
+                        background: 'studio',
+                        color: autoBlendMode === 'screen' ? 'dark' : 'light',
+                        hasHumanModel: false,
+                        isPsdDerived: true,
+                        grayBasePath: `assets/mockups/${category}/${templateId}/${grayPngName}`,
+                        defaultColor: psdResult.defaultColor || '#FFFFFF',
+                        psdLayers: psdResult.layerMap,
+                        areaCount: psdResult.printAreas?.length || 1,
+                    },
+                };
+                console.log(`[MockupTemplate POST] PSD analysis done — printArea: ${JSON.stringify(psdResult.printArea)}, areas: ${psdResult.printAreas?.length || 1}, blend: ${autoBlendMode}, shadow: ${psdShadowName || 'none'}`);
+            } else {
+                // ── Standard image path ──
+                baseImagePath   = `assets/mockups/${category}/${templateId}/${baseFile.filename}`;
+                maskImagePath   = maskFile ? `assets/mockups/${category}/${templateId}/${maskFile.filename}` : null;
+                shadowImagePath = shadowFile ? `assets/mockups/${category}/${templateId}/${shadowFile.filename}` : null;
+
+                const singlePrintArea = await detectPrintArea(path.join(finalDir, baseFile.filename));
+                const autoBlendMode = singlePrintArea.blendMode || 'multiply';
+
+                // Garment rengi tespiti + katalog eşleştirme
+                let detectedColor = null;
+                let catalogColorMatch = null;
+                try {
+                    const yuppionModelId = req.body.yuppionModelId || null;
+                    const cr = await catalogSvc.detectAndMatch(path.join(finalDir, baseFile.filename), yuppionModelId);
+                    detectedColor = cr.detectedColor;
+                    catalogColorMatch = cr.match;
+                    if (detectedColor) console.log(`[MockupTemplate] Renk tespiti: ${detectedColor}, eşleşme: ${catalogColorMatch?.color?.name || 'yok'}`);
+                } catch (e) {
+                    console.warn('[MockupTemplate] Renk tespiti başarısız:', e.message);
+                }
+
+                configJson = {
+                    printArea: singlePrintArea,
+                    transform: { rotation: 0, opacity: 0.92, blendMode: autoBlendMode },
+                    render: { renderMode: 'flat', displacementMapPath: null, perspective: null },
+                    meta: {
+                        view: 'front',
+                        background: 'studio',
+                        color: autoBlendMode === 'screen' ? 'dark' : 'light',
+                        hasHumanModel: false,
+                        ...(detectedColor && { detectedColor }),
+                        ...(req.body.yuppionModelId && { yuppionModelId: req.body.yuppionModelId }),
+                        ...(catalogColorMatch && { catalogColorMatch }),
+                    },
+                };
+            }
+
+            // Merge user-provided configJson overrides
             if (req.body.configJson) {
                 try {
                     const parsed = typeof req.body.configJson === 'string'
                         ? JSON.parse(req.body.configJson)
                         : req.body.configJson;
-
                     if (parsed.printArea) configJson.printArea = { ...configJson.printArea, ...parsed.printArea };
                     if (parsed.transform) configJson.transform = { ...configJson.transform, ...parsed.transform };
                     if (parsed.render) configJson.render = { ...configJson.render, ...parsed.render };
@@ -171,23 +240,13 @@ router.post('/',
                 } catch { /* use defaults */ }
             }
 
-            // Write config.json to template directory — Standard v1
-            const configFile = {
-                id: templateId,
-                name,
-                category,
-                baseImage: baseFile.filename,
-                maskImage: maskFile ? maskFile.filename : null,
-                shadowImage: shadowFile ? shadowFile.filename : null,
-                thumbnailImage: null,
-                ...configJson,
-            };
+            // Write config.json
             fs.writeFileSync(
                 path.join(finalDir, 'config.json'),
-                JSON.stringify(configFile, null, 2)
+                JSON.stringify({ id: templateId, name, category, ...configJson }, null, 2)
             );
 
-            // Verify workspace exists before FK insert — prevents opaque 500 on stale cookies
+            // Verify workspace exists before FK insert
             const workspace = await prisma.workspace.findUnique({ where: { id: req.workspaceId } });
             if (!workspace) {
                 if (fs.existsSync(finalDir)) fs.rmSync(finalDir, { recursive: true, force: true });
@@ -433,7 +492,11 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
                         isPsdDerived: true,
                         shadowSource: analysis.shadowBuffer ? 'psd' : 'preset',
                         layerMap: analysis.layerMap,
+                        areaCount: analysis.printAreas?.length || 1,
                     };
+                    if (analysis.printAreas && analysis.printAreas.length > 1) {
+                        configMeta._printAreas = analysis.printAreas;
+                    }
                 } else {
                     const ext = path.extname(file.originalname);
                     baseImageFilename = `base${ext}`;
@@ -458,6 +521,9 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
                     };
                 }
 
+                const bulkPrintAreas = configMeta._printAreas;
+                delete configMeta._printAreas;
+
                 const template = await prisma.mockupTemplate.create({
                     data: {
                         id: templateId,
@@ -468,6 +534,7 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
                         shadowImagePath,
                         configJson: {
                             printArea,
+                            ...(bulkPrintAreas && bulkPrintAreas.length > 1 && { printAreas: bulkPrintAreas }),
                             transform: { rotation: 0, opacity: isPsd ? 0.92 : 1, blendMode: detectedBlendMode },
                             render: { renderMode: 'flat' },
                             meta: configMeta,
@@ -633,6 +700,67 @@ router.post('/:id/generate-shadow', async (req, res) => {
         res.json({ success: true, shadowImagePath, template: updatedTemplate });
     } catch (err) {
         console.error('[generate-shadow]', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── POST /api/mockups/templates/:id/match-catalog-color ─────────────────────
+// Mevcut bir template için garment rengi tespiti + katalog eşleştirmesi çalıştırır.
+// Body: { yuppionModelId? }  — verilirse sadece o modelin renkleriyle karşılaştırır.
+router.post('/:id/match-catalog-color', async (req, res) => {
+    try {
+        const template = await prisma.mockupTemplate.findFirst({
+            where: { id: req.params.id, workspaceId: req.workspaceId }
+        });
+        if (!template) return res.status(404).json({ error: 'Template bulunamadı' });
+
+        const isPsd = template.configJson?.meta?.isPsdDerived;
+        const basePath = path.join(__dirname, '../../', template.baseImagePath);
+
+        if (!fs.existsSync(basePath)) {
+            return res.status(400).json({ error: 'Base görsel dosyası bulunamadı' });
+        }
+
+        const modelId = req.body.yuppionModelId
+            || template.configJson?.meta?.yuppionModelId
+            || null;
+
+        let detectedColor, catalogColorMatch;
+
+        if (isPsd) {
+            // PSD'de renk tespiti yapmak yerine defaultColor kullan
+            detectedColor = template.configJson?.meta?.defaultColor || null;
+            catalogColorMatch = detectedColor
+                ? catalogSvc.findClosestColor(detectedColor, modelId)
+                : null;
+        } else {
+            const cr = await catalogSvc.detectAndMatch(basePath, modelId);
+            detectedColor = cr.detectedColor;
+            catalogColorMatch = cr.match;
+        }
+
+        // configJson.meta'ya kaydet
+        const updatedMeta = {
+            ...(template.configJson?.meta || {}),
+            ...(detectedColor && { detectedColor }),
+            ...(modelId && { yuppionModelId: modelId }),
+            ...(catalogColorMatch !== null && { catalogColorMatch }),
+        };
+        const updatedConfig = { ...(template.configJson || {}), meta: updatedMeta };
+
+        const updated = await prisma.mockupTemplate.update({
+            where: { id: template.id },
+            data: { configJson: updatedConfig }
+        });
+
+        res.json({
+            success: true,
+            detectedColor,
+            catalogColorMatch,
+            template: updated,
+        });
+    } catch (err) {
+        console.error('[match-catalog-color]', err.message);
         res.status(500).json({ error: err.message });
     }
 });

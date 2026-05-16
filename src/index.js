@@ -62,7 +62,7 @@ app.use('/assets/uploads', (req, res, next) => {
 // Middleware
 // CORS_ORIGIN env değişkenine virgülle ayrılmış URL'ler girilebilir.
 // Örnek: CORS_ORIGIN=https://myfrontend.com,http://localhost:3001
-const _corsEnv      = process.env.CORS_ORIGIN || 'http://localhost:3001';
+const _corsEnv      = process.env.CORS_ORIGIN || 'http://localhost:3000';
 const _corsOrigins  = _corsEnv.split(',').map(o => o.trim()).filter(Boolean);
 const _corsOption   = _corsOrigins.length === 1 ? _corsOrigins[0] : _corsOrigins;
 app.use(cors({ origin: _corsOption, credentials: true }));
@@ -77,6 +77,9 @@ require('./queues/asset.worker');
 
 // SEO Knowledge Base weekly auto-updater
 require('./jobs/seo-knowledge-updater').startCron();
+
+// Brain TTL: süresi dolan competitor/trend girişlerini her gece pasifleştirir
+require('./jobs/memory-expiry.cron').startCron();
 
 // Autonomous Radar: Etsy/Google Trends/Pinterest — every 12h
 require('./jobs/radar-worker').startCron();
@@ -370,44 +373,48 @@ app.get('/api/dashboard', async (req, res) => {
   }
 });
 
+// ─── Rate Limiting ────────────────────────────────────────────────────────────
+const { authLimiter, aiHeavyLimiter, aiContentLimiter, generalLimiter } = require('./config/rate-limit.middleware');
+
 // API Routes
-app.use('/api/auth', require('./routes/auth.routes'));
-app.use('/api/settings', require('./routes/settings.routes'));
-app.use('/api/vision', require('./routes/vision.routes'));
-app.use('/api/prompt', require('./routes/prompt.routes'));
-app.use('/api/generate', require('./routes/generation.routes'));
-app.use('/api/gallery', require('./routes/gallery.routes'));
-app.use('/api/tools', require('./routes/tool.routes'));
-app.use('/api/seo', require('./routes/seo.routes'));
-app.use('/api/seo-knowledge', require('./routes/seo-knowledge.routes'));
-app.use('/api/export', require('./routes/export.routes'));
-app.use('/api/pipeline', require('./routes/pipeline.routes'));
+app.use('/api/auth', authLimiter, require('./routes/auth.routes'));
+app.use('/api/settings', generalLimiter, require('./routes/settings.routes'));
+app.use('/api/vision', aiHeavyLimiter, require('./routes/vision.routes'));
+app.use('/api/prompt', aiHeavyLimiter, require('./routes/prompt.routes'));
+app.use('/api/generate', aiHeavyLimiter, require('./routes/generation.routes'));
+app.use('/api/gallery', generalLimiter, require('./routes/gallery.routes'));
+app.use('/api/tools', aiHeavyLimiter, require('./routes/tool.routes'));
+app.use('/api/seo', aiContentLimiter, require('./routes/seo.routes'));
+app.use('/api/seo-knowledge', generalLimiter, require('./routes/seo-knowledge.routes'));
+app.use('/api/export', generalLimiter, require('./routes/export.routes'));
+app.use('/api/pipeline', aiHeavyLimiter, require('./routes/pipeline.routes'));
 const jobsRoutes = require('./routes/jobs.routes');
-app.use('/api/jobs', jobsRoutes);
-app.use('/api/factory', require('./routes/factory.routes'));
-app.use('/api/ideas', require('./routes/idea.routes'));
-app.use('/api/analytics', require('./routes/analytics.routes'));
-app.use('/api/packs', require('./routes/product-pack.routes'));
+app.use('/api/jobs', generalLimiter, jobsRoutes);
+app.use('/api/factory', aiHeavyLimiter, require('./routes/factory.routes'));
+app.use('/api/ideas', aiContentLimiter, require('./routes/idea.routes'));
+app.use('/api/analytics', generalLimiter, require('./routes/analytics.routes'));
+app.use('/api/packs', generalLimiter, require('./routes/product-pack.routes'));
 // Billing (Stripe) devre dışı — tek kullanıcı için gereksiz SaaS altyapısı
 // app.use('/api/billing', require('./routes/billing.routes'));
-app.use('/api/mockups/templates', require('./routes/mockup-template.routes'));
-app.use('/api/mockups', require('./routes/mockup.routes'));
-app.use('/api/notifications', require('./routes/notification.routes'));
-app.use('/api/etsy-browser', require('./routes/etsy-browser.routes'));
-app.use('/api/brain', require('./routes/brain.routes'));
-app.use('/api/trends', require('./routes/trends.routes'));
-app.use('/api/agent', require('./routes/agent.routes'));
-app.use('/api/radar', require('./routes/radar.routes'));
-app.use('/api/apify', require('./routes/apify.routes'));
-app.use('/api/wpi',   require('./routes/wpi.routes'));
-app.use('/api/scout', require('./routes/scout.routes'));
-app.use('/api/fulfillment', require('./routes/fulfillment.routes'));
-app.use('/api/knowledge', require('./routes/knowledge.routes'));
-app.use('/api/tasks', require('./routes/task.routes'));
-app.use('/api/hq', require('./routes/hq.routes'));
-app.use('/api/finance', require('./routes/finance.routes'));
-app.use('/api/batch',  require('./routes/batch.routes'));
-app.use('/api/styles', require('./routes/style.routes'));
+app.use('/api/mockups/templates', generalLimiter, require('./routes/mockup-template.routes'));
+app.use('/api/mockups', generalLimiter, require('./routes/mockup.routes'));
+app.use('/api/notifications', generalLimiter, require('./routes/notification.routes'));
+app.use('/api/etsy',         generalLimiter, require('./routes/etsy.routes'));
+app.use('/api/etsy-browser', generalLimiter, require('./routes/etsy-browser.routes'));
+app.use('/api/brain', aiContentLimiter, require('./routes/brain.routes'));
+app.use('/api/trends', generalLimiter, require('./routes/trends.routes'));
+app.use('/api/agent', aiContentLimiter, require('./routes/agent.routes'));
+app.use('/api/radar', generalLimiter, require('./routes/radar.routes'));
+app.use('/api/apify', aiContentLimiter, require('./routes/apify.routes'));
+app.use('/api/wpi',   aiContentLimiter, require('./routes/wpi.routes'));
+app.use('/api/scout', aiContentLimiter, require('./routes/scout.routes'));
+app.use('/api/fulfillment', generalLimiter, require('./routes/fulfillment.routes'));
+app.use('/api/knowledge', aiContentLimiter, require('./routes/knowledge.routes'));
+app.use('/api/tasks', generalLimiter, require('./routes/task.routes'));
+app.use('/api/hq', generalLimiter, require('./routes/hq.routes'));
+app.use('/api/finance', generalLimiter, require('./routes/finance.routes'));
+app.use('/api/batch',  aiContentLimiter, require('./routes/batch.routes'));
+app.use('/api/styles', generalLimiter, require('./routes/style.routes'));
 
 
 app.use((err, req, res, next) => {
@@ -442,5 +449,17 @@ const server = app.listen(PORT, async () => {
 server.timeout = 600000;
 server.keepAliveTimeout = 610000;
 server.headersTimeout = 620000;
+
+// ─── Global hata yakalayıcıları (process crash engelleyici) ───────────────────
+// Node.js 15+ 'te unhandledRejection varsayılan olarak process'i kapatır.
+// Bu kapatıcılar açık HTTP bağlantılarının "socket hang up" almasını önler.
+process.on('unhandledRejection', (reason, promise) => {
+    const msg = reason instanceof Error ? reason.stack || reason.message : String(reason);
+    console.error('[unhandledRejection] İşlenmeyen promise reddi — process kapatılmıyor:', msg);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[uncaughtException] Beklenmeyen hata — process kapatılmıyor:', err.stack || err.message);
+});
 
 

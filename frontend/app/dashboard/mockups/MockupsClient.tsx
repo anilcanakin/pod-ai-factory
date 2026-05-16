@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
-import { apiMockups, MockupTemplate, MockupConfig, apiGallery, GalleryImage } from '@/lib/api';
+import { apiMockups, MockupTemplate, MockupConfig, apiGallery, GalleryImage, apiCatalog, YuppionColor } from '@/lib/api';
 import {
     Plus, Trash2, X, Image as ImageIcon, RotateCw, Layers,
     Eye, Download, Search, Loader2, Save, Grid3x3, CheckCircle2,
@@ -24,8 +24,8 @@ const resolveUrl = (p: string) =>
 
 // Standard v1 categories
 const CATEGORIES = [
-    'all', 
-    'tshirt', 'sweatshirt', 'hoodie',
+    'all',
+    'tshirt', 'sweatshirt', 'hoodie', 'long_sleeve', 'tank', 'polo',
     'women', 'men', 'couple', 'family', 'kids',
     'with_people', 'without_people',
     'hat', 'bag', 'mug', 'sticker', 'phone_case',
@@ -35,8 +35,11 @@ const CATEGORIES = [
 const CATEGORY_LABELS: Record<string, string> = {
     all: 'All',
     tshirt: 'T-Shirt',
-    sweatshirt: 'Sweatshirt', 
+    sweatshirt: 'Sweatshirt',
     hoodie: 'Hoodie',
+    long_sleeve: 'Long Sleeve',
+    tank: 'Tank Top',
+    polo: 'Polo',
     women: 'Women',
     men: 'Men',
     couple: 'Couple',
@@ -52,15 +55,16 @@ const CATEGORY_LABELS: Record<string, string> = {
     video: 'Video'
 };
 
-const SHIRT_COLORS = [
-    { label: 'Beyaz',    hex: '#FFFFFF' },
-    { label: 'Siyah',    hex: '#1a1a1a' },
-    { label: 'Lacivert', hex: '#1B3A6B' },
-    { label: 'Gri',      hex: '#9CA3AF' },
-    { label: 'Kırmızı',  hex: '#DC2626' },
-    { label: 'Yeşil',    hex: '#15803D' },
-    { label: 'Bej',      hex: '#D4B896' },
-    { label: 'Sarı',     hex: '#FBBF24' },
+// Fallback renk paleti — template'e Yuppion modeli atanmadığında kullanılır
+const DEFAULT_COLORS: YuppionColor[] = [
+    { name: 'Beyaz',    hex: '#FFFFFF' },
+    { name: 'Siyah',    hex: '#1a1a1a' },
+    { name: 'Lacivert', hex: '#1B3A6B' },
+    { name: 'Gri',      hex: '#9CA3AF' },
+    { name: 'Kırmızı',  hex: '#DC2626' },
+    { name: 'Yeşil',    hex: '#15803D' },
+    { name: 'Bej',      hex: '#D4B896' },
+    { name: 'Sarı',     hex: '#FBBF24' },
 ];
 
 // ─── Toast Notification System ───────────────────────────────────────────────
@@ -173,7 +177,8 @@ export function MockupsClient() {
     const [bulkDesignImageId, setBulkDesignImageId] = useState<string | null>(null);
     const [bulkShowDesignPicker, setBulkShowDesignPicker] = useState(false);
     const [bulkRendering, setBulkRendering] = useState(false);
-    const [bulkResults, setBulkResults] = useState<{ templateId: string; templateName: string; status: string; url?: string; error?: string }[]>([]);
+    const [bulkResults, setBulkResults] = useState<{ templateId: string; templateName: string; status: string; url?: string; error?: string; reason?: string }[]>([]);
+    const [skipNoMatch, setSkipNoMatch] = useState(true);
 
     const loadTemplates = useCallback(async () => {
         setLoading(true);
@@ -233,12 +238,18 @@ export function MockupsClient() {
         setBulkRendering(true);
         setBulkResults([]);
         try {
-            const firstTemplateId = Array.from(bulkSelectedIds)[0];
+            // Her seçili şablon için ayrı renk gönder
+            const perTemplateColors: Record<string, string> = {};
+            Array.from(bulkSelectedIds).forEach(tid => {
+                if (productColors[tid]) perTemplateColors[tid] = productColors[tid];
+            });
             const result = await apiMockups.renderBatch(
                 bulkDesignImageId,
                 Array.from(bulkSelectedIds),
                 undefined,
-                productColors[firstTemplateId]
+                undefined,
+                Object.keys(perTemplateColors).length > 0 ? perTemplateColors : undefined,
+                skipNoMatch
             );
             setBulkResults(result.results);
             const successCount = result.results.filter(r => r.status === 'success').length;
@@ -336,13 +347,69 @@ export function MockupsClient() {
                         <p className="text-sm font-semibold text-purple-300">
                             Bulk Render — {bulkSelectedIds.size} template{bulkSelectedIds.size !== 1 ? 's' : ''} selected
                         </p>
-                        <button
-                            onClick={() => setBulkSelectedIds(new Set())}
-                            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-                        >
-                            Clear selection
-                        </button>
+                        <div className="flex items-center gap-3">
+                            {/* Stok dışı renkleri atla toggle */}
+                            <label className="flex items-center gap-1.5 cursor-pointer" title="Yuppion kataloğunda olmayan renkleri atla">
+                                <div
+                                    onClick={() => setSkipNoMatch(v => !v)}
+                                    className={cn(
+                                        'w-8 h-4 rounded-full transition-colors relative',
+                                        skipNoMatch ? 'bg-emerald-600' : 'bg-slate-600'
+                                    )}
+                                >
+                                    <div className={cn(
+                                        'absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform',
+                                        skipNoMatch ? 'translate-x-4' : 'translate-x-0.5'
+                                    )} />
+                                </div>
+                                <span className="text-[10px] text-slate-400">Stok dışı atla</span>
+                            </label>
+                            <button
+                                onClick={() => setBulkSelectedIds(new Set())}
+                                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                            >
+                                Clear selection
+                            </button>
+                        </div>
                     </div>
+
+                    {/* Per-template renk seçici (yalnızca PSD şablonlar) */}
+                    {(() => {
+                        const psdSelected = templates.filter(
+                            (t: MockupTemplate) => bulkSelectedIds.has(t.id) && t.configJson?.meta?.isPsdDerived
+                        );
+                        if (psdSelected.length === 0) return null;
+                        return (
+                            <div className="space-y-2">
+                                <p className="text-xs text-slate-400 font-medium">Ürün Rengi (PSD şablonlar)</p>
+                                <div className="flex flex-wrap gap-3">
+                                    {psdSelected.map((t: MockupTemplate) => (
+                                        <div key={t.id} className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-3 py-2 border border-slate-700">
+                                            <span className="text-xs text-slate-300 truncate max-w-[100px]">{t.name}</span>
+                                            <div className="flex gap-1">
+                                                {DEFAULT_COLORS.map(c => (
+                                                    <button
+                                                        key={c.hex}
+                                                        title={c.name}
+                                                        onClick={() => {
+                                                            const next = { ...productColors, [t.id]: c.hex };
+                                                            setProductColors(next);
+                                                            localStorage.setItem('mockup_product_colors', JSON.stringify(next));
+                                                        }}
+                                                        className="w-5 h-5 rounded-full border-2 transition-all"
+                                                        style={{
+                                                            backgroundColor: c.hex,
+                                                            borderColor: productColors[t.id] === c.hex ? '#a855f7' : 'transparent',
+                                                        }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Design picker */}
                     <div className="flex items-center gap-3">
@@ -413,6 +480,10 @@ export function MockupsClient() {
                                                 </button>
                                             </div>
                                         </>
+                                    ) : r.status === 'skipped' ? (
+                                        <div className="aspect-square flex items-center justify-center text-center p-3 bg-amber-900/10">
+                                            <p className="text-[10px] text-amber-400">{r.templateName}<br /><span className="text-slate-500">Atlandı — stok dışı</span></p>
+                                        </div>
                                     ) : (
                                         <div className="aspect-square flex items-center justify-center text-center p-3">
                                             <p className="text-[10px] text-red-400">{r.templateName}<br /><span className="text-slate-500">{r.error || 'Failed'}</span></p>
@@ -580,9 +651,39 @@ function TemplateCard({ template, onSelect, onDelete, onGenerateShadow, shadowGe
             <div className="p-3 flex items-center justify-between">
                 <div className="min-w-0">
                     <p className="text-sm font-medium text-white truncate">{template.name}</p>
-                    <span className="inline-flex items-center mt-1 px-1.5 py-0.5 bg-slate-700 text-slate-400 text-[10px] rounded capitalize">
-                        {template.category.replace('_', ' ')}
-                    </span>
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
+                        <span className="inline-flex items-center px-1.5 py-0.5 bg-slate-700 text-slate-400 text-[10px] rounded capitalize">
+                            {template.category.replace('_', ' ')}
+                        </span>
+                        {/* Katalog renk eşleşme badge */}
+                        {(() => {
+                            const match = template.configJson?.meta?.catalogColorMatch;
+                            const modelId = template.configJson?.meta?.yuppionModelId;
+                            if (!modelId) return null;
+                            if (!match) return (
+                                <span className="inline-flex items-center px-1.5 py-0.5 bg-slate-700/60 text-slate-500 text-[9px] rounded">
+                                    renk?
+                                </span>
+                            );
+                            if (match.matched) return (
+                                <span
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-600/20 text-emerald-400 text-[9px] rounded border border-emerald-500/30"
+                                    title={`${match.color.name} (${match.distance})`}
+                                >
+                                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: match.color.hex }} />
+                                    {match.color.name}
+                                </span>
+                            );
+                            return (
+                                <span
+                                    className="inline-flex items-center px-1.5 py-0.5 bg-red-600/20 text-red-400 text-[9px] rounded border border-red-500/30"
+                                    title={`Tespit: ${template.configJson?.meta?.detectedColor || '?'}`}
+                                >
+                                    stok dışı
+                                </span>
+                            );
+                        })()}
+                    </div>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                     {template.configJson?.meta?.isPsdDerived &&
@@ -760,6 +861,9 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
     const [opacity, setOpacity] = useState(transform.opacity);
     const [blendMode, setBlendMode] = useState(transform.blendMode);
     const [rotation, setRotation] = useState(transform.rotation);
+    const [displacementStrength, setDisplacementStrength] = useState<number>(
+        config.render?.displacementStrength ?? 0
+    );
 
     const [designScale, setDesignScale] = useState(1);
     const [designOffsetX, setDesignOffsetX] = useState(0);
@@ -770,6 +874,64 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
     const [areaDesigns, setAreaDesigns] = useState<Record<string, any>>({});
     const [activeAreaId, setActiveAreaId] = useState<string | null>(null);
     const [showDesignPicker, setShowDesignPicker] = useState(false);
+
+    // Yuppion katalog renkleri
+    const [catalogColors, setCatalogColors] = useState<YuppionColor[]>([]);
+    const [catalogLoading, setCatalogLoading] = useState(false);
+    const [catalogModelId, setCatalogModelId] = useState<string>(
+        template.configJson?.meta?.yuppionModelId || ''
+    );
+    const [savingModelId, setSavingModelId] = useState(false);
+
+    useEffect(() => {
+        const modelId = template.configJson?.meta?.yuppionModelId;
+        if (!modelId) { setCatalogColors([]); return; }
+        setCatalogLoading(true);
+        apiCatalog.getColors(modelId)
+            .then(data => setCatalogColors(data.colors))
+            .catch(() => setCatalogColors([]))
+            .finally(() => setCatalogLoading(false));
+    }, [template.configJson?.meta?.yuppionModelId]);
+
+    const saveModelId = async (modelId: string) => {
+        setSavingModelId(true);
+        try {
+            const newMeta = { ...(template.configJson?.meta || {}), yuppionModelId: modelId || undefined };
+            const savedTemplate = await apiMockups.updateTemplate(template.id, {
+                configJson: { ...template.configJson, meta: newMeta }
+            });
+
+            // JPG/PNG template'ler için katalog renk eşleştirmesini tetikle
+            if (modelId && !template.configJson?.meta?.isPsdDerived) {
+                try {
+                    const matchResult = await apiMockups.matchCatalogColor(template.id, modelId);
+                    onUpdated(matchResult.template);
+                    const matchStatus = matchResult.catalogColorMatch?.matched
+                        ? `✓ ${matchResult.catalogColorMatch.color.name}`
+                        : '✗ Katalog rengi bulunamadı';
+                    addToast(matchResult.catalogColorMatch?.matched ? 'success' : 'error',
+                        `Renk eşleştirme: ${matchStatus}`);
+                } catch {
+                    onUpdated(savedTemplate);
+                }
+            } else {
+                onUpdated(savedTemplate);
+            }
+
+            if (modelId) {
+                const data = await apiCatalog.getColors(modelId);
+                setCatalogColors(data.colors);
+            } else {
+                setCatalogColors([]);
+            }
+        } catch (err: any) {
+            addToast('error', 'Model kaydedilemedi: ' + err.message);
+        } finally {
+            setSavingModelId(false);
+        }
+    };
+
+    const displayColors = catalogColors.length > 0 ? catalogColors : DEFAULT_COLORS;
 
     // Rendering
     const [rendering, setRendering] = useState(false);
@@ -1179,6 +1341,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                     printArea,
                     ...(printAreas.length > 0 && { printAreas }),
                     transform: { rotation, opacity, blendMode },
+                    render: { renderMode: 'flat', displacementStrength: displacementStrength > 0 ? displacementStrength : undefined },
                 },
             });
             onUpdated(updated);
@@ -1213,6 +1376,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 printArea,
                 printAreas,
                 transform: { rotation, opacity, blendMode },
+                render: { renderMode: 'flat', displacementStrength: displacementStrength > 0 ? displacementStrength : undefined },
             };
             await apiMockups.updateTemplate(template.id, { configJson: configPayload });
             
@@ -1222,20 +1386,21 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 offsetY: designOffsetY / 100,
                 rotation: designRotation,
                 blendMode,
-                areaDesigns: Object.entries(areaDesigns).map(([areaId, image]) => ({ 
-                    areaId, 
-                    imageId: image.id 
-                }))
             };
 
-            // Use the first image as the primary design ID for legacy backend compatibility if needed
+            // Build areaDesigns map keyed by areaId for backend
+            const areaDesignsForApi: Record<string, { imageId: string; imageUrl: string }> = {};
+            Object.entries(areaDesigns).forEach(([areaId, design]) => {
+                areaDesignsForApi[areaId] = { imageId: design.id, imageUrl: design.imageUrl };
+            });
+
             const primaryId = Object.values(areaDesigns)[0].id;
 
             const result = await apiMockups.render(
                 primaryId,
                 template.id,
                 renderPayload,
-                undefined,
+                Object.keys(areaDesignsForApi).length > 1 ? areaDesignsForApi : undefined,
                 productColor
             );
             const renderedUrl = resolveUrl(result.mockupUrl);
@@ -1457,6 +1622,17 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                             onChange={e => setRotation(parseInt(e.target.value))}
                                             className="w-full accent-blue-500 h-1.5" />
                                     </div>
+                                    {template.shadowImagePath && (
+                                        <div>
+                                            <label className="text-[10px] text-slate-500 mb-1.5 block font-medium">
+                                                Displacement: {displacementStrength === 0 ? 'Off' : `${displacementStrength}px`}
+                                            </label>
+                                            <input type="range" min="0" max="25" step="1" value={displacementStrength}
+                                                onChange={e => setDisplacementStrength(parseInt(e.target.value))}
+                                                className="w-full accent-purple-500 h-1.5" />
+                                            <p className="text-[9px] text-slate-600 mt-1">Warps design to follow fabric texture using shadow layer.</p>
+                                        </div>
+                                    )}
                                 </div>
                             </section>
 
@@ -1637,36 +1813,74 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                         {/* Action Buttons */}
                         <div className="p-4 border-t border-slate-700/60 space-y-2">
                             {template.configJson?.meta?.isPsdDerived && (
-                                <div className="pb-2 border-b border-slate-700/60">
-                                    <p className="text-[10px] text-slate-400 mb-2 uppercase tracking-wide">Ürün Rengi</p>
-                                    <div className="flex flex-wrap gap-1.5 mb-2">
-                                        {SHIRT_COLORS.map(c => (
-                                            <button
-                                                key={c.hex}
-                                                title={c.label}
-                                                onClick={() => onColorChange?.(c.hex)}
-                                                className={cn(
-                                                    'w-5 h-5 rounded-full border-2 transition-transform hover:scale-110',
-                                                    productColor === c.hex ? 'border-blue-400 scale-110' : 'border-slate-600',
-                                                )}
-                                                style={{ backgroundColor: c.hex }}
+                                <div className="pb-2 border-b border-slate-700/60 space-y-2">
+                                    {/* Yuppion Model Bağlantısı */}
+                                    <div>
+                                        <p className="text-[10px] text-slate-400 mb-1 uppercase tracking-wide">Yuppion Model</p>
+                                        <div className="flex gap-1.5">
+                                            <input
+                                                type="text"
+                                                value={catalogModelId}
+                                                onChange={e => setCatalogModelId(e.target.value.toUpperCase())}
+                                                placeholder="BC3001, CC1717, G18500…"
+                                                className="flex-1 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-[10px] text-white font-mono focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
                                             />
-                                        ))}
+                                            <button
+                                                onClick={() => saveModelId(catalogModelId)}
+                                                disabled={savingModelId}
+                                                className="px-2 py-1 text-[10px] bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded border border-blue-500/30 disabled:opacity-40 transition-colors"
+                                            >
+                                                {savingModelId ? '…' : 'Kaydet'}
+                                            </button>
+                                        </div>
+                                        {catalogColors.length > 0 && (
+                                            <p className="text-[9px] text-emerald-400 mt-0.5">
+                                                ✓ {catalogColors.length} renk yüklendi
+                                            </p>
+                                        )}
+                                        {!template.configJson?.meta?.yuppionModelId && (
+                                            <p className="text-[9px] text-slate-500 mt-0.5">
+                                                Model ID atanınca Yuppion renkleri otomatik yüklenir
+                                            </p>
+                                        )}
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="color"
-                                            value={productColor || '#FFFFFF'}
-                                            onChange={e => onColorChange?.(e.target.value)}
-                                            className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent"
-                                        />
-                                        <input
-                                            type="text"
-                                            value={productColor || '#FFFFFF'}
-                                            onChange={e => { if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) onColorChange?.(e.target.value); }}
-                                            placeholder="#FFFFFF"
-                                            className="flex-1 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-[10px] text-white font-mono focus:outline-none focus:border-blue-500"
-                                        />
+
+                                    {/* Renk Paleti */}
+                                    <div>
+                                        <p className="text-[10px] text-slate-400 mb-1.5 uppercase tracking-wide flex items-center gap-1">
+                                            Ürün Rengi
+                                            {catalogLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                                            {catalogColors.length > 0 && <span className="text-[8px] text-emerald-400 normal-case">Yuppion</span>}
+                                        </p>
+                                        <div className="flex flex-wrap gap-1.5 mb-2 max-h-24 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
+                                            {displayColors.map(c => (
+                                                <button
+                                                    key={c.hex}
+                                                    title={c.name}
+                                                    onClick={() => onColorChange?.(c.hex)}
+                                                    className={cn(
+                                                        'w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 flex-shrink-0',
+                                                        productColor === c.hex ? 'border-blue-400 scale-110' : 'border-slate-600',
+                                                    )}
+                                                    style={{ backgroundColor: c.hex }}
+                                                />
+                                            ))}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="color"
+                                                value={productColor || '#FFFFFF'}
+                                                onChange={e => onColorChange?.(e.target.value)}
+                                                className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={productColor || '#FFFFFF'}
+                                                onChange={e => { if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) onColorChange?.(e.target.value); }}
+                                                placeholder="#FFFFFF"
+                                                className="flex-1 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-[10px] text-white font-mono focus:outline-none focus:border-blue-500"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             )}

@@ -39,6 +39,14 @@ const ASSETS_ROOT = path.join(__dirname, '../../assets');
 async function downloadToTemp(url) {
     const fetch = require('node-fetch');
     const os = require('os');
+
+    // Resolve relative paths to absolute local paths
+    if (!url.startsWith('http')) {
+        const absPath = path.isAbsolute(url) ? url : path.join(__dirname, '../../', url);
+        if (fs.existsSync(absPath)) return absPath;
+        throw new Error(`Local design file not found: ${absPath}`);
+    }
+
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Failed to fetch design: ${response.status}`);
     const buffer = await response.buffer();
@@ -314,6 +322,30 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
         });
     }
 
+    // 8.5 Apply displacement map if configured
+    const displacementStrength = config.render?.displacementStrength || 0;
+    if (displacementStrength > 0 && template.shadowImagePath) {
+        const shadowFullPath = path.isAbsolute(template.shadowImagePath)
+            ? template.shadowImagePath
+            : path.join(ASSETS_ROOT, '..', template.shadowImagePath);
+
+        if (fs.existsSync(shadowFullPath)) {
+            const dispBuffer = await sharp(shadowFullPath).png().toBuffer();
+            console.log(`[Render] Applying displacement map (strength=${displacementStrength}) to ${designComposites.length} layer(s)`);
+            for (let i = 0; i < designComposites.length; i++) {
+                const composite = designComposites[i];
+                // Don't displace the shadow overlay itself (last layer added after this block)
+                if (composite._isShadow) continue;
+                try {
+                    // Warp the full-canvas design layer with bilinear displacement
+                    composite.input = await applyDisplacementMap(composite.input, dispBuffer, displacementStrength);
+                } catch (dErr) {
+                    console.warn(`[Render] Displacement failed for layer ${i}: ${dErr.message}`);
+                }
+            }
+        }
+    }
+
     // 9. Prepare Shadow Overlay
     if (template.shadowImagePath) {
         const shadowFullPath = path.isAbsolute(template.shadowImagePath) ? template.shadowImagePath : path.join(ASSETS_ROOT, '..', template.shadowImagePath);
@@ -326,16 +358,20 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
             designComposites.push({
                 input: shadowBuffer,
                 left: 0, top: 0,
-                blend: 'multiply'
+                blend: 'multiply',
+                _isShadow: true,
             });
         }
     }
+
+    // Strip internal metadata before passing to Sharp
+    const cleanComposites = designComposites.map(({ _isShadow, ...rest }) => rest);
 
     // 10. Final Render
     if (isVideo) {
         console.log('[Render] Video Mode Render...');
         const overlay = await sharp({ create: { width: baseW, height: baseH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-            .composite(designComposites)
+            .composite(cleanComposites)
             .png().toBuffer();
 
         const tempOverlay = path.join(os.tmpdir(), `ovl-${Date.now()}.png`);
@@ -349,8 +385,8 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
         });
         fs.unlinkSync(tempOverlay);
     } else {
-        console.log(`[Render] Image Mode Render: ${designComposites.length} layers.`);
-        await sharp(effectiveBasePath).composite(designComposites).png().toFile(outputPath);
+        console.log(`[Render] Image Mode Render: ${cleanComposites.length} layers.`);
+        await sharp(effectiveBasePath).composite(cleanComposites).png().toFile(outputPath);
     }
 
     // Clean up
@@ -383,6 +419,71 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
 
     const resultUrl = publicUrl || `assets/outputs/mockups/${workspaceId}/${outputFilename}`;
     return resultUrl;
+}
+
+/**
+ * Bilinear sample — clamps OOB pixels to 0 (transparent).
+ */
+function _samplePixel(data, x, y, w, h) {
+    if (x < 0 || x >= w || y < 0 || y >= h) return [0, 0, 0, 0];
+    const idx = (y * w + x) * 4;
+    return [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]];
+}
+
+/**
+ * Warp a design image using a grayscale displacement map.
+ * Pixels are shifted by ±strength px proportional to (dispVal - 128)/128.
+ * Uses inverse mapping + bilinear interpolation so there are no holes.
+ *
+ * @param {Buffer} designBuffer  - RGBA PNG of the design
+ * @param {Buffer} dispBuffer    - PNG used as displacement source (any size)
+ * @param {number} strength      - max pixel displacement (5 = subtle, 15 = strong)
+ * @returns {Promise<Buffer>}    - warped RGBA PNG
+ */
+async function applyDisplacementMap(designBuffer, dispBuffer, strength = 8) {
+    const { data: rawDesign, info: di } = await sharp(designBuffer)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
+    const { data: rawDisp } = await sharp(dispBuffer)
+        .greyscale()
+        .resize(di.width, di.height, { fit: 'fill' })
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
+    const w = di.width;
+    const h = di.height;
+    const out = Buffer.alloc(w * h * 4, 0);
+
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const disp = (rawDisp[y * w + x] - 128) / 128; // -1..+1
+            const srcXf = x - disp * strength;
+            const srcYf = y - disp * strength;
+
+            const x0 = Math.floor(srcXf), y0 = Math.floor(srcYf);
+            const x1 = x0 + 1, y1 = y0 + 1;
+            const fx = srcXf - x0, fy = srcYf - y0;
+
+            const p00 = _samplePixel(rawDesign, x0, y0, w, h);
+            const p10 = _samplePixel(rawDesign, x1, y0, w, h);
+            const p01 = _samplePixel(rawDesign, x0, y1, w, h);
+            const p11 = _samplePixel(rawDesign, x1, y1, w, h);
+
+            const outIdx = (y * w + x) * 4;
+            for (let c = 0; c < 4; c++) {
+                out[outIdx + c] = Math.round(
+                    p00[c] * (1 - fx) * (1 - fy) +
+                    p10[c] * fx       * (1 - fy) +
+                    p01[c] * (1 - fx) * fy       +
+                    p11[c] * fx       * fy
+                );
+            }
+        }
+    }
+
+    return sharp(out, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
 }
 
 async function detectPrintArea(imagePath) {

@@ -26,6 +26,16 @@ function findLayer(layers, keywords) {
     }) || null;
 }
 
+function findAllSmartLayers(layers, keywords) {
+    return layers.filter(l => {
+        const name = (l.name || '').toLowerCase().replace(/\s+/g, '');
+        return keywords.some(k => name.includes(k));
+    });
+}
+
+const AREA_LABELS = ['Front', 'Back', 'Sleeve Left', 'Sleeve Right', 'Hood', 'Pocket'];
+
+
 function boundsToNormalized(coords, psdWidth, psdHeight) {
     const { top, left, bottom, right } = coords;
     const x = left / psdWidth;
@@ -93,25 +103,32 @@ async function analyze(psdFilePath, category = 'tshirt') {
     const psdHeight = psd.header.height;
     const allLayers = flattenLayers(psd.tree().children());
 
-    // 1. Smart object → print area
-    const smartLayer = findLayer(allLayers, SMART_KEYWORDS);
+    // 1. Smart objects → print areas (multi-area support)
+    const allSmartLayers = findAllSmartLayers(allLayers, SMART_KEYWORDS);
     let printArea;
     let smartLayerName = null;
+    const printAreas = [];
 
-    if (smartLayer) {
-        const coords = smartLayer.coords || {
-            top: smartLayer.layer?.top,
-            left: smartLayer.layer?.left,
-            bottom: smartLayer.layer?.bottom,
-            right: smartLayer.layer?.right,
+    for (let i = 0; i < allSmartLayers.length; i++) {
+        const layer = allSmartLayers[i];
+        const coords = layer.coords || {
+            top: layer.layer?.top,
+            left: layer.layer?.left,
+            bottom: layer.layer?.bottom,
+            right: layer.layer?.right,
         };
         const valid = typeof coords.top === 'number' && typeof coords.left === 'number'
             && typeof coords.bottom === 'number' && typeof coords.right === 'number'
             && (coords.right - coords.left) > 0 && (coords.bottom - coords.top) > 0;
 
         if (valid) {
-            printArea = boundsToNormalized(coords, psdWidth, psdHeight);
-            smartLayerName = smartLayer.name;
+            const normalized = boundsToNormalized(coords, psdWidth, psdHeight);
+            const id = (AREA_LABELS[i] || `Area ${i + 1}`).toLowerCase().replace(/\s+/g, '_');
+            printAreas.push({ id, label: AREA_LABELS[i] || `Area ${i + 1}`, ...normalized });
+            if (i === 0) {
+                printArea = normalized;
+                smartLayerName = layer.name;
+            }
         }
     }
 
@@ -153,6 +170,7 @@ async function analyze(psdFilePath, category = 'tshirt') {
 
     return {
         printArea,
+        printAreas: printAreas.length > 0 ? printAreas : null,
         baseBuffer,
         grayBuffer,
         shadowBuffer,

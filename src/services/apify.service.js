@@ -250,7 +250,8 @@ function _normaliseEtsyItem(item) {
                    ?? item.id
                    ?? '';
 
-    const imageUrl  = (Array.isArray(item.images) ? item.images[0] : null)
+    const _rawImg   = Array.isArray(item.images) ? item.images[0] : null;
+    const imageUrl  = (typeof _rawImg === 'string' ? _rawImg : (_rawImg?.url ?? _rawImg?.src ?? _rawImg?.fullxfull ?? null))
                    ?? item.imageUrl ?? item.image ?? '';
 
     return {

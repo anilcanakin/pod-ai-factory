@@ -259,7 +259,7 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
 
     return (
         <div className={cn(
-            'rounded-xl border overflow-hidden transition-all duration-200 group',
+            'rounded-xl border overflow-hidden transition-all duration-200 group h-full flex flex-col',
             isInstant || isHotNow
                 ? 'border-orange-500/50 hover:border-orange-400/70 shadow-[0_0_20px_rgba(249,115,22,0.08)]'
                 : ac.priority === 'HIGH'
@@ -269,17 +269,24 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
 
             {/* ── Ürün görseli (büyük, tam genişlik) ── */}
             <div className="relative w-full aspect-square overflow-hidden bg-slate-800">
-                {card.product.imageUrl ? (
+                {card.product.imageUrl?.startsWith('http') ? (
                     <img
                         src={card.product.imageUrl}
                         alt={card.product.title}
+                        referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={e => {
+                            const t = e.currentTarget;
+                            t.style.display = 'none';
+                            const fb = t.nextElementSibling as HTMLElement | null;
+                            if (fb) fb.style.display = 'flex';
+                        }}
                     />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                        <ShoppingBag className="w-12 h-12 text-slate-600" />
-                    </div>
-                )}
+                ) : null}
+                <div className="w-full h-full items-center justify-center" style={{ display: card.product.imageUrl?.startsWith('http') ? 'none' : 'flex' }}>
+                    <ShoppingBag className="w-12 h-12 text-slate-600" />
+                </div>
 
                 {/* Gradient overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
@@ -373,7 +380,7 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
             </div>
 
             {/* ── Kart gövdesi ── */}
-            <div className="p-3 space-y-2.5 bg-bg-elevated">
+            <div className="p-3 space-y-2.5 bg-bg-elevated flex-1 flex flex-col">
                 {/* Kategori + Başlık */}
                 <div>
                     <div className="flex items-center gap-1.5 mb-1">
@@ -767,6 +774,7 @@ function RadarDiscoveryCard({
     const [productsError, setProductsError] = useState<string | null>(null);
     const [prodSortBy, setProdSortBy]       = useState<'weekly' | 'monthly' | 'total' | 'favorites' | 'newest'>('weekly');
     const [prodMinReviews, setProdMinReviews] = useState(0);
+    const [prodMinSales, setProdMinSales]   = useState(1);
     const [prodMaxAge, setProdMaxAge]       = useState<number | null>(null);
     const [prodMinPrice, setProdMinPrice]   = useState<number | null>(null);
     const [prodMaxPrice, setProdMaxPrice]   = useState<number | null>(null);
@@ -1103,6 +1111,17 @@ function RadarDiscoveryCard({
                                             </button>
                                         ))}
                                     </div>
+                                    {/* Min weekly sales */}
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-text-tertiary font-semibold uppercase">Min Satış:</span>
+                                        {([0, 1, 5, 20] as const).map(v => (
+                                            <button key={v} onClick={() => setProdMinSales(v)}
+                                                className={cn('px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors',
+                                                    prodMinSales === v ? 'bg-green-500/20 text-green-300 border-green-500/40' : 'bg-bg-base text-text-tertiary border-border-subtle hover:border-border-default')}>
+                                                {v === 0 ? 'Tümü' : `${v}+/haf`}
+                                            </button>
+                                        ))}
+                                    </div>
                                     {/* Min reviews */}
                                     <div className="flex items-center gap-1.5">
                                         <span className="text-[10px] text-text-tertiary font-semibold uppercase">Min Yorum:</span>
@@ -1143,6 +1162,7 @@ function RadarDiscoveryCard({
                                     )}
                                     {products && (() => {
                                         const filtered = products
+                                            .filter(p => prodMinSales === 0 || (p.weeklySales !== null && p.weeklySales >= prodMinSales))
                                             .filter(p => p.reviewCount >= prodMinReviews)
                                             .filter(p => prodMaxAge === null || (p.listingAgeDays !== null && p.listingAgeDays <= prodMaxAge))
                                             .filter(p => prodMinPrice === null || p.price >= prodMinPrice)
@@ -1159,62 +1179,88 @@ function RadarDiscoveryCard({
                                             <div className="text-center py-12 text-text-tertiary text-sm">Bu filtrelere uygun ürün bulunamadı.</div>
                                         );
                                         return (
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                            <div className="grid grid-cols-3 gap-3" style={{ gridAutoRows: 'auto' }}>
                                                 {filtered.map(p => (
-                                                    <div key={p.listingId} className="rounded-xl border border-border-subtle bg-bg-base overflow-hidden hover:border-blue-500/40 transition-all group">
+                                                    <div key={p.listingId} className="rounded-xl border border-border-subtle bg-bg-base overflow-hidden hover:border-blue-500/40 transition-all group flex flex-col h-full">
                                                         {/* Görsel */}
-                                                        <div className="aspect-square bg-bg-overlay relative overflow-hidden">
-                                                            {p.imageUrl ? (
-                                                                <img src={p.imageUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                                            ) : (
-                                                                <div className="w-full h-full flex items-center justify-center text-text-tertiary"><ShoppingBag className="w-8 h-8 opacity-30" /></div>
-                                                            )}
+                                                        <div className="aspect-square bg-bg-overlay relative overflow-hidden flex-shrink-0">
+                                                            {p.imageUrl?.startsWith('http') ? (
+                                                                <img
+                                                                    src={p.imageUrl}
+                                                                    alt={p.title}
+                                                                    referrerPolicy="no-referrer"
+                                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                                    onError={e => {
+                                                                        const t = e.currentTarget;
+                                                                        t.style.display = 'none';
+                                                                        const fb = t.nextElementSibling as HTMLElement | null;
+                                                                        if (fb) fb.style.display = 'flex';
+                                                                    }}
+                                                                />
+                                                            ) : null}
+                                                            <div className="w-full h-full items-center justify-center text-text-tertiary" style={{ display: p.imageUrl?.startsWith('http') ? 'none' : 'flex' }}>
+                                                                <ShoppingBag className="w-8 h-8 opacity-30" />
+                                                            </div>
                                                             {p.isBestSeller && (
-                                                                <span className="absolute top-1.5 left-1.5 text-[9px] font-black bg-amber-500 text-black px-1.5 py-0.5 rounded-full">BESTSELLER</span>
+                                                                <span className="absolute top-1.5 left-1.5 text-[9px] font-black bg-amber-500 text-black px-1.5 py-0.5 rounded-full uppercase tracking-wide">Bestseller</span>
                                                             )}
+                                                            {/* Fiyat — sol alt overlay */}
+                                                            <span className="absolute bottom-1.5 left-1.5 text-[11px] font-bold bg-black/75 backdrop-blur-sm text-white px-2 py-0.5 rounded-full">
+                                                                ${p.price.toFixed(2)}
+                                                            </span>
+                                                            {/* Yaş — sağ üst */}
                                                             {p.listingAgeDays !== null && (
-                                                                <span className="absolute top-1.5 right-1.5 text-[9px] bg-black/60 text-white px-1.5 py-0.5 rounded-full">
-                                                                    {p.listingAgeDays < 30 ? `${p.listingAgeDays}g` : p.listingAgeDays < 365 ? `${Math.round(p.listingAgeDays/30)}ay` : `${(p.listingAgeDays/365).toFixed(1)}y`}
+                                                                <span className="absolute top-1.5 right-1.5 text-[9px] bg-black/60 text-white/80 px-1.5 py-0.5 rounded-full">
+                                                                    {p.listingAgeDays < 30
+                                                                        ? `${p.listingAgeDays}g`
+                                                                        : p.listingAgeDays < 365
+                                                                            ? `${Math.round(p.listingAgeDays / 30)}ay`
+                                                                            : `${(p.listingAgeDays / 365).toFixed(1)}y`}
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        {/* Bilgiler */}
-                                                        <div className="p-2.5 space-y-1.5">
+
+                                                        {/* Kart gövdesi */}
+                                                        <div className="p-2.5 flex flex-col gap-2 flex-1">
+                                                            {/* Başlık */}
                                                             <p className="text-[11px] font-medium text-text-primary line-clamp-2 leading-snug">{p.title}</p>
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-xs font-bold text-emerald-400">${p.price.toFixed(2)}</span>
-                                                                {p.rating && <span className="text-[10px] text-amber-400">★ {p.rating.toFixed(1)}</span>}
+
+                                                            {/* Satış istatistikleri — 3 sütun grid */}
+                                                            <div className="grid grid-cols-3 gap-1">
+                                                                <div className="rounded-lg bg-green-500/8 border border-green-500/15 py-1 text-center">
+                                                                    <div className="text-[12px] font-bold text-green-400 leading-none">
+                                                                        {p.weeklySales !== null && p.weeklySales > 0 ? p.weeklySales : '—'}
+                                                                    </div>
+                                                                    <div className="text-[8px] text-text-tertiary mt-0.5">haf/satış</div>
+                                                                </div>
+                                                                <div className="rounded-lg bg-blue-500/8 border border-blue-500/15 py-1 text-center">
+                                                                    <div className="text-[12px] font-bold text-blue-400 leading-none">
+                                                                        {p.monthlySales !== null && p.monthlySales > 0 ? p.monthlySales : '—'}
+                                                                    </div>
+                                                                    <div className="text-[8px] text-text-tertiary mt-0.5">ay/satış</div>
+                                                                </div>
+                                                                <div className="rounded-lg bg-violet-500/8 border border-violet-500/15 py-1 text-center">
+                                                                    <div className="text-[12px] font-bold text-violet-400 leading-none">
+                                                                        {p.totalEstimatedSales > 0 ? (p.totalEstimatedSales >= 1000 ? `${(p.totalEstimatedSales / 1000).toFixed(1)}k` : p.totalEstimatedSales) : '—'}
+                                                                    </div>
+                                                                    <div className="text-[8px] text-text-tertiary mt-0.5">toplam</div>
+                                                                </div>
                                                             </div>
-                                                            {/* Sales badges */}
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {p.weeklySales !== null && p.weeklySales > 0 && (
-                                                                    <span className="text-[9px] font-bold bg-green-500/15 text-green-400 border border-green-500/25 px-1.5 py-0.5 rounded-full">
-                                                                        ~{p.weeklySales}/haf
-                                                                    </span>
-                                                                )}
-                                                                {p.monthlySales !== null && p.monthlySales > 0 && (
-                                                                    <span className="text-[9px] font-bold bg-blue-500/15 text-blue-300 border border-blue-500/25 px-1.5 py-0.5 rounded-full">
-                                                                        ~{p.monthlySales}/ay
-                                                                    </span>
-                                                                )}
-                                                                {p.reviewCount > 0 && (
-                                                                    <span className="text-[9px] text-text-tertiary px-1.5 py-0.5 rounded-full border border-border-subtle">
-                                                                        {p.reviewCount} yorum
-                                                                    </span>
-                                                                )}
-                                                                {p.favoriteCount > 0 && (
-                                                                    <span className="text-[9px] text-text-tertiary px-1.5 py-0.5 rounded-full border border-border-subtle">
-                                                                        ♥ {p.favoriteCount}
-                                                                    </span>
-                                                                )}
+
+                                                            {/* Sosyal kanıt satırı */}
+                                                            <div className="flex items-center gap-2 text-[10px] text-text-tertiary flex-wrap">
+                                                                {p.rating && <span className="text-amber-400 font-medium">★ {p.rating.toFixed(1)}</span>}
+                                                                {p.reviewCount > 0 && <span>{p.reviewCount} yorum</span>}
+                                                                {p.favoriteCount > 0 && <span>♥ {p.favoriteCount}</span>}
                                                                 {(p as any).estimatedMonthlyRevenue > 0 && (
-                                                                    <span className="text-[9px] text-emerald-400 px-1.5 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10">
+                                                                    <span className="ml-auto text-emerald-400 font-semibold">
                                                                         ~${(p as any).estimatedMonthlyRevenue}/ay
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            {/* Actions */}
-                                                            <div className="flex gap-1 pt-0.5">
+
+                                                            {/* Aksiyon butonları */}
+                                                            <div className="flex gap-1 mt-auto pt-0.5">
                                                                 <a href={p.listingUrl} target="_blank" rel="noopener noreferrer"
                                                                     className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-bg-overlay hover:bg-white/10 text-text-tertiary text-[10px] border border-border-subtle transition-colors">
                                                                     <ArrowRight className="w-2.5 h-2.5" />Etsy
@@ -1223,7 +1269,6 @@ function RadarDiscoveryCard({
                                                                     onClick={() => {
                                                                         setModalOpen(false);
                                                                         const prompt = `${p.title.slice(0, 80)}, ${d.niche}`;
-                                                                        setSelModel(selModel);
                                                                         setTimeout(() => {
                                                                             const params = new URLSearchParams({ prompt, model: selModel, style: selStyle, niche: d.niche });
                                                                             window.location.href = `/dashboard/factory?${params.toString()}`;
@@ -1885,16 +1930,15 @@ export function WpiClient() {
                     </p>
                 </div>
             ) : (
-                <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-3 space-y-0">
+                <div className="grid grid-cols-3 gap-3" style={{ gridAutoRows: '1fr' }}>
                     {cards.map(card => (
-                        <div key={card.id} className="break-inside-avoid mb-3">
-                            <VisualActionCard
-                                card={card}
-                                onApprove={handleApprove}
-                                onReject={handleReject}
-                                onApproveFactory={handleApproveFactory}
-                            />
-                        </div>
+                        <VisualActionCard
+                            key={card.id}
+                            card={card}
+                            onApprove={handleApprove}
+                            onReject={handleReject}
+                            onApproveFactory={handleApproveFactory}
+                        />
                     ))}
                 </div>
             )}

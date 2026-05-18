@@ -163,6 +163,15 @@ async function processBatch(job) {
     });
 
     console.log(`[BatchWorker] ■ Tamamlandı → ${completed} başarılı, ${failed} başarısız | batchJobId:${batchJobId}`);
+
+    // Otonom döngüden geldiyse post-production'ı tetikle
+    if (job.data.autonomousLoop && completed > 0) {
+        const { runPostProduction } = require('../services/autonomous-loop.service');
+        runPostProduction(batchJobId, workspaceId).catch(err =>
+            console.warn('[AutoLoop] Post-production tetiklenemedi:', err.message)
+        );
+    }
+
     return { completed, failed };
 }
 

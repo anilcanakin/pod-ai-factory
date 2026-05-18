@@ -30,12 +30,14 @@ import {
     PackageSearch,
     BarChart2,
     Eye,
+    RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SHORTCUT_LABELS } from '@/hooks/useKeyboardShortcuts';
 
 const navItems = [
     { href: '/dashboard/hq',            label: 'Ana Merkez',    icon: Zap },
+    { href: '/dashboard/loop',          label: 'Otonom Döngü',  icon: RefreshCw },
     { href: '/dashboard/overview',      label: 'Genel Bakış',   icon: LayoutDashboard },
     { href: '/dashboard/wpi',           label: 'WPI / Radar',   icon: Target },
     { href: '/dashboard/power-seller',  label: 'Power Seller',  icon: Eye },

@@ -90,6 +90,8 @@ require('./jobs/playwright-health-cron').startCron();
 require('./jobs/order-poller.job').startCron();
 // Power Seller Monitor — her 6 saatte bir takip edilen top mağazaları tara
 require('./jobs/power-seller-monitor.cron').startCron();
+// Autonomous Loop — her gece 03:00 | Kurallar → Audit → Ideas → Batch → Mockup → SEO
+require('./jobs/autonomous-loop.cron').startCron();
 
 // Storage asset explicit workspace scoped protection
 app.use('/assets/outputs/:filename', async (req, res, next) => {
@@ -418,6 +420,7 @@ app.use('/api/finance', generalLimiter, require('./routes/finance.routes'));
 app.use('/api/batch',  aiContentLimiter, require('./routes/batch.routes'));
 app.use('/api/styles', generalLimiter, require('./routes/style.routes'));
 app.use('/api/power-seller', generalLimiter, require('./routes/power-seller.routes'));
+app.use('/api/loop',        generalLimiter, require('./routes/autonomous-loop.routes'));
 
 
 app.use((err, req, res, next) => {

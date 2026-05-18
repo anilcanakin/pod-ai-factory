@@ -108,7 +108,8 @@ async function main() {
                     console.log(`  ✓ Bölüm ${i + 1} — ${chunks[i].length} karakter`);
                     totalOk++;
                 } else {
-                    console.log(`  ⚠ Bölüm ${i + 1} — HTTP ${r.status}`);
+                    const errMsg = typeof r.body === 'object' ? (r.body.error || JSON.stringify(r.body)) : String(r.body).slice(0, 200);
+                    console.log(`  ⚠ Bölüm ${i + 1} — HTTP ${r.status}: ${errMsg}`);
                     totalFail++;
                 }
             } catch (e) {

@@ -611,15 +611,19 @@ async function chunkAndEmbed(fullText, metadata, workspaceId, title = 'Knowledge
             // Domain sınıflandırması — SEO / VISUAL / MANAGEMENT / STRATEGY
             const domain = _classifyDomain(chunk, metadata.source_type);
 
+            // PostgreSQL UTF-8: null byte (0x00) reddeder — PDF parser artıkları
+            const safeChunk = chunk.replace(/\x00/g, '');
+            const safeTitle = `${title} [Chunk ${chunkIndex}]`.replace(/\x00/g, '');
+
             // CorporateMemory'ye kaydet
             const memory = await prisma.corporateMemory.create({
                 data: {
                     workspaceId,
                     type: metadata.source_type === 'YOUTUBE' ? 'TEXT_NOTE' : 'TEXT_NOTE',
-                    title: `${title} [Chunk ${chunkIndex}]`,
-                    content: chunk,
+                    title: safeTitle,
+                    content: safeChunk,
                     category: domain,
-                    analysisResult: { ...metadata, chunkIndex, domain, preview: chunk.substring(0, 100) },
+                    analysisResult: { ...metadata, chunkIndex, domain, preview: safeChunk.substring(0, 100) },
                     ...(vectorEmbedding && { vectorEmbedding })
                 }
             });

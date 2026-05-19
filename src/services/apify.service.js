@@ -250,15 +250,15 @@ function _normaliseEtsyItem(item) {
                    ?? item.id
                    ?? '';
 
-    const _rawImg   = Array.isArray(item.images) ? item.images[0] : null;
+    const _rawImg   = Array.isArray(item.images) ? item.images[0]
+                    : Array.isArray(item.image_urls) ? item.image_urls[0]
+                    : null;
     const _imgFromObj = typeof _rawImg === 'string' ? _rawImg
         : (_rawImg?.url ?? _rawImg?.src ?? _rawImg?.fullxfull
-            ?? _rawImg?.url_fullxfull ?? _rawImg?.url_570xN ?? _rawImg?.url_170xN
-            ?? _rawImg?.['570xN'] ?? _rawImg?.['fullxfull'] ?? null);
+            ?? _rawImg?.url_fullxfull ?? _rawImg?.url_570xN ?? _rawImg?.url_170xN ?? null);
     const imageUrl  = _imgFromObj
-                   ?? item.imageUrl ?? item.thumbnail ?? item.thumbnailUrl
-                   ?? item.main_image ?? item.mainImage ?? item.image_url ?? item.image ?? '';
-    if (!imageUrl) console.log('[Apify][imgDebug] imageUrl boş — tüm item key\'leri:', Object.keys(item).join(', '));
+                   ?? item.imageUrl ?? item.image_url ?? item.thumbnail ?? item.thumbnailUrl
+                   ?? item.main_image ?? item.mainImage ?? item.image ?? '';
 
     return {
         listingId,

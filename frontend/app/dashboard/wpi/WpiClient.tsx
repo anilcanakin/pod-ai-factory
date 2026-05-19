@@ -19,6 +19,11 @@ import { toast } from 'sonner';
 
 // ─── Category config ──────────────────────────────────────────────────────────
 
+const proxyImg = (url?: string | null) =>
+    url?.startsWith('https://i.etsystatic.com/')
+        ? `/api/proxy/img?url=${encodeURIComponent(url)}`
+        : (url ?? '');
+
 const CATEGORY_CONFIG: Record<WpiProductCategory | string, { label: string; color: string; dot: string }> = {
     POD_APPAREL:      { label: 'Apparel',  color: 'bg-violet-500/20 text-violet-300 border-violet-500/30', dot: 'bg-violet-400' },
     HOME_DECOR:       { label: 'Home',     color: 'bg-blue-500/20 text-blue-300 border-blue-500/30',       dot: 'bg-blue-400'   },
@@ -271,9 +276,8 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
             <div className="relative w-full aspect-square overflow-hidden bg-slate-800">
                 {card.product.imageUrl?.startsWith('http') ? (
                     <img
-                        src={card.product.imageUrl}
+                        src={proxyImg(card.product.imageUrl)}
                         alt={card.product.title}
-                        referrerPolicy="no-referrer"
                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                         onError={e => {
                             const t = e.currentTarget;
@@ -1185,9 +1189,8 @@ function RadarDiscoveryCard({
                                                         <div className="aspect-square bg-bg-overlay relative overflow-hidden flex-shrink-0">
                                                             {p.imageUrl?.startsWith('http') ? (
                                                                 <img
-                                                                    src={p.imageUrl}
+                                                                    src={proxyImg(p.imageUrl)}
                                                                     alt={p.title}
-                                                                    referrerPolicy="no-referrer"
                                                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                                                     onError={e => {
                                                                         const t = e.currentTarget;

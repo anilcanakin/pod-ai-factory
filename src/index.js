@@ -423,6 +423,29 @@ app.use('/api/power-seller', generalLimiter, require('./routes/power-seller.rout
 app.use('/api/loop',        generalLimiter, require('./routes/autonomous-loop.routes'));
 
 
+// ── Etsy CDN image proxy — tarayıcı hotlink korumasını aşmak için ──────────────
+app.get('/api/proxy/img', async (req, res) => {
+    const { url } = req.query;
+    if (!url || !String(url).startsWith('https://i.etsystatic.com/')) {
+        return res.status(400).json({ error: 'Geçersiz URL' });
+    }
+    try {
+        const upstream = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://www.etsy.com/',
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+            },
+        });
+        const ct = upstream.headers.get('content-type') || 'image/jpeg';
+        res.setHeader('Content-Type', ct);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        upstream.body.pipe(res);
+    } catch (e) {
+        res.status(502).json({ error: 'Görsel alınamadı' });
+    }
+});
+
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: err.message || 'Internal Server Error' });

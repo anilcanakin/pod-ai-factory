@@ -106,9 +106,10 @@ export function PowerSellerClient() {
                         {addMut.isPending ? 'Ekleniyor...' : 'Ekle'}
                     </button>
                 </div>
-                {addMut.data && 'error' in (addMut.data as object) && (
-                    <p className="text-red-400 text-xs">{String((addMut.data as { error: unknown }).error)}</p>
-                )}
+                {(() => {
+                    const d = addMut.data as Record<string, unknown> | undefined;
+                    return d && 'error' in d ? <p className="text-red-400 text-xs">{String(d.error)}</p> : null;
+                })()}
             </div>
 
             {/* Stores List */}

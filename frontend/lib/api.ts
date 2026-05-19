@@ -299,6 +299,7 @@ export interface MockupTransform {
 export interface MockupRender {
     renderMode: string;
     displacementMapPath?: string | null;
+    displacementStrength?: number | null;
     perspective?: unknown | null;
 }
 export interface CatalogColorMatch {

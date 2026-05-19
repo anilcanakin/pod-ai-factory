@@ -274,7 +274,6 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
                         src={card.product.imageUrl}
                         alt={card.product.title}
                         referrerPolicy="no-referrer"
-                        crossOrigin="anonymous"
                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                         onError={e => {
                             const t = e.currentTarget;

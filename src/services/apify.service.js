@@ -251,8 +251,14 @@ function _normaliseEtsyItem(item) {
                    ?? '';
 
     const _rawImg   = Array.isArray(item.images) ? item.images[0] : null;
-    const imageUrl  = (typeof _rawImg === 'string' ? _rawImg : (_rawImg?.url ?? _rawImg?.src ?? _rawImg?.fullxfull ?? null))
-                   ?? item.imageUrl ?? item.image ?? '';
+    const _imgFromObj = typeof _rawImg === 'string' ? _rawImg
+        : (_rawImg?.url ?? _rawImg?.src ?? _rawImg?.fullxfull
+            ?? _rawImg?.url_fullxfull ?? _rawImg?.url_570xN ?? _rawImg?.url_170xN
+            ?? _rawImg?.['570xN'] ?? _rawImg?.['fullxfull'] ?? null);
+    const imageUrl  = _imgFromObj
+                   ?? item.imageUrl ?? item.thumbnail ?? item.thumbnailUrl
+                   ?? item.main_image ?? item.mainImage ?? item.image_url ?? item.image ?? '';
+    if (!imageUrl && item.images) console.log('[Apify][imgDebug] images[0] keys:', Object.keys(_rawImg || {}), '| item keys sample:', Object.keys(item).filter(k => k.toLowerCase().includes('image') || k.toLowerCase().includes('photo') || k.toLowerCase().includes('thumb')));
 
     return {
         listingId,

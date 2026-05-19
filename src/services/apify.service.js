@@ -258,7 +258,7 @@ function _normaliseEtsyItem(item) {
     const imageUrl  = _imgFromObj
                    ?? item.imageUrl ?? item.thumbnail ?? item.thumbnailUrl
                    ?? item.main_image ?? item.mainImage ?? item.image_url ?? item.image ?? '';
-    if (!imageUrl && item.images) console.log('[Apify][imgDebug] images[0] keys:', Object.keys(_rawImg || {}), '| item keys sample:', Object.keys(item).filter(k => k.toLowerCase().includes('image') || k.toLowerCase().includes('photo') || k.toLowerCase().includes('thumb')));
+    if (!imageUrl) console.log('[Apify][imgDebug] imageUrl boş — tüm item key\'leri:', Object.keys(item).join(', '));
 
     return {
         listingId,

@@ -107,7 +107,7 @@ export function PowerSellerClient() {
                     </button>
                 </div>
                 {addMut.data && 'error' in (addMut.data as object) && (
-                    <p className="text-red-400 text-xs">{(addMut.data as { error: string }).error}</p>
+                    <p className="text-red-400 text-xs">{String((addMut.data as { error: unknown }).error)}</p>
                 )}
             </div>
 

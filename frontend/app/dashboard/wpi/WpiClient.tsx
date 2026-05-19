@@ -396,6 +396,28 @@ function VisualActionCard({ card, onApprove, onReject, onApproveFactory }: {
                     <p className="text-[10px] text-text-tertiary mt-0.5 truncate">{card.product.shopName}</p>
                 </div>
 
+                {/* Satış istatistikleri */}
+                <div className="grid grid-cols-3 gap-1 text-center">
+                    <div className="rounded-lg bg-violet-500/8 border border-violet-500/15 py-1.5">
+                        <div className="text-[13px] font-bold text-violet-400 leading-none">
+                            {td.salesCount > 0 ? (td.salesCount >= 1000 ? `${(td.salesCount / 1000).toFixed(1)}k` : td.salesCount) : '—'}
+                        </div>
+                        <div className="text-[8px] text-text-tertiary mt-0.5">toplam satış</div>
+                    </div>
+                    <div className="rounded-lg bg-emerald-500/8 border border-emerald-500/15 py-1.5">
+                        <div className="text-[13px] font-bold text-emerald-400 leading-none">
+                            {(card.product as any).estimatedMonthlyRevenue > 0 ? `$${(card.product as any).estimatedMonthlyRevenue}` : '—'}
+                        </div>
+                        <div className="text-[8px] text-text-tertiary mt-0.5">aylık gelir</div>
+                    </div>
+                    <div className="rounded-lg bg-blue-500/8 border border-blue-500/15 py-1.5">
+                        <div className={cn('text-[13px] font-bold leading-none', td.salesDelta > 0 ? 'text-green-400' : 'text-text-tertiary')}>
+                            {td.salesDelta > 0 ? `+${td.salesDelta}` : '—'}
+                        </div>
+                        <div className="text-[8px] text-text-tertiary mt-0.5">48h yeni</div>
+                    </div>
+                </div>
+
                 {/* Design Prompt */}
                 {designPrompt && (
                     <div className="rounded-lg bg-violet-500/8 border border-violet-500/20 p-2 space-y-1.5">
@@ -781,6 +803,7 @@ function RadarDiscoveryCard({
     const [prodMaxAge, setProdMaxAge]       = useState<number | null>(null);
     const [prodMinPrice, setProdMinPrice]   = useState<number | null>(null);
     const [prodMaxPrice, setProdMaxPrice]   = useState<number | null>(null);
+    const [prodCategory, setProdCategory]   = useState<string>('ALL');
 
     const loadProducts = async () => {
         if (products || productsLoading) return;
@@ -1147,6 +1170,34 @@ function RadarDiscoveryCard({
                                             </button>
                                         ))}
                                     </div>
+                                    {/* Kategori grupla */}
+                                    <div className="flex items-center gap-1.5 flex-wrap w-full border-t border-border-subtle pt-2">
+                                        <span className="text-[10px] text-text-tertiary font-semibold uppercase">Kategori:</span>
+                                        {([
+                                            { id: 'ALL',              label: 'Tümü' },
+                                            { id: 'POD_APPAREL',      label: 'Giyim' },
+                                            { id: 'HOME_DECOR',       label: 'Ev Dekor' },
+                                            { id: 'ACCESSORIES',      label: 'Aksesuar' },
+                                            { id: 'DIGITAL_DOWNLOAD', label: 'Dijital' },
+                                        ] as const).map(c => (
+                                            <button key={c.id} onClick={() => setProdCategory(c.id)}
+                                                className={cn('px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors',
+                                                    prodCategory === c.id ? 'bg-accent/20 text-accent border-accent/40' : 'bg-bg-base text-text-tertiary border-border-subtle hover:border-border-default')}>
+                                                {c.label}
+                                                {c.id !== 'ALL' && products && (() => {
+                                                    const count = products.filter(p => {
+                                                        const cat = p.category || (
+                                                            /shirt|tee|hoodie|sweatshirt|clothing|tank|jacket|dress|shorts|legging|onesie/i.test(p.title) ? 'POD_APPAREL' :
+                                                            /wall art|poster|print|home decor|pillow|blanket|mug|cup|canvas|frame|tapestry/i.test(p.title) ? 'HOME_DECOR' :
+                                                            /bag|tote|hat|cap|phone case|keychain/i.test(p.title) ? 'ACCESSORIES' : 'POD_APPAREL'
+                                                        );
+                                                        return cat === c.id;
+                                                    }).length;
+                                                    return count > 0 ? <span className="ml-1 opacity-60">({count})</span> : null;
+                                                })()}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
 
                                 {/* Product list */}
@@ -1164,7 +1215,16 @@ function RadarDiscoveryCard({
                                         </div>
                                     )}
                                     {products && (() => {
+                                        const detectCat = (p: NicheProduct) => {
+                                            if (p.category) return p.category;
+                                            const t = p.title;
+                                            if (/shirt|tee|hoodie|sweatshirt|clothing|tank|jacket|dress|shorts|legging|onesie/i.test(t)) return 'POD_APPAREL';
+                                            if (/wall art|poster|print|home decor|pillow|blanket|mug|cup|canvas|frame|tapestry/i.test(t)) return 'HOME_DECOR';
+                                            if (/bag|tote|hat|cap|phone case|keychain/i.test(t)) return 'ACCESSORIES';
+                                            return 'POD_APPAREL';
+                                        };
                                         const filtered = products
+                                            .filter(p => prodCategory === 'ALL' || detectCat(p) === prodCategory)
                                             .filter(p => prodMinSales === 0 || (p.weeklySales !== null && p.weeklySales >= prodMinSales))
                                             .filter(p => p.reviewCount >= prodMinReviews)
                                             .filter(p => prodMaxAge === null || (p.listingAgeDays !== null && p.listingAgeDays <= prodMaxAge))
@@ -1181,108 +1241,128 @@ function RadarDiscoveryCard({
                                         if (!filtered.length) return (
                                             <div className="text-center py-12 text-text-tertiary text-sm">Bu filtrelere uygun ürün bulunamadı.</div>
                                         );
-                                        return (
-                                            <div className="grid grid-cols-3 gap-3" style={{ gridAutoRows: 'auto' }}>
-                                                {filtered.map(p => (
-                                                    <div key={p.listingId} className="rounded-xl border border-border-subtle bg-bg-base overflow-hidden hover:border-blue-500/40 transition-all group flex flex-col h-full">
-                                                        {/* Görsel */}
-                                                        <div className="aspect-square bg-bg-overlay relative overflow-hidden flex-shrink-0">
-                                                            {p.imageUrl?.startsWith('http') ? (
-                                                                <img
-                                                                    src={proxyImg(p.imageUrl)}
-                                                                    alt={p.title}
-                                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                                                    onError={e => {
-                                                                        const t = e.currentTarget;
-                                                                        t.style.display = 'none';
-                                                                        const fb = t.nextElementSibling as HTMLElement | null;
-                                                                        if (fb) fb.style.display = 'flex';
-                                                                    }}
-                                                                />
-                                                            ) : null}
-                                                            <div className="w-full h-full items-center justify-center text-text-tertiary" style={{ display: p.imageUrl?.startsWith('http') ? 'none' : 'flex' }}>
-                                                                <ShoppingBag className="w-8 h-8 opacity-30" />
+                                        const renderCard = (p: NicheProduct) => (
+                                            <div key={p.listingId} className="rounded-xl border border-border-subtle bg-bg-base overflow-hidden hover:border-blue-500/40 transition-all group flex flex-col h-full">
+                                                <div className="aspect-square bg-bg-overlay relative overflow-hidden flex-shrink-0">
+                                                    {p.imageUrl?.startsWith('http') ? (
+                                                        <img
+                                                            src={proxyImg(p.imageUrl)}
+                                                            alt={p.title}
+                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                            onError={e => {
+                                                                const t = e.currentTarget;
+                                                                t.style.display = 'none';
+                                                                const fb = t.nextElementSibling as HTMLElement | null;
+                                                                if (fb) fb.style.display = 'flex';
+                                                            }}
+                                                        />
+                                                    ) : null}
+                                                    <div className="w-full h-full items-center justify-center text-text-tertiary" style={{ display: p.imageUrl?.startsWith('http') ? 'none' : 'flex' }}>
+                                                        <ShoppingBag className="w-8 h-8 opacity-30" />
+                                                    </div>
+                                                    {p.isBestSeller && (
+                                                        <span className="absolute top-1.5 left-1.5 text-[9px] font-black bg-amber-500 text-black px-1.5 py-0.5 rounded-full uppercase tracking-wide">Bestseller</span>
+                                                    )}
+                                                    <span className="absolute bottom-1.5 left-1.5 text-[11px] font-bold bg-black/75 backdrop-blur-sm text-white px-2 py-0.5 rounded-full">
+                                                        ${p.price.toFixed(2)}
+                                                    </span>
+                                                    {p.listingAgeDays !== null && (
+                                                        <span className="absolute top-1.5 right-1.5 text-[9px] bg-black/60 text-white/80 px-1.5 py-0.5 rounded-full">
+                                                            {p.listingAgeDays < 30
+                                                                ? `${p.listingAgeDays}g`
+                                                                : p.listingAgeDays < 365
+                                                                    ? `${Math.round(p.listingAgeDays / 30)}ay`
+                                                                    : `${(p.listingAgeDays / 365).toFixed(1)}y`}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="p-2.5 flex flex-col gap-2 flex-1">
+                                                    <p className="text-[11px] font-medium text-text-primary line-clamp-2 leading-snug">{p.title}</p>
+                                                    <div className="grid grid-cols-3 gap-1">
+                                                        <div className="rounded-lg bg-green-500/8 border border-green-500/15 py-1 text-center">
+                                                            <div className="text-[12px] font-bold text-green-400 leading-none">
+                                                                {p.weeklySales !== null && p.weeklySales > 0 ? p.weeklySales : '—'}
                                                             </div>
-                                                            {p.isBestSeller && (
-                                                                <span className="absolute top-1.5 left-1.5 text-[9px] font-black bg-amber-500 text-black px-1.5 py-0.5 rounded-full uppercase tracking-wide">Bestseller</span>
-                                                            )}
-                                                            {/* Fiyat — sol alt overlay */}
-                                                            <span className="absolute bottom-1.5 left-1.5 text-[11px] font-bold bg-black/75 backdrop-blur-sm text-white px-2 py-0.5 rounded-full">
-                                                                ${p.price.toFixed(2)}
-                                                            </span>
-                                                            {/* Yaş — sağ üst */}
-                                                            {p.listingAgeDays !== null && (
-                                                                <span className="absolute top-1.5 right-1.5 text-[9px] bg-black/60 text-white/80 px-1.5 py-0.5 rounded-full">
-                                                                    {p.listingAgeDays < 30
-                                                                        ? `${p.listingAgeDays}g`
-                                                                        : p.listingAgeDays < 365
-                                                                            ? `${Math.round(p.listingAgeDays / 30)}ay`
-                                                                            : `${(p.listingAgeDays / 365).toFixed(1)}y`}
-                                                                </span>
-                                                            )}
+                                                            <div className="text-[8px] text-text-tertiary mt-0.5">haf/satış</div>
                                                         </div>
-
-                                                        {/* Kart gövdesi */}
-                                                        <div className="p-2.5 flex flex-col gap-2 flex-1">
-                                                            {/* Başlık */}
-                                                            <p className="text-[11px] font-medium text-text-primary line-clamp-2 leading-snug">{p.title}</p>
-
-                                                            {/* Satış istatistikleri — 3 sütun grid */}
-                                                            <div className="grid grid-cols-3 gap-1">
-                                                                <div className="rounded-lg bg-green-500/8 border border-green-500/15 py-1 text-center">
-                                                                    <div className="text-[12px] font-bold text-green-400 leading-none">
-                                                                        {p.weeklySales !== null && p.weeklySales > 0 ? p.weeklySales : '—'}
-                                                                    </div>
-                                                                    <div className="text-[8px] text-text-tertiary mt-0.5">haf/satış</div>
-                                                                </div>
-                                                                <div className="rounded-lg bg-blue-500/8 border border-blue-500/15 py-1 text-center">
-                                                                    <div className="text-[12px] font-bold text-blue-400 leading-none">
-                                                                        {p.monthlySales !== null && p.monthlySales > 0 ? p.monthlySales : '—'}
-                                                                    </div>
-                                                                    <div className="text-[8px] text-text-tertiary mt-0.5">ay/satış</div>
-                                                                </div>
-                                                                <div className="rounded-lg bg-violet-500/8 border border-violet-500/15 py-1 text-center">
-                                                                    <div className="text-[12px] font-bold text-violet-400 leading-none">
-                                                                        {p.totalEstimatedSales > 0 ? (p.totalEstimatedSales >= 1000 ? `${(p.totalEstimatedSales / 1000).toFixed(1)}k` : p.totalEstimatedSales) : '—'}
-                                                                    </div>
-                                                                    <div className="text-[8px] text-text-tertiary mt-0.5">toplam</div>
-                                                                </div>
+                                                        <div className="rounded-lg bg-blue-500/8 border border-blue-500/15 py-1 text-center">
+                                                            <div className="text-[12px] font-bold text-blue-400 leading-none">
+                                                                {p.monthlySales !== null && p.monthlySales > 0 ? p.monthlySales : '—'}
                                                             </div>
-
-                                                            {/* Sosyal kanıt satırı */}
-                                                            <div className="flex items-center gap-2 text-[10px] text-text-tertiary flex-wrap">
-                                                                {p.rating && <span className="text-amber-400 font-medium">★ {p.rating.toFixed(1)}</span>}
-                                                                {p.reviewCount > 0 && <span>{p.reviewCount} yorum</span>}
-                                                                {p.favoriteCount > 0 && <span>♥ {p.favoriteCount}</span>}
-                                                                {(p as any).estimatedMonthlyRevenue > 0 && (
-                                                                    <span className="ml-auto text-emerald-400 font-semibold">
-                                                                        ~${(p as any).estimatedMonthlyRevenue}/ay
-                                                                    </span>
-                                                                )}
+                                                            <div className="text-[8px] text-text-tertiary mt-0.5">ay/satış</div>
+                                                        </div>
+                                                        <div className="rounded-lg bg-violet-500/8 border border-violet-500/15 py-1 text-center">
+                                                            <div className="text-[12px] font-bold text-violet-400 leading-none">
+                                                                {p.totalEstimatedSales > 0 ? (p.totalEstimatedSales >= 1000 ? `${(p.totalEstimatedSales / 1000).toFixed(1)}k` : p.totalEstimatedSales) : '—'}
                                                             </div>
-
-                                                            {/* Aksiyon butonları */}
-                                                            <div className="flex gap-1 mt-auto pt-0.5">
-                                                                <a href={p.listingUrl} target="_blank" rel="noopener noreferrer"
-                                                                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-bg-overlay hover:bg-white/10 text-text-tertiary text-[10px] border border-border-subtle transition-colors">
-                                                                    <ArrowRight className="w-2.5 h-2.5" />Etsy
-                                                                </a>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setModalOpen(false);
-                                                                        const prompt = `${p.title.slice(0, 80)}, ${d.niche}`;
-                                                                        setTimeout(() => {
-                                                                            const params = new URLSearchParams({ prompt, model: selModel, style: selStyle, niche: d.niche });
-                                                                            window.location.href = `/dashboard/factory?${params.toString()}`;
-                                                                        }, 100);
-                                                                    }}
-                                                                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-green-600/10 hover:bg-green-600/20 text-green-400 text-[10px] border border-green-500/20 transition-colors">
-                                                                    <Factory className="w-2.5 h-2.5" />Üret
-                                                                </button>
-                                                            </div>
+                                                            <div className="text-[8px] text-text-tertiary mt-0.5">toplam</div>
                                                         </div>
                                                     </div>
-                                                ))}
+                                                    <div className="flex items-center gap-2 text-[10px] text-text-tertiary flex-wrap">
+                                                        {p.rating && <span className="text-amber-400 font-medium">★ {p.rating.toFixed(1)}</span>}
+                                                        {p.reviewCount > 0 && <span>{p.reviewCount} yorum</span>}
+                                                        {p.favoriteCount > 0 && <span>♥ {p.favoriteCount}</span>}
+                                                        {(p as any).estimatedMonthlyRevenue > 0 && (
+                                                            <span className="ml-auto text-emerald-400 font-semibold">
+                                                                ~${(p as any).estimatedMonthlyRevenue}/ay
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex gap-1 mt-auto pt-0.5">
+                                                        <a href={p.listingUrl} target="_blank" rel="noopener noreferrer"
+                                                            className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-bg-overlay hover:bg-white/10 text-text-tertiary text-[10px] border border-border-subtle transition-colors">
+                                                            <ArrowRight className="w-2.5 h-2.5" />Etsy
+                                                        </a>
+                                                        <button
+                                                            onClick={() => {
+                                                                setModalOpen(false);
+                                                                const prompt = `${p.title.slice(0, 80)}, ${d.niche}`;
+                                                                setTimeout(() => {
+                                                                    const params = new URLSearchParams({ prompt, model: selModel, style: selStyle, niche: d.niche });
+                                                                    window.location.href = `/dashboard/factory?${params.toString()}`;
+                                                                }, 100);
+                                                            }}
+                                                            className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-green-600/10 hover:bg-green-600/20 text-green-400 text-[10px] border border-green-500/20 transition-colors">
+                                                            <Factory className="w-2.5 h-2.5" />Üret
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                        if (prodCategory !== 'ALL') {
+                                            return (
+                                                <div className="grid grid-cols-3 gap-3" style={{ gridAutoRows: 'auto' }}>
+                                                    {filtered.map(renderCard)}
+                                                </div>
+                                            );
+                                        }
+                                        const CAT_ORDER = ['POD_APPAREL', 'HOME_DECOR', 'ACCESSORIES', 'DIGITAL_DOWNLOAD'];
+                                        const grouped: Record<string, NicheProduct[]> = {};
+                                        for (const p of filtered) {
+                                            const cat = detectCat(p);
+                                            if (!grouped[cat]) grouped[cat] = [];
+                                            grouped[cat].push(p);
+                                        }
+                                        return (
+                                            <div className="space-y-6">
+                                                {CAT_ORDER.filter(cat => grouped[cat]?.length).map(cat => {
+                                                    const cfg = CATEGORY_CONFIG[cat] ?? { label: cat, color: 'bg-slate-700/60 text-slate-300 border-slate-700/60', dot: 'bg-slate-400' };
+                                                    return (
+                                                        <div key={cat}>
+                                                            <div className="flex items-center gap-2 mb-3">
+                                                                <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border', cfg.color)}>
+                                                                    <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', cfg.dot)} />
+                                                                    {cfg.label}
+                                                                </span>
+                                                                <span className="text-[10px] text-text-tertiary">{grouped[cat].length} ürün</span>
+                                                                <div className="flex-1 h-px bg-border-subtle" />
+                                                            </div>
+                                                            <div className="grid grid-cols-3 gap-3" style={{ gridAutoRows: 'auto' }}>
+                                                                {grouped[cat].map(renderCard)}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         );
                                     })()}
@@ -1933,7 +2013,7 @@ export function WpiClient() {
                 </div>
             ) : (
                 <div className="grid grid-cols-3 gap-3" style={{ gridAutoRows: '1fr' }}>
-                    {cards.map(card => (
+                    {[...cards].sort((a, b) => (b.brainComparison?.confidence ?? 0) - (a.brainComparison?.confidence ?? 0)).map(card => (
                         <VisualActionCard
                             key={card.id}
                             card={card}

@@ -1008,6 +1008,7 @@ export interface NicheProduct {
     weeklySales: number | null;
     isBestSeller: boolean;
     isPopularNow: boolean;
+    category?: string | null;
 }
 
 export interface RadarDiscovery {

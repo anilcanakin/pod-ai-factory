@@ -5,6 +5,22 @@ const seoMotor = require('../services/seo.service');
 const redis   = require('../config/redis');
 const { ApifyPaymentError, X402ConfigError } = require('../services/apify.service');
 
+// ─── Category detection for niche-products ───────────────────────────────────
+const _NP_APPAREL_RE   = /shirt|tee|hoodie|sweatshirt|apparel|clothing|tank|jacket|dress|shorts|legging|onesie/i;
+const _NP_DECOR_RE     = /wall art|poster|print|home decor|pillow|blanket|mug|cup|canvas|frame|tapestry|sign|banner/i;
+const _NP_ACCESSORY_RE = /bag|tote|hat|cap|phone case|accessory|accessories|keychain|mask|patch|pin/i;
+const _NP_NONPOD_RE    = /jewelry|jewellery|ring|necklace|bracelet|earring|bead|gemstone|crystal|supply|supplies|material|yarn|fabric|tool/i;
+
+function _nicheCategory(p) {
+    if (p.isDigital || p.is_digital) return 'DIGITAL_DOWNLOAD';
+    const haystack = [p.taxonomyPath ?? p.taxonomy_path ?? '', p.category ?? '', p.title ?? ''].join(' ');
+    if (_NP_NONPOD_RE.test(haystack))    return 'NON_POD';
+    if (_NP_APPAREL_RE.test(haystack))   return 'POD_APPAREL';
+    if (_NP_DECOR_RE.test(haystack))     return 'HOME_DECOR';
+    if (_NP_ACCESSORY_RE.test(haystack)) return 'ACCESSORIES';
+    return 'POD_APPAREL';
+}
+
 // ─── Scan state store ────────────────────────────────────────────────────────
 // Redis birincil depolama; Redis kota aşımı/hata durumunda in-memory Map devreye girer.
 
@@ -595,7 +611,7 @@ router.get('/niche-products', async (req, res) => {
             const monthlySales = listingAgeDays ? parseFloat((totalEst / (listingAgeDays / 30)).toFixed(1)) : null;
             const weeklySales  = listingAgeDays ? parseFloat((totalEst / (listingAgeDays / 7)).toFixed(1))  : null;
 
-            return { ...p, totalEstimatedSales: totalEst, listingAgeDays, monthlySales, weeklySales };
+            return { ...p, totalEstimatedSales: totalEst, listingAgeDays, monthlySales, weeklySales, category: _nicheCategory(p) };
         });
 
         enriched.sort((a, b) => (b.weeklySales ?? -1) - (a.weeklySales ?? -1));

@@ -16,7 +16,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "ingest": "node src/scripts/bulk-ingest.js",
     "ingest:dry": "node src/scripts/bulk-ingest.js --dry-run",
-    "ingest:reset": "node src/scripts/bulk-ingest.js --reset"
+    "ingest:reset": "node src/scripts/bulk-ingest.js --reset",
+    "test:composite": "node --test tests/composite-engine.test.js"
   },
   "keywords": [],
   "author": "",

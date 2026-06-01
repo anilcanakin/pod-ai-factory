@@ -394,6 +394,7 @@ model PhotoTemplate {
   mockupConfig   Json
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   orders         PersonalizationOrder[]
 

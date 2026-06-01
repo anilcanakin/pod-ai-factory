@@ -21,11 +21,11 @@ const worker = new Worker('personalization-composite', async (job) => {
   const { orderId, workspaceId } = job.data;
 
   // 1. Fetch order with template
-  const order = await prisma.personalizationOrder.findUnique({
-    where:   { id: orderId },
+  const order = await prisma.personalizationOrder.findFirst({
+    where:   { id: orderId, workspaceId },
     include: { template: true },
   });
-  if (!order) throw new Error(`Order not found: ${orderId}`);
+  if (!order) throw new Error(`Order not found or workspace mismatch: ${orderId}`);
 
   const template = order.template;
 

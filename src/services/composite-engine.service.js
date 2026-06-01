@@ -214,8 +214,11 @@ async function compositePhoto({ orderId, template, mockupTemplate, customerPhoto
     // Production mode — use uploadToStorage
     const tmpPrint = path.join(os.tmpdir(), `${orderId}_print.png`);
     fs.writeFileSync(tmpPrint, printBuffer);
-    printFileUrl = await getUploadToStorage()(tmpPrint, `personalization/print-files/${orderId}_print.png`);
-    fs.unlinkSync(tmpPrint);
+    try {
+      printFileUrl = await getUploadToStorage()(tmpPrint, `personalization/print-files/${orderId}_print.png`);
+    } finally {
+      if (fs.existsSync(tmpPrint)) fs.unlinkSync(tmpPrint);
+    }
   }
 
   // ── Step 10: Generate garment mockup ─────────────────────────────────────

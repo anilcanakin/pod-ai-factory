@@ -8,6 +8,19 @@ const os     = require('os');
 const ASSETS_ROOT = path.join(__dirname, '../../assets');
 const REPO_ROOT   = path.join(__dirname, '../../');
 
+// Lazy requires — only resolved at call time so tests don't fail at module load
+// when DB/Redis isn't available. outputDir tests bypass both entirely.
+let _uploadToStorage = null;
+let _renderMockup    = null;
+function getUploadToStorage() {
+  if (!_uploadToStorage) _uploadToStorage = require('./storage.service').uploadToStorage;
+  return _uploadToStorage;
+}
+function getRenderMockup() {
+  if (!_renderMockup) _renderMockup = require('./mockup-render.service').renderMockup;
+  return _renderMockup;
+}
+
 // ─── Font Registry ────────────────────────────────────────────────────────────
 const FONT_REGISTRY = {
   'Montserrat-Bold':    path.join(ASSETS_ROOT, 'fonts/Montserrat-Bold.ttf'),
@@ -96,6 +109,146 @@ function mapAlign(align) {
   return map[align] || 'centre';
 }
 
+// ─── Main Engine ──────────────────────────────────────────────────────────────
+
+/**
+ * @param {object}          opts
+ * @param {string}          opts.orderId
+ * @param {object}          opts.template        - Full PhotoTemplate row
+ * @param {object|null}     opts.mockupTemplate  - MockupTemplate row or null
+ * @param {Buffer|string}   opts.customerPhoto   - Buffer, absolute path, or relative assets/ path
+ * @param {object}          opts.variables       - { name?, year?, customText? }
+ * @param {string}          opts.workspaceId
+ * @param {string}          [opts.outputDir]     - Override output dir (tests only)
+ * @returns {Promise<{ printFileUrl: string, mockupUrl: string|null, warnings: string[] }>}
+ */
+async function compositePhoto({ orderId, template, mockupTemplate, customerPhoto, variables, workspaceId, outputDir }) {
+  const warnings = [];
+  const slot = template.photoSlot;
+
+  // ── Step 1: Resolve customer photo to Buffer ──────────────────────────────
+  let rawBuffer;
+  if (Buffer.isBuffer(customerPhoto)) {
+    rawBuffer = customerPhoto;
+  } else {
+    const src = String(customerPhoto);
+    const absPath = src.startsWith('http')
+      ? await _downloadToTemp(src)
+      : (path.isAbsolute(src) ? src : path.join(REPO_ROOT, src));
+    rawBuffer = fs.readFileSync(absPath);
+  }
+
+  // ── Step 2: EXIF auto-orient + strip ─────────────────────────────────────
+  const orientedBuffer = await sharp(rawBuffer).rotate().toBuffer();
+
+  // ── Step 3: Resolution check — slot-relative ──────────────────────────────
+  const meta = await sharp(orientedBuffer).metadata();
+  if (meta.width < slot.width || meta.height < slot.height) {
+    warnings.push('low_resolution');
+  }
+
+  // ── Step 4: Fit into photo slot ───────────────────────────────────────────
+  let fittedBuffer = await sharp(orientedBuffer)
+    .resize(slot.width, slot.height, {
+      fit:      slot.fit === 'contain' ? 'contain' : 'cover',
+      position: mapAlign(slot.align),
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png()
+    .toBuffer();
+
+  // ── Step 5: Apply borderRadius clip ──────────────────────────────────────
+  if (slot.borderRadius > 0) {
+    const maskSvg = buildCircleMaskSvg(slot.width, slot.height, slot.borderRadius);
+    fittedBuffer = await sharp(fittedBuffer)
+      .composite([{ input: Buffer.from(maskSvg), blend: 'dest-in' }])
+      .png()
+      .toBuffer();
+  }
+
+  // ── Step 6: Load base artwork ─────────────────────────────────────────────
+  const baseUrl = template.baseArtworkUrl;
+  const basePath = baseUrl.startsWith('http')
+    ? await _downloadToTemp(baseUrl)
+    : (path.isAbsolute(baseUrl) ? baseUrl : path.join(REPO_ROOT, baseUrl));
+
+  // ── Step 7: Composite photo onto base ────────────────────────────────────
+  let compositeChain = sharp(basePath).composite([
+    { input: fittedBuffer, left: Math.round(slot.x), top: Math.round(slot.y) }
+  ]);
+
+  // ── Step 8: Render text layers ────────────────────────────────────────────
+  const layers = Array.isArray(template.textLayers) ? template.textLayers : [];
+  for (const layer of layers) {
+    const rawValue = variables[layer.key];
+    if (rawValue === undefined || rawValue === null) continue;
+
+    let text = String(rawValue);
+    if (layer.transform === 'uppercase') text = text.toUpperCase();
+    if (layer.transform === 'lowercase') text = text.toLowerCase();
+
+    const fontPath = FONT_REGISTRY[layer.font];
+    const fontB64  = loadFontB64(fontPath);
+    const svg      = buildTextSvg({
+      canvasW: template.printWidthPx,
+      canvasH: template.printHeightPx,
+      layer, text, fontB64,
+    });
+
+    const currentBuf = await compositeChain.toBuffer();
+    compositeChain = sharp(currentBuf).composite([
+      { input: Buffer.from(svg), blend: 'over' }
+    ]);
+  }
+
+  const printBuffer = await compositeChain.png().toBuffer();
+
+  // ── Step 9: Write print file ──────────────────────────────────────────────
+  let printFileUrl;
+  if (outputDir) {
+    // Test mode — write directly to outputDir, return absolute path
+    const outPath = path.join(outputDir, `${orderId}_print.png`);
+    fs.writeFileSync(outPath, printBuffer);
+    printFileUrl = outPath;
+  } else {
+    // Production mode — use uploadToStorage
+    const tmpPrint = path.join(os.tmpdir(), `${orderId}_print.png`);
+    fs.writeFileSync(tmpPrint, printBuffer);
+    printFileUrl = await getUploadToStorage()(tmpPrint, `personalization/print-files/${orderId}_print.png`);
+    fs.unlinkSync(tmpPrint);
+  }
+
+  // ── Step 10: Generate garment mockup ─────────────────────────────────────
+  let mockupUrl = null;
+  if (mockupTemplate && !outputDir) {
+    const tmpDesign = path.join(os.tmpdir(), `${orderId}_design.png`);
+    fs.writeFileSync(tmpDesign, printBuffer);
+    try {
+      mockupUrl = await getRenderMockup()({
+        designPath:  tmpDesign,
+        template:    mockupTemplate,
+        imageId:     orderId,
+        workspaceId,
+        placement:   template.mockupConfig?.placement ?? {},
+      });
+    } finally {
+      if (fs.existsSync(tmpDesign)) fs.unlinkSync(tmpDesign);
+    }
+  }
+
+  return { printFileUrl, mockupUrl, warnings };
+}
+
+async function _downloadToTemp(url) {
+  const fetch = require('node-fetch');
+  const res   = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch: ${url} (${res.status})`);
+  const buf  = await res.buffer();
+  const tmp  = path.join(os.tmpdir(), `dl-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+  fs.writeFileSync(tmp, buf);
+  return tmp;
+}
+
 module.exports = {
   FONT_REGISTRY,
   validateTemplateConfig,
@@ -105,4 +258,5 @@ module.exports = {
   buildTextSvg,
   mapAlign,
   loadFontB64,
+  compositePhoto,
 };

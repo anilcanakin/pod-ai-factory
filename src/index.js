@@ -419,6 +419,8 @@ app.use('/api/hq', generalLimiter, require('./routes/hq.routes'));
 app.use('/api/finance', generalLimiter, require('./routes/finance.routes'));
 app.use('/api/batch',  aiContentLimiter, require('./routes/batch.routes'));
 app.use('/api/styles', generalLimiter, require('./routes/style.routes'));
+app.use('/api/photo-templates',  generalLimiter, require('./routes/photo-template.routes'));
+app.use('/api/personalization',  generalLimiter, require('./routes/personalization.routes'));
 app.use('/api/power-seller', generalLimiter, require('./routes/power-seller.routes'));
 app.use('/api/loop',        generalLimiter, require('./routes/autonomous-loop.routes'));
 
@@ -468,7 +470,8 @@ const server = app.listen(PORT, async () => {
     require('./queues/mockup.worker');
     require('./queues/knowledge.worker');
     require('./queues/batch.worker');
-    console.log('[Workers] Asset, Mockup, Knowledge ve Batch başlatıldı.');
+    require('./queues/personalization.worker');
+    console.log('[Workers] Asset, Mockup, Knowledge, Batch ve Personalization başlatıldı.');
   } catch (err) {
     console.error('[Workers] Worker başlatma hatama:', err.message);
   }

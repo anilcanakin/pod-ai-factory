@@ -73,3 +73,6 @@ test-cookies.txt
 
 # Local ECC rule copies (not project code)
 ECC/
+
+# Nested project duplicate (removed from git, keep ignored so it stays out)
+pod-ai-factory/

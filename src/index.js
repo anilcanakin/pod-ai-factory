@@ -91,7 +91,7 @@ require('./jobs/order-poller.job').startCron();
 // Power Seller Monitor — her 6 saatte bir takip edilen top mağazaları tara
 require('./jobs/power-seller-monitor.cron').startCron();
 // Autonomous Loop — her gece 03:00 | Kurallar → Audit → Ideas → Batch → Mockup → SEO
-require('./jobs/autonomous-loop.cron').startCron();
+// require('./jobs/autonomous-loop.cron').startCron();
 
 // Storage asset explicit workspace scoped protection
 app.use('/assets/outputs/:filename', async (req, res, next) => {

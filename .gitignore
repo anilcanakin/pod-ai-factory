@@ -57,3 +57,19 @@ dump.rdb
 yt_cookies.txt
 cookies_old.txt
 .worktrees/
+
+# macOS / Windows "copy" duplicates — never commit these
+*\ copy
+*\ copy/
+*\ copy.*
+*\ copy*/
+
+# AI session outputs (council transcripts/reports)
+council-*.html
+council-*.md
+
+# Sensitive local test files
+test-cookies.txt
+
+# Local ECC rule copies (not project code)
+ECC/

@@ -95,7 +95,9 @@ SADECE JSON döndür:
   "title": "<tam 140 karakter başlık>",
   "tags": ["<tag1>","<tag2>","<tag3>","<tag4>","<tag5>","<tag6>","<tag7>","<tag8>","<tag9>","<tag10>","<tag11>","<tag12>","<tag13>"],
   "description": "<tam açıklama metni>"
-}`;
+}
+
+ÖNEMLİ: Yanıtının ilk karakteri { ve son karakteri } olmalı. JSON öncesinde veya sonrasında açıklama, markdown blok, ek metin YAZMA.`;
 
     const res  = await anthropic.messages.create({
         model:      'claude-haiku-4-5-20251001',
@@ -104,9 +106,18 @@ SADECE JSON döndür:
     });
 
     const raw   = res.content[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('Claude SEO yanıtı JSON içermiyor');
-    const parsed = JSON.parse(match[0]);
+    const start = raw.indexOf('{');
+    const end   = raw.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) {
+        throw new Error('Claude SEO yanıtı JSON içermiyor');
+    }
+    let parsed;
+    try {
+        parsed = JSON.parse(raw.slice(start, end + 1));
+    } catch (parseErr) {
+        console.error(`[SEO Motor] JSON parse hatası: ${parseErr.message} | ham yanıt başı: ${raw.slice(0, 150)}`);
+        throw new Error(`SEO yanıtı parse edilemedi: ${parseErr.message}`);
+    }
 
     // Validate
     if (!parsed.title || !Array.isArray(parsed.tags) || !parsed.description) {

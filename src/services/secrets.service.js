@@ -116,4 +116,4 @@ class SecretsService {
     }
 }
 
-module.exports = new SecretsService();
+module.exports = Object.assign(new SecretsService(), { encrypt, decrypt });

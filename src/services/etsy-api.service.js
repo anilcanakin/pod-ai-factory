@@ -1,5 +1,6 @@
-const crypto   = require('crypto');
-const prisma   = require('../lib/prisma');
+const crypto            = require('crypto');
+const prisma            = require('../lib/prisma');
+const { encrypt, decrypt } = require('./secrets.service');
 const FormData = require('form-data');
 const axios    = require('axios');
 
@@ -38,7 +39,7 @@ setInterval(() => {
 
 async function _saveTokens(workspaceId, { accessToken, refreshToken, expiresIn, shopId = null, shopName = null }) {
     const existing = await _loadTokens(workspaceId);
-    const keyValue = JSON.stringify({
+    const plain = JSON.stringify({
         accessToken,
         refreshToken,
         expiresAt: Date.now() + expiresIn * 1000,
@@ -47,16 +48,20 @@ async function _saveTokens(workspaceId, { accessToken, refreshToken, expiresIn, 
     });
     await prisma.workspaceApiKey.upsert({
         where:  { workspaceId_provider: { workspaceId, provider: 'etsy' } },
-        update: { keyValue },
-        create: { workspaceId, provider: 'etsy', keyValue },
+        update: { keyValue: encrypt(plain) },
+        create: { workspaceId, provider: 'etsy', keyValue: encrypt(plain) },
     });
 }
 
 async function _loadTokens(workspaceId) {
+    if (!workspaceId) throw new Error('[Etsy] _loadTokens: workspaceId gerekli');
     const rec = await prisma.workspaceApiKey.findUnique({
         where: { workspaceId_provider: { workspaceId, provider: 'etsy' } },
     });
-    return rec ? JSON.parse(rec.keyValue) : null;
+    if (!rec) return null;
+    const raw = decrypt(rec.keyValue);
+    if (!raw) return null;
+    return JSON.parse(raw);
 }
 
 // ─── Rate limit takibi ─────────────────────────────────────────────────────────

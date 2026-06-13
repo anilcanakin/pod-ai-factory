@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
 const { assetQueue } = require('../queues/index');
 
 const prisma = require('../lib/prisma');
@@ -131,8 +133,21 @@ router.post('/one-click', async (req, res) => {
                 };
                 const falModel = falModelMap[bgModel] || 'fal-ai/birefnet';
                 console.log(`[Pipeline:OneClick] Step 1: BG Remove (${falModel})`);
+
+                // FAL needs an HTTP URL or base64 data URI — resolve relative paths
+                let falImageUrl = imageUrl;
+                if (falImageUrl && !falImageUrl.startsWith('http') && !falImageUrl.startsWith('data:')) {
+                    const absPath = path.isAbsolute(falImageUrl)
+                        ? falImageUrl
+                        : path.join(__dirname, '../../', falImageUrl);
+                    const buf = fs.readFileSync(absPath);
+                    const ext = (path.extname(absPath).slice(1) || 'png').toLowerCase();
+                    const mime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : `image/${ext}`;
+                    falImageUrl = `data:${mime};base64,${buf.toString('base64')}`;
+                }
+
                 const bgResult = await fal.subscribe(falModel, {
-                    input: { image_url: imageUrl }
+                    input: { image_url: falImageUrl }
                 });
                 const bgUrl = bgResult?.data?.image?.url || bgResult?.image?.url || null;
 
@@ -172,8 +187,15 @@ router.post('/one-click', async (req, res) => {
                     if (!template) continue;
 
                     const designImageId = results.steps.bgRemove?.imageId || imageId;
+
+                    // Resolve relative finalImageUrl to absolute path for Sharp
+                    let resolvedDesignPath = results.finalImageUrl;
+                    if (!resolvedDesignPath.startsWith('http') && !path.isAbsolute(resolvedDesignPath)) {
+                        resolvedDesignPath = path.join(__dirname, '../../', resolvedDesignPath);
+                    }
+
                     const mockupResult = await renderMockup({
-                        designPath: results.finalImageUrl,
+                        designPath: resolvedDesignPath,
                         template,
                         imageId: designImageId,
                         workspaceId,

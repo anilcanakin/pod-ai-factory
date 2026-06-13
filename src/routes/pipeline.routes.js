@@ -123,6 +123,10 @@ router.post('/one-click', async (req, res) => {
             status: 'running'
         };
 
+        // Own-server assets (relative OR full http://host/assets/...) → resolve to disk once
+        const assetMatch = imageUrl.match(/assets\/.*/);
+        const localPath = assetMatch ? path.join(__dirname, '../../', assetMatch[0]) : null;
+
         // ── Step 1: BG Remove ──────────────────────────────────────
         if (options.bgRemove !== false) {
             try {
@@ -134,14 +138,11 @@ router.post('/one-click', async (req, res) => {
                 const falModel = falModelMap[bgModel] || 'fal-ai/birefnet';
                 console.log(`[Pipeline:OneClick] Step 1: BG Remove (${falModel})`);
 
-                // FAL needs an HTTP URL or base64 data URI — resolve relative paths
+                // Own-server assets → base64 data URI (FAL can't reach localhost/Tailscale)
                 let falImageUrl = imageUrl;
-                if (falImageUrl && !falImageUrl.startsWith('http') && !falImageUrl.startsWith('data:')) {
-                    const absPath = path.isAbsolute(falImageUrl)
-                        ? falImageUrl
-                        : path.join(__dirname, '../../', falImageUrl);
-                    const buf = fs.readFileSync(absPath);
-                    const ext = (path.extname(absPath).slice(1) || 'png').toLowerCase();
+                if (localPath) {
+                    const buf = fs.readFileSync(localPath);
+                    const ext = (path.extname(localPath).slice(1) || 'png').toLowerCase();
                     const mime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : `image/${ext}`;
                     falImageUrl = `data:${mime};base64,${buf.toString('base64')}`;
                 }
@@ -188,11 +189,11 @@ router.post('/one-click', async (req, res) => {
 
                     const designImageId = results.steps.bgRemove?.imageId || imageId;
 
-                    // Resolve relative finalImageUrl to absolute path for Sharp
-                    let resolvedDesignPath = results.finalImageUrl;
-                    if (!resolvedDesignPath.startsWith('http') && !path.isAbsolute(resolvedDesignPath)) {
-                        resolvedDesignPath = path.join(__dirname, '../../', resolvedDesignPath);
-                    }
+                    // Own-server assets → absolute disk path; FAL CDN/external URLs pass through
+                    const assetM = results.finalImageUrl.match(/assets\/.*/);
+                    const resolvedDesignPath = assetM
+                        ? path.join(__dirname, '../../', assetM[0])
+                        : results.finalImageUrl;
 
                     const mockupResult = await renderMockup({
                         designPath: resolvedDesignPath,

@@ -65,7 +65,20 @@ Generate the SEO JSON packet for this design.`;
                 response_format: { type: "json_object" }
             });
 
-            const seoData = JSON.parse(response.choices[0].message.content);
+            const raw = response.choices[0].message.content
+                .replace(/```json/g, '').replace(/```/g, '').trim();
+            const start = raw.indexOf('{');
+            const end   = raw.lastIndexOf('}');
+            if (start === -1 || end === -1 || end <= start) {
+                throw new Error('SEO yanıtı JSON içermiyor');
+            }
+            let seoData;
+            try {
+                seoData = JSON.parse(raw.slice(start, end + 1));
+            } catch (parseErr) {
+                console.error(`[EtsyService] JSON parse hatası: ${parseErr.message} | ham yanıt başı: ${raw.slice(0, 150)}`);
+                throw new Error(`SEO yanıtı parse edilemedi: ${parseErr.message}`);
+            }
             console.log(`[EtsyService] SEO generated successfully for ${imageId}`);
 
             // Save to DB

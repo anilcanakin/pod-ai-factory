@@ -251,15 +251,22 @@ async function createDraftListing(workspaceId, { title, description, tags, price
     const safeTags  = (tags  || []).slice(0, 13).map(t => String(t).slice(0, 20));
     const priceFloat = parseFloat(price) || 19.99;
 
+    const AI_DISCLOSURE = '\n\n---\nThis design was created using AI tools based on the seller\'s own original concept and creative direction, then prepared for print. Designed by the seller; produced and shipped by our production partner.';
+    const baseDescription = description || '';
+    const finalDescription = baseDescription.includes('This design was created using AI tools')
+        ? baseDescription
+        : baseDescription + AI_DISCLOSURE;
+
     const listingBody = {
         title:               safeTitle,
-        description:         description || '',
+        description:         finalDescription,
         price:               priceFloat,
         quantity:            999,
         taxonomy_id:         parseInt(process.env.ETSY_TAXONOMY_ID || '2078', 10),
         who_made:            'i_did',
         when_made:           'made_to_order',
         is_supply:           false,
+        production_partner_ids: [5454339],
         state:               'draft',
         ...(process.env.ETSY_READINESS_STATE_ID && { readiness_state_id: parseInt(process.env.ETSY_READINESS_STATE_ID, 10) }),
         tags:                safeTags,

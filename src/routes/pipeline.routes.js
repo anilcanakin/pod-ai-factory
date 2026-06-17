@@ -230,15 +230,30 @@ router.post('/one-click', async (req, res) => {
                 const { getSeoContext } = require('../services/knowledge-context.service');
                 const visionService = require('../services/vision.service');
 
-                // Vision analysis
+                // Vision analysis — analyzeImage expects raw base64 + mime, never a URL
                 let imageDescription = '';
                 try {
-                    const visionResult = await visionService.analyzeImage(
-                        results.finalImageUrl.startsWith('data:')
-                            ? results.finalImageUrl.split(',')[1]
-                            : results.finalImageUrl,
-                        'image/jpeg'
-                    );
+                    let visionBase64, visionMime;
+                    const visionUrl = results.finalImageUrl;
+                    if (visionUrl.startsWith('data:')) {
+                        const [header, data] = visionUrl.split(',');
+                        visionBase64 = data;
+                        visionMime = header.match(/data:([^;]+)/)?.[1] || 'image/png';
+                    } else {
+                        let buf;
+                        const assetMv = visionUrl.match(/assets\/.*/);
+                        if (assetMv) {
+                            buf = fs.readFileSync(path.join(__dirname, '../../', assetMv[0]));
+                        } else {
+                            const fetchMod = require('node-fetch');
+                            const resp = await fetchMod(visionUrl);
+                            buf = await resp.buffer();
+                        }
+                        const ext = (path.extname(visionUrl.split('?')[0]).slice(1) || 'png').toLowerCase();
+                        visionMime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : `image/${ext}`;
+                        visionBase64 = buf.toString('base64');
+                    }
+                    const visionResult = await visionService.analyzeImage(visionBase64, visionMime);
                     imageDescription = visionResult.prompt || '';
                 } catch (e) {
                     console.warn('[Pipeline:OneClick] Vision failed:', e.message);
@@ -263,8 +278,19 @@ router.post('/one-click', async (req, res) => {
                     }]
                 });
 
-                const seoRaw = seoResponse.content[0].text.replace(/```json|```/g, '').trim();
-                const seo = JSON.parse(seoRaw);
+                const seoRaw = seoResponse.content[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+                const seoStart = seoRaw.indexOf('{');
+                const seoEnd   = seoRaw.lastIndexOf('}');
+                if (seoStart === -1 || seoEnd === -1 || seoEnd <= seoStart) {
+                    throw new Error('SEO yanıtı JSON içermiyor');
+                }
+                let seo;
+                try {
+                    seo = JSON.parse(seoRaw.slice(seoStart, seoEnd + 1));
+                } catch (parseErr) {
+                    console.error(`[Pipeline:SEO] JSON parse hatası: ${parseErr.message} | ham yanıt başı: ${seoRaw.slice(0, 150)}`);
+                    throw new Error(`SEO yanıtı parse edilemedi: ${parseErr.message}`);
+                }
                 seo.title = seo.title.slice(0, 140);
                 seo.tags = (seo.tags || []).slice(0, 13);
 

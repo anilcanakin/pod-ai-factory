@@ -171,7 +171,8 @@ router.post('/one-click', async (req, res) => {
                     results.steps.bgRemove = { status: 'failed', error: 'No output URL returned' };
                 }
             } catch (err) {
-                console.warn('[Pipeline:OneClick] BG Remove failed:', err.message);
+                console.error('[Pipeline:OneClick] BG Remove failed:', err.message);
+                if (err.stack) console.error('[Pipeline:OneClick] BG Remove trace:', err.stack.split('\n').slice(0, 3).join(' | '));
                 results.steps.bgRemove = { status: 'failed', error: err.message };
             }
         }
@@ -216,7 +217,8 @@ router.post('/one-click', async (req, res) => {
                         results.steps.mockups.push({ templateId, templateName: template.name, status: 'success', url: mockupResult });
                     }
                 } catch (err) {
-                    console.warn('[Pipeline:OneClick] Mockup failed for:', templateId, err.message);
+                    console.error(`[Pipeline:OneClick] Mockup failed for ${templateId}:`, err.message);
+                    if (err.stack) console.error(`[Pipeline:OneClick] Mockup trace:`, err.stack.split('\n').slice(0, 3).join(' | '));
                     results.steps.mockups.push({ templateId, status: 'failed', error: err.message });
                 }
             }
@@ -270,36 +272,56 @@ router.post('/one-click', async (req, res) => {
                 const client = new Anthropic();
                 const seoResponse = await client.messages.create({
                     model: 'claude-haiku-4-5',
-                    max_tokens: 1500,
-                    system: `${knowledge}\n\nReturn ONLY valid JSON: {"title":"...","description":"...","tags":["tag1",...,"tag13"],"topKeywords":["kw1","kw2","kw3"]}`,
+                    max_tokens: 4096,
+                    system: `${knowledge}\n\nReturn ONLY valid JSON. Keep description under 300 characters. Format: {"title":"...","description":"...","tags":["tag1",...,"tag13"],"topKeywords":["kw1","kw2","kw3"]}`,
                     messages: [{
                         role: 'user',
                         content: `Create Etsy SEO for this POD design: ${imageDescription}\nReal Etsy searches: ${etsyKeywords.slice(0, 10).join(', ')}`
                     }]
                 });
 
-                const seoRaw = seoResponse.content[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+                const rawText = seoResponse.content[0].text;
+                console.log(`[Pipeline:SEO] stop_reason=${seoResponse.stop_reason} output_tokens=${seoResponse.usage?.output_tokens} raw_len=${rawText.length}`);
+
+                const seoRaw = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
                 const seoStart = seoRaw.indexOf('{');
                 const seoEnd   = seoRaw.lastIndexOf('}');
                 if (seoStart === -1 || seoEnd === -1 || seoEnd <= seoStart) {
+                    console.error(`[Pipeline:SEO] JSON sınırı bulunamadı — ham yanıt (500): ${seoRaw.slice(0, 500)}`);
                     throw new Error('SEO yanıtı JSON içermiyor');
                 }
+
                 let seo;
                 try {
                     seo = JSON.parse(seoRaw.slice(seoStart, seoEnd + 1));
                 } catch (parseErr) {
-                    console.error(`[Pipeline:SEO] JSON parse hatası: ${parseErr.message} | ham yanıt başı: ${seoRaw.slice(0, 150)}`);
-                    throw new Error(`SEO yanıtı parse edilemedi: ${parseErr.message}`);
+                    console.error(`[Pipeline:SEO] JSON parse hatası: ${parseErr.message}`);
+                    console.error(`[Pipeline:SEO] ham yanıt (500 karakter): ${seoRaw.slice(0, 500)}`);
+                    // Fallback: regex extraction — truncated JSON'dan kurtarılabileni al, pipeline çökmesin
+                    const titleM = seoRaw.match(/"title"\s*:\s*"([^"]{1,140})"/);
+                    const tagsM  = seoRaw.match(/"tags"\s*:\s*\[([\s\S]*?)(?:\]|$)/);
+                    const extractedTags = tagsM
+                        ? (tagsM[1].match(/"([^"]{1,20})"/g) || []).map(t => t.replace(/"/g, '')).slice(0, 13)
+                        : [];
+                    seo = {
+                        title:       titleM ? titleM[1] : imageDescription.slice(0, 100),
+                        description: 'Unique print-on-demand design, perfect as a gift or for yourself.',
+                        tags:        extractedTags.length > 0 ? extractedTags : ['print on demand', 'custom design', 'unique gift'],
+                        topKeywords: [],
+                        _fallback:   true
+                    };
+                    console.warn(`[Pipeline:SEO] Fallback SEO — title: "${seo.title}" | tags: ${seo.tags.length}`);
                 }
-                seo.title = seo.title.slice(0, 140);
+                seo.title = (seo.title || '').slice(0, 140);
                 seo.tags = (seo.tags || []).slice(0, 13);
 
                 results.steps.seo = {
-                    status: 'success',
+                    status: seo._fallback ? 'partial' : 'success',
                     title: seo.title,
                     description: seo.description,
                     tags: seo.tags,
-                    topKeywords: seo.topKeywords || []
+                    topKeywords: seo.topKeywords || [],
+                    ...(seo._fallback && { warning: 'SEO JSON truncated — fallback used' })
                 };
             } catch (err) {
                 console.warn('[Pipeline:OneClick] SEO failed:', err.message);

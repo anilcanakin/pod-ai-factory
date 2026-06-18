@@ -28,6 +28,16 @@ const VISION_SCHEMA = {
     }
 };
 
+// ── Timeout wrapper ───────────────────────────────────────────
+function withTimeout(promise, ms, label) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+        )
+    ]);
+}
+
 // ── Main analyze function (multi-provider) ────────────────────
 async function analyzeImage(base64Image, mimeType = 'image/jpeg') {
     const useVision = process.env.USE_VISION !== 'false';
@@ -36,106 +46,83 @@ async function analyzeImage(base64Image, mimeType = 'image/jpeg') {
         return { prompt: generateSyntheticPrompt(), isSynthetic: true, provider: 'synthetic' };
     }
 
-    // Provider 1: Anthropic Claude
+    // Provider 1: Anthropic Claude (8s timeout)
     if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.length > 10 && !process.env.ANTHROPIC_API_KEY.includes('your_')) {
         try {
             const client = new Anthropic();
-            const response = await client.messages.create({
-                model: 'claude-haiku-4-5',
-                max_tokens: 1024,
-                messages: [{
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'image',
-                            source: {
-                                type: 'base64',
-                                media_type: mimeType,
-                                data: base64Image
-                            }
-                        },
-                        {
-                            type: 'text',
-                            text: 'Analyze this POD design and write a generation prompt.'
-                        }
-                    ]
-                }],
-                system: SYSTEM_PROMPT
-            });
-
+            const response = await withTimeout(
+                client.messages.create({
+                    model: 'claude-haiku-4-5',
+                    max_tokens: 1024,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Image } },
+                            { type: 'text', text: 'Analyze this POD design and write a generation prompt.' }
+                        ]
+                    }],
+                    system: SYSTEM_PROMPT
+                }),
+                8000, 'Anthropic'
+            );
             const prompt = response.content[0].text.trim();
             console.log('[Vision] Provider: Anthropic Claude');
             if (response.usage) {
                 billingService.logUsage('anthropic', 'claude-haiku-4-5', response.usage, null, { feature: 'vision_analyze' }).catch(() => {});
             }
             return { prompt, isSynthetic: false, provider: 'anthropic' };
-
         } catch (err) {
             console.warn('[Vision] Anthropic failed, trying OpenAI:', err.message);
         }
     }
 
-    // Provider 2: Google Gemini Vision
+    // Provider 2: OpenAI GPT-4o (8s timeout) — promoted; Gemini quota is 0 and causes 429 delays
+    if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 10 && !process.env.OPENAI_API_KEY.includes('your_')) {
+        try {
+            const openai = new OpenAI();
+            const response = await withTimeout(
+                openai.chat.completions.create({
+                    model: 'gpt-4o',
+                    max_tokens: 1024,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } },
+                            { type: 'text', text: SYSTEM_PROMPT }
+                        ]
+                    }]
+                }),
+                8000, 'OpenAI'
+            );
+            const prompt = response.choices[0].message.content.trim();
+            console.log('[Vision] Provider: OpenAI GPT-4o');
+            return { prompt, isSynthetic: false, provider: 'openai' };
+        } catch (err) {
+            console.warn('[Vision] OpenAI failed, trying Gemini:', err.message);
+        }
+    }
+
+    // Provider 3: Google Gemini Vision (8s timeout, last resort)
     if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY.length > 10 && !process.env.GOOGLE_API_KEY.includes('your_')) {
         try {
             const { GoogleGenerativeAI } = require('@google/generative-ai');
             const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
             const geminiModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-            const imagePart = {
-                inlineData: {
-                    data: base64Image,
-                    mimeType: mimeType
-                }
-            };
-
-            const result = await geminiModel.generateContent([
-                SYSTEM_PROMPT,
-                imagePart
-            ]);
-
+            const result = await withTimeout(
+                geminiModel.generateContent([
+                    SYSTEM_PROMPT,
+                    { inlineData: { data: base64Image, mimeType: mimeType } }
+                ]),
+                8000, 'Gemini'
+            );
             const prompt = result.response.text().trim();
             console.log('[Vision] Provider: Google Gemini');
             if (result.response.usageMetadata) {
                 billingService.logUsage('gemini', 'gemini-2.0-flash', result.response.usageMetadata, null, { feature: 'vision_analyze' }).catch(() => {});
             }
             return { prompt, isSynthetic: false, provider: 'gemini' };
-
         } catch (err) {
-            console.warn('[Vision] Gemini failed, trying OpenAI:', err.message);
-        }
-    }
-
-    // Provider 3: OpenAI GPT-4o
-    if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 10 && !process.env.OPENAI_API_KEY.includes('your_')) {
-        try {
-            const openai = new OpenAI();
-            const response = await openai.chat.completions.create({
-                model: 'gpt-4o',
-                max_tokens: 1024,
-                messages: [{
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'image_url',
-                            image_url: {
-                                url: `data:${mimeType};base64,${base64Image}`
-                            }
-                        },
-                        {
-                            type: 'text',
-                            text: SYSTEM_PROMPT
-                        }
-                    ]
-                }]
-            });
-
-            const prompt = response.choices[0].message.content.trim();
-            console.log('[Vision] Provider: OpenAI GPT-4o');
-            return { prompt, isSynthetic: false, provider: 'openai' };
-
-        } catch (err) {
-            console.warn('[Vision] OpenAI failed, falling back to synthetic:', err.message);
+            console.warn('[Vision] Gemini failed, falling back to synthetic:', err.message);
         }
     }
 

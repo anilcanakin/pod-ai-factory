@@ -233,30 +233,31 @@ router.post('/one-click', async (req, res) => {
                 const { getSeoContext } = require('../services/knowledge-context.service');
                 const visionService = require('../services/vision.service');
 
-                // Vision analysis — analyzeImage expects raw base64 + mime, never a URL
+                // Vision analysis — resize to max 1568px / JPEG q85 (<5 MB) before calling analyzeImage
                 let imageDescription = '';
                 try {
-                    let visionBase64, visionMime;
+                    const sharp = require('sharp');
                     const visionUrl = results.finalImageUrl;
+                    let rawBuf;
                     if (visionUrl.startsWith('data:')) {
                         const [header, data] = visionUrl.split(',');
-                        visionBase64 = data;
-                        visionMime = header.match(/data:([^;]+)/)?.[1] || 'image/png';
+                        rawBuf = Buffer.from(data, 'base64');
                     } else {
-                        let buf;
                         const assetMv = visionUrl.match(/assets\/.*/);
                         if (assetMv) {
-                            buf = fs.readFileSync(path.join(process.cwd(), assetMv[0]));
+                            rawBuf = fs.readFileSync(path.join(process.cwd(), assetMv[0]));
                         } else {
                             const fetchMod = require('node-fetch');
                             const resp = await fetchMod(visionUrl);
-                            buf = await resp.buffer();
+                            rawBuf = await resp.buffer();
                         }
-                        const ext = (path.extname(visionUrl.split('?')[0]).slice(1) || 'png').toLowerCase();
-                        visionMime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : `image/${ext}`;
-                        visionBase64 = buf.toString('base64');
                     }
-                    const visionResult = await visionService.analyzeImage(visionBase64, visionMime);
+                    const resizedBuf = await sharp(rawBuf)
+                        .resize(1568, 1568, { fit: 'inside', withoutEnlargement: true })
+                        .jpeg({ quality: 85 })
+                        .toBuffer();
+                    console.log(`[Pipeline:Vision] resize ${rawBuf.length}B → ${resizedBuf.length}B`);
+                    const visionResult = await visionService.analyzeImage(resizedBuf.toString('base64'), 'image/jpeg');
                     imageDescription = visionResult.prompt || '';
                 } catch (e) {
                     console.warn('[Pipeline:OneClick] Vision failed:', e.message);

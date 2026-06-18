@@ -629,6 +629,8 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
     const qaRejectionReason = img.rawResponse?.startsWith('QA_REJECTED:')
         ? img.rawResponse.replace('QA_REJECTED: ', '')
         : null;
+    const isUsableUrl = (url: string | undefined | null) =>
+        !!url && url !== 'PENDING' && !url.includes('supabase.co');
 
     const handleDownload = async () => {
         const url = resolveUrl(img.imageUrl);
@@ -681,17 +683,29 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                 </div>
             ) : isFailed && img.imageUrl ? (
                 <div className="relative">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={resolveUrl(img.imageUrl)} alt="Rejected design" className="w-full aspect-square object-cover block opacity-40 grayscale" onClick={onView} />
+                    {isUsableUrl(img.imageUrl) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={resolveUrl(img.imageUrl)} alt="Rejected design" className="w-full aspect-square object-cover block opacity-40 grayscale" onClick={onView} />
+                    ) : (
+                        <div className="h-48 flex flex-col items-center justify-center min-h-[160px] bg-bg-elevated gap-1 px-3">
+                            <ImageIcon className="w-6 h-6 text-text-tertiary opacity-40" />
+                            <span className="text-xs text-text-tertiary">Görsel yok</span>
+                        </div>
+                    )}
                     {qaRejectionReason && (
                         <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-2 py-1">
                             <span className="text-[10px] text-danger leading-tight block">QA: {qaRejectionReason}</span>
                         </div>
                     )}
                 </div>
-            ) : (
+            ) : isUsableUrl(img.imageUrl) ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={resolveUrl(img.imageUrl)} alt="Generated design" className="w-full aspect-square object-cover block" onClick={onView} />
+            ) : (
+                <div className="h-48 flex flex-col items-center justify-center min-h-[160px] bg-bg-elevated gap-1 px-3">
+                    <ImageIcon className="w-6 h-6 text-text-tertiary opacity-40" />
+                    <span className="text-xs text-text-tertiary">Görsel yok</span>
+                </div>
             )}
 
             {/* Hover Overlay */}

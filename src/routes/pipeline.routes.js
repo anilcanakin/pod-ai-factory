@@ -124,8 +124,9 @@ router.post('/one-click', async (req, res) => {
         };
 
         // Own-server assets (relative OR full http://host/assets/...) → resolve to disk once
+        // process.cwd() = project root on both Linux (/home/anilcan/pod-ai-factory) and Windows
         const assetMatch = imageUrl.match(/assets\/.*/);
-        const localPath = assetMatch ? path.join(__dirname, '../../', assetMatch[0]) : null;
+        const localPath = assetMatch ? path.join(process.cwd(), assetMatch[0]) : null;
 
         // ── Step 1: BG Remove ──────────────────────────────────────
         if (options.bgRemove !== false) {
@@ -193,7 +194,7 @@ router.post('/one-click', async (req, res) => {
                     // Own-server assets → absolute disk path; FAL CDN/external URLs pass through
                     const assetM = results.finalImageUrl.match(/assets\/.*/);
                     const resolvedDesignPath = assetM
-                        ? path.join(__dirname, '../../', assetM[0])
+                        ? path.join(process.cwd(), assetM[0])
                         : results.finalImageUrl;
 
                     const mockupResult = await renderMockup({
@@ -245,7 +246,7 @@ router.post('/one-click', async (req, res) => {
                         let buf;
                         const assetMv = visionUrl.match(/assets\/.*/);
                         if (assetMv) {
-                            buf = fs.readFileSync(path.join(__dirname, '../../', assetMv[0]));
+                            buf = fs.readFileSync(path.join(process.cwd(), assetMv[0]));
                         } else {
                             const fetchMod = require('node-fetch');
                             const resp = await fetchMod(visionUrl);

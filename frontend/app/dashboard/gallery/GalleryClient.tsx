@@ -27,6 +27,13 @@ function timeAgo(dateStr: string): string {
     return `${days}g önce`;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+function resolveUrl(p: string | undefined | null): string {
+    if (!p) return '';
+    if (p.startsWith('http')) return p;
+    return `${API_BASE}/${p.replace(/^\//, '')}`;
+}
+
 export function GalleryClient() {
     return (
         <Suspense fallback={
@@ -546,8 +553,8 @@ function GalleryInner() {
                                     onRemoveBg={(model) => handleRemoveBg(img.id, img.imageUrl, model)}
                                     onUpscale={(scale) => handleUpscale(img.id, img.imageUrl, scale)}
                                     onPublishToEtsy={() => handlePublishToEtsy(img.id)}
-                                    onMockup={() => router.push(`/dashboard/mockups?designUrl=${encodeURIComponent(img.imageUrl)}&designImageId=${img.id}`)}
-                                    onSeo={() => router.push(`/dashboard/seo?imageUrl=${encodeURIComponent(img.imageUrl)}`)}
+                                    onMockup={() => router.push(`/dashboard/mockups?designUrl=${encodeURIComponent(resolveUrl(img.imageUrl))}&designImageId=${img.id}`)}
+                                    onSeo={() => router.push(`/dashboard/seo?imageUrl=${encodeURIComponent(resolveUrl(img.imageUrl))}`)}
                                     onPipeline={() => setPipelineImage(img)}
                                     isProcessing={processingImage === img.id}
                                     isPublishing={publishingImage === img.id}
@@ -568,7 +575,7 @@ function GalleryInner() {
                 <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4" onClick={() => setViewImg(null)}>
                     <div className="relative max-w-5xl w-full h-full flex flex-col items-center justify-center gap-6" onClick={e => e.stopPropagation()}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={viewImg.imageUrl} alt="Full view" className="max-w-full max-h-[85vh] rounded-[16px] object-contain shadow-2xl" />
+                        <img src={resolveUrl(viewImg.imageUrl)} alt="Full view" className="max-w-full max-h-[85vh] rounded-[16px] object-contain shadow-2xl" />
                         <div className="flex items-center gap-3 bg-bg-surface p-3 rounded-2xl border border-border-default shadow-lg">
                             <StatusBadge status={viewImg.status} className="px-3" />
                             <div className="w-px h-6 bg-border-default"></div>
@@ -624,7 +631,7 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
         : null;
 
     const handleDownload = async () => {
-        const url = img.imageUrl.startsWith('http') ? img.imageUrl : `/${img.imageUrl}`;
+        const url = resolveUrl(img.imageUrl);
         try {
             const response = await fetch(url);
             const blob = await response.blob();
@@ -675,7 +682,7 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
             ) : isFailed && img.imageUrl ? (
                 <div className="relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={img.imageUrl} alt="Rejected design" className="w-full aspect-square object-cover block opacity-40 grayscale" onClick={onView} />
+                    <img src={resolveUrl(img.imageUrl)} alt="Rejected design" className="w-full aspect-square object-cover block opacity-40 grayscale" onClick={onView} />
                     {qaRejectionReason && (
                         <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-2 py-1">
                             <span className="text-[10px] text-danger leading-tight block">QA: {qaRejectionReason}</span>
@@ -684,7 +691,7 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                 </div>
             ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={img.imageUrl} alt="Generated design" className="w-full aspect-square object-cover block" onClick={onView} />
+                <img src={resolveUrl(img.imageUrl)} alt="Generated design" className="w-full aspect-square object-cover block" onClick={onView} />
             )}
 
             {/* Hover Overlay */}
@@ -769,7 +776,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                 credentials: 'include',
                 body: JSON.stringify({
                     imageId: image.id,
-                    imageUrl: image.imageUrl.startsWith('http') ? image.imageUrl : `${window.location.origin}/${image.imageUrl}`,
+                    imageUrl: resolveUrl(image.imageUrl),
                     templateIds: selectedTemplateIds,
                     bgModel,
                     options
@@ -785,10 +792,6 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
             setRunning(false);
         }
     };
-
-    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
-    const resolveUrl = (p: string) =>
-        p?.startsWith('http') ? p : `${API_BASE}/${p?.startsWith('/') ? p.slice(1) : p}`;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const steps = results ? (results.steps as any) : null;
@@ -817,7 +820,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                     <div className="flex items-center gap-4 p-3 bg-slate-800/40 rounded-xl border border-slate-700/40">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                            src={image.imageUrl.startsWith('http') ? image.imageUrl : `/${image.imageUrl}`}
+                            src={resolveUrl(image.imageUrl)}
                             alt="Source"
                             className="w-16 h-16 object-contain rounded-lg bg-slate-900 shrink-0"
                         />
@@ -943,7 +946,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                                     <span>{m.status === 'success' ? '✓' : '✗'} Mockup: {m.templateName}</span>
                                     {m.url && (
                                         // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={m.url.startsWith('http') ? m.url : `/${m.url}`} className="w-10 h-10 object-contain ml-auto rounded" alt="mockup" />
+                                        <img src={resolveUrl(m.url)} className="w-10 h-10 object-contain ml-auto rounded" alt="mockup" />
                                     )}
                                 </div>
                             ))}

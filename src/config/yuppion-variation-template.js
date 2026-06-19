@@ -1,6 +1,6 @@
 ﻿// 132 Yuppion enabled variants — T-Shirt (S-4XL x 6 colors), Sweatshirt (S-3XL x 7 colors), Hoodie (S-3XL x 8 colors)
 // Price tiers: 47.48 (T-Shirt S/M/L), 50.48 (T-Shirt XL-4XL), 53.99 (Sweatshirt S/M/L), 55.99 (Sweatshirt XL-3XL), 57.99 (Hoodie S-3XL)
-// Write-side only: property_values + offerings. price=float, no currency_code, no offering_id, is_deleted, scale_id.
+// Write-side: property_values + offerings (price float, readiness_state_id, quantity, is_enabled). No offering_id, is_deleted, currency_code, scale_id.
 const products = [
     {
         "property_values":  [
@@ -29,7 +29,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -60,7 +61,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -91,7 +93,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -122,7 +125,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -153,7 +157,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -184,7 +189,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -215,7 +221,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -246,7 +253,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -277,7 +285,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -308,7 +317,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -339,7 +349,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -370,7 +381,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -401,7 +413,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -432,7 +445,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -463,7 +477,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -494,7 +509,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -525,7 +541,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -556,7 +573,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  47.48
+                              "price":  47.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -587,7 +605,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -618,7 +637,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -649,7 +669,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -680,7 +701,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -711,7 +733,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -742,7 +765,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -773,7 +797,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -804,7 +829,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -835,7 +861,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -866,7 +893,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -897,7 +925,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -928,7 +957,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -959,7 +989,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -990,7 +1021,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1021,7 +1053,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1052,7 +1085,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1083,7 +1117,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1114,7 +1149,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1145,7 +1181,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1176,7 +1213,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1207,7 +1245,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1238,7 +1277,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1269,7 +1309,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1300,7 +1341,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  50.48
+                              "price":  50.48,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1331,7 +1373,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1362,7 +1405,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1393,7 +1437,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1424,7 +1469,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1455,7 +1501,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1486,7 +1533,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1517,7 +1565,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1548,7 +1597,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1579,7 +1629,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1610,7 +1661,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1641,7 +1693,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1672,7 +1725,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1703,7 +1757,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1734,7 +1789,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1765,7 +1821,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1796,7 +1853,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1827,7 +1885,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1858,7 +1917,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1889,7 +1949,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1920,7 +1981,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1951,7 +2013,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  53.99
+                              "price":  53.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -1982,7 +2045,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2013,7 +2077,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2044,7 +2109,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2075,7 +2141,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2106,7 +2173,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2137,7 +2205,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2168,7 +2237,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2199,7 +2269,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2230,7 +2301,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2261,7 +2333,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2292,7 +2365,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2323,7 +2397,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2354,7 +2429,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2385,7 +2461,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2416,7 +2493,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2447,7 +2525,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2478,7 +2557,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2509,7 +2589,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2540,7 +2621,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2571,7 +2653,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2602,7 +2685,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  55.99
+                              "price":  55.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2633,7 +2717,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2664,7 +2749,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2695,7 +2781,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2726,7 +2813,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2757,7 +2845,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2788,7 +2877,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2819,7 +2909,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2850,7 +2941,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2881,7 +2973,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2912,7 +3005,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2943,7 +3037,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -2974,7 +3069,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3005,7 +3101,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3036,7 +3133,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3067,7 +3165,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3098,7 +3197,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3129,7 +3229,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3160,7 +3261,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3191,7 +3293,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3222,7 +3325,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3253,7 +3357,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3284,7 +3389,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3315,7 +3421,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3346,7 +3453,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3377,7 +3485,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3408,7 +3517,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3439,7 +3549,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3470,7 +3581,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3501,7 +3613,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3532,7 +3645,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3563,7 +3677,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3594,7 +3709,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3625,7 +3741,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3656,7 +3773,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3687,7 +3805,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3718,7 +3837,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3749,7 +3869,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3780,7 +3901,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3811,7 +3933,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3842,7 +3965,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3873,7 +3997,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3904,7 +4029,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3935,7 +4061,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3966,7 +4093,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -3997,7 +4125,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -4028,7 +4157,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -4059,7 +4189,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     },
@@ -4090,7 +4221,8 @@ const products = [
                           {
                               "quantity":  999,
                               "is_enabled":  true,
-                              "price":  57.99
+                              "price":  57.99,
+                              "readiness_state_id":  1421270594788
                           }
                       ]
     }

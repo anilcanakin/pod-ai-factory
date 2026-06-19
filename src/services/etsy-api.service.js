@@ -348,7 +348,7 @@ async function updateListingInventory(workspaceId, listingId) {
 
     const body = JSON.stringify({
         products:                    template.products,
-        price_on_property:           [513, 200],
+        price_on_property:           [513],
         quantity_on_property:        [],
         sku_on_property:             [],
         readiness_state_on_property: [],

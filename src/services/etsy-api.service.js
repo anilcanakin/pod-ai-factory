@@ -233,7 +233,7 @@ async function getStatus(workspaceId) {
 
 // ─── Listing oluşturma ────────────────────────────────────────────────────────
 
-async function createDraftListing(workspaceId, { title, description, tags, price, imageUrls }) {
+async function createDraftListing(workspaceId, { title, description, tags, price, imageUrls, withVariations = true }) {
     const accessToken = await getValidToken(workspaceId);
     const tokens      = await _loadTokens(workspaceId);
 
@@ -301,10 +301,23 @@ async function createDraftListing(workspaceId, { title, description, tags, price
         await _uploadImage(accessToken, tokens.shopId, listingId, imageUrls[i], i + 1);
     }
 
-    return {
+    const result = {
         listingId,
         listingUrl: `https://www.etsy.com/listing/${listingId}`,
     };
+
+    if (withVariations) {
+        try {
+            await updateListingInventory(workspaceId, listingId);
+            result.variationsApplied = true;
+        } catch (invErr) {
+            console.error(`[Etsy API] Draft oluştu ama inventory başarısız (listing ${listingId}): ${invErr.message}`);
+            result.variationsApplied = false;
+            result.inventoryError    = invErr.message;
+        }
+    }
+
+    return result;
 }
 
 async function _uploadImage(accessToken, shopId, listingId, imageUrl, rank) {

@@ -1,6 +1,6 @@
 ﻿// 132 Yuppion enabled variants — T-Shirt (S-4XL x 6 colors), Sweatshirt (S-3XL x 7 colors), Hoodie (S-3XL x 8 colors)
-// Price tiers: 4748c (T-Shirt S/M/L), 5048c (T-Shirt XL-4XL), 5399c (Sweatshirt S/M/L), 5599c (Sweatshirt XL-3XL), 5799c (Hoodie S-3XL)
-// Write-side only: property_values + offerings. No offering_id, is_deleted, scale_id, readiness_state_id.
+// Price tiers: 47.48 (T-Shirt S/M/L), 50.48 (T-Shirt XL-4XL), 53.99 (Sweatshirt S/M/L), 55.99 (Sweatshirt XL-3XL), 57.99 (Hoodie S-3XL)
+// Write-side only: property_values + offerings. price=float, no currency_code, no offering_id, is_deleted, scale_id.
 const products = [
     {
         "property_values":  [
@@ -27,13 +27,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -62,13 +58,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -97,13 +89,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -132,13 +120,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -167,13 +151,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -202,13 +182,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -237,13 +213,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -272,13 +244,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -307,13 +275,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -342,13 +306,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -377,13 +337,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -412,13 +368,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -447,13 +399,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -482,13 +430,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -517,13 +461,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -552,13 +492,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -587,13 +523,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -622,13 +554,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  4748,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  47.48
                           }
                       ]
     },
@@ -657,13 +585,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -692,13 +616,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -727,13 +647,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -762,13 +678,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -797,13 +709,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -832,13 +740,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -867,13 +771,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -902,13 +802,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -937,13 +833,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -972,13 +864,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1007,13 +895,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1042,13 +926,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1077,13 +957,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1112,13 +988,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1147,13 +1019,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1182,13 +1050,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1217,13 +1081,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1252,13 +1112,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1287,13 +1143,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1322,13 +1174,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1357,13 +1205,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1392,13 +1236,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1427,13 +1267,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1462,13 +1298,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5048,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  50.48
                           }
                       ]
     },
@@ -1497,13 +1329,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1532,13 +1360,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1567,13 +1391,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1602,13 +1422,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1637,13 +1453,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1672,13 +1484,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1707,13 +1515,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1742,13 +1546,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1777,13 +1577,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1812,13 +1608,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1847,13 +1639,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1882,13 +1670,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1917,13 +1701,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1952,13 +1732,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -1987,13 +1763,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -2022,13 +1794,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -2057,13 +1825,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -2092,13 +1856,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -2127,13 +1887,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -2162,13 +1918,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -2197,13 +1949,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5399,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  53.99
                           }
                       ]
     },
@@ -2232,13 +1980,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2267,13 +2011,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2302,13 +2042,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2337,13 +2073,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2372,13 +2104,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2407,13 +2135,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2442,13 +2166,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2477,13 +2197,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2512,13 +2228,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2547,13 +2259,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2582,13 +2290,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2617,13 +2321,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2652,13 +2352,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2687,13 +2383,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2722,13 +2414,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2757,13 +2445,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2792,13 +2476,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2827,13 +2507,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2862,13 +2538,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2897,13 +2569,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2932,13 +2600,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5599,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  55.99
                           }
                       ]
     },
@@ -2967,13 +2631,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3002,13 +2662,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3037,13 +2693,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3072,13 +2724,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3107,13 +2755,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3142,13 +2786,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3177,13 +2817,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3212,13 +2848,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3247,13 +2879,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3282,13 +2910,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3317,13 +2941,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3352,13 +2972,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3387,13 +3003,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3422,13 +3034,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3457,13 +3065,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3492,13 +3096,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3527,13 +3127,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3562,13 +3158,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3597,13 +3189,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3632,13 +3220,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3667,13 +3251,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3702,13 +3282,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3737,13 +3313,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3772,13 +3344,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3807,13 +3375,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3842,13 +3406,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3877,13 +3437,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3912,13 +3468,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3947,13 +3499,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -3982,13 +3530,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4017,13 +3561,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4052,13 +3592,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4087,13 +3623,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4122,13 +3654,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4157,13 +3685,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4192,13 +3716,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4227,13 +3747,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4262,13 +3778,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4297,13 +3809,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4332,13 +3840,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4367,13 +3871,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4402,13 +3902,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4437,13 +3933,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4472,13 +3964,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4507,13 +3995,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4542,13 +4026,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4577,13 +4057,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     },
@@ -4612,13 +4088,9 @@ const products = [
                             ],
         "offerings":  [
                           {
-                              "price":  {
-                                            "amount":  5799,
-                                            "divisor":  100,
-                                            "currency_code":  "USD"
-                                        },
                               "quantity":  999,
-                              "is_enabled":  true
+                              "is_enabled":  true,
+                              "price":  57.99
                           }
                       ]
     }

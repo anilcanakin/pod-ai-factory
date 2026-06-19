@@ -346,7 +346,13 @@ async function updateListingInventory(workspaceId, listingId) {
     const template     = require('../config/yuppion-variation-template');
     const accessToken  = await getValidToken(workspaceId);
 
-    const body = JSON.stringify({ products: template.products });
+    const body = JSON.stringify({
+        products:                    template.products,
+        price_on_property:           [513, 200],
+        quantity_on_property:        [],
+        sku_on_property:             [],
+        readiness_state_on_property: [],
+    });
 
     const res = await fetch(
         `https://api.etsy.com/v3/application/listings/${listingId}/inventory`,

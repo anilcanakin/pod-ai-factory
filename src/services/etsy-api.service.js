@@ -340,4 +340,37 @@ async function _uploadImage(accessToken, shopId, listingId, imageUrl, rank) {
     }
 }
 
-module.exports = { getAuthUrl, exchangeCode, getValidToken, getStatus, refreshShopInfo, createDraftListing };
+// ─── Inventory (varyasyonlar) ─────────────────────────────────────────────────
+
+async function updateListingInventory(workspaceId, listingId) {
+    const template     = require('../config/yuppion-variation-template');
+    const accessToken  = await getValidToken(workspaceId);
+
+    const body = JSON.stringify({ products: template.products });
+
+    const res = await fetch(
+        `https://api.etsy.com/v3/application/listings/${listingId}/inventory`,
+        {
+            method:  'PUT',
+            headers: {
+                'x-api-key':    `${process.env.ETSY_API_KEY}:${process.env.ETSY_API_SECRET}`,
+                Authorization:  `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+            },
+            body,
+        }
+    );
+    _trackRateLimit(res);
+
+    if (!res.ok) {
+        const errText = await res.text();
+        console.error(`[Etsy API] updateListingInventory hata (${res.status}): ${errText}`);
+        throw new Error(`Etsy inventory güncelleme başarısız (${res.status}): ${errText}`);
+    }
+
+    const data = await res.json();
+    console.log(`[Etsy API] Inventory güncellendi — listing ${listingId}, ${template.productCount} variant`);
+    return { ok: true, listingId, productCount: template.productCount, data };
+}
+
+module.exports = { getAuthUrl, exchangeCode, getValidToken, getStatus, refreshShopInfo, createDraftListing, updateListingInventory };

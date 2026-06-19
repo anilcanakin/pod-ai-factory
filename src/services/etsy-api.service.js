@@ -262,7 +262,7 @@ async function createDraftListing(workspaceId, { title, description, tags, price
         description:         finalDescription,
         price:               priceFloat,
         quantity:            999,
-        taxonomy_id:         parseInt(process.env.ETSY_TAXONOMY_ID || '2078', 10),
+        taxonomy_id:         parseInt(process.env.ETSY_TAXONOMY_ID || '391', 10),
         who_made:            'i_did',
         when_made:           'made_to_order',
         is_supply:           false,

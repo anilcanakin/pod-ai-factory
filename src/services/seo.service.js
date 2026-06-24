@@ -4,7 +4,7 @@
  * Bir WPI Action Card'ından Etsy için SEO paketi üretir:
  *   1. Rakip başlık + targetKeywords'ten Keyword Density Map çıkar
  *   2. Academy Brain'den SEO_TACTICS + RULES context alır
- *   3. Claude Haiku → 140-char title, 13 tags, conversion-focused description
+ *   3. Claude Haiku → 70-90 char title, 13 tags, conversion-focused description
  */
 
 const anthropic        = require('../lib/anthropic');
@@ -86,13 +86,13 @@ ${academyContext || '(Academy henüz boş — Etsy best practices uygula)'}
 GÖREV: Bu ürün için Etsy'de satışı maksimize edecek SEO paketi oluştur.
 
 KURALLAR:
-- BAŞLIK: Tam olarak 140 karakter (Etsy limiti), keyword-rich. İlk 40 karakterde en önemli keyword olmalı. | ile gruplar ayır. Marka adı yok.
-- ETİKETLER: Tam olarak 13 adet, her biri max 20 karakter. Uzun kuyruklu, niyete yönelik kelimeler. Başlıkta geçenleri tekrarlama.
-- AÇIKLAMA: 180-250 kelime. İlk cümlede ana keyword. Malzeme, kullanım, hediye okasyon, CTA içersin. Okunabilir paragraflar.
+- BAŞLIK: 70-90 karakter arası (140'a ASLA çıkma). İlk 50 karaktere en güçlü long-tail ana keyword yerleştir (mobilde ilk 50 karakter görünür, %70+ satış mobil). Doğal, akıcı, okunabilir dil — keyword stuffing YAPMA (tekrar/alakasız kelime yığını Etsy cezası yer). Her kelime ana nişle bağlantılı olsun. | ile öbek ayırabilirsin. Marka adı yok.
+- ETİKETLER: Tam olarak 13 adet, her biri max 20 karakter. Uzun kuyruklu, niyete yönelik kelimeler. Başlıkta geçenleri tekrarlama. Cross-niche long-tail öncelikli: kimlik (meslek/hayvan/ebeveynlik) × ilgi alanı (hobi/film/spor) kombinasyonu (örn 'bengal cat mom', 'spooky nurse'). 13'ü de aynı ana nişi farklı açılardan hedeflesin. Tekil+çoğul aynı anda kullanma.
+- AÇIKLAMA: 150-250 kelime. İLK CÜMLE kritik (Etsy aramada gösterir, NLP tarar — ana keyword burada, doğal). Format: sorun tanımla → empati kur → ürünü çözüm sun → sonuç göster. Özellik değil FAYDA anlat. Tag'leri cümle içine doğal serpiştir. Kısa paragraf/madde, taranabilir. Hediye/kişisel niş için duygusal dil.
 
 SADECE JSON döndür:
 {
-  "title": "<tam 140 karakter başlık>",
+  "title": "<70-90 karakter başlık>",
   "tags": ["<tag1>","<tag2>","<tag3>","<tag4>","<tag5>","<tag6>","<tag7>","<tag8>","<tag9>","<tag10>","<tag11>","<tag12>","<tag13>"],
   "description": "<tam açıklama metni>"
 }

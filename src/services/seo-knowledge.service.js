@@ -8,12 +8,13 @@ You have been provided with REAL keywords that Etsy buyers are actually searchin
 Use these keywords strategically — they represent actual buyer intent and search behavior.
 
 ### TITLE RULES
-- Exactly 140 characters max
+- 70-90 characters (NEVER exceed 90 — mobile is 70%+ of sales, Etsy soft-caps at 70 and penalizes 140-stuffed titles)
 - Start with the highest-volume keyword from the provided Etsy suggestions
 - Use | to separate phrase groups (e.g. "Eagle Shirt | Gift for Dad | Patriotic Tee")
 - No filler adjectives like "beautiful", "amazing", "stunning"
-- Most important keyword must be in the first 40 characters (Etsy truncates in search)
+- Most important keyword must be in the first 50 characters (mobile truncates here — primary keyword MUST live here)
 - Include at least one gift occasion phrase
+- Never keyword-stuff: no repetition, no jammed synonyms. Natural readable language.
 
 ### TAG RULES
 - Exactly 13 tags, each max 20 characters
@@ -22,11 +23,14 @@ Use these keywords strategically — they represent actual buyer intent and sear
 - Diverse coverage: product type, style, material, recipient, occasion, use case
 - Avoid repeating exact words already in the title
 - Each tag is a separate search query — treat them independently
+- CROSS-NICHE FORMULA: identity (profession/animal/parenthood) × interest (hobby/movie/sport) = low-competition niche (e.g. 'bengal cat mom', 'spooky nurse'). All 13 tags support the same core niche from different angles.
 
 ### DESCRIPTION RULES
 - 150-250 words total
+- FIRST LINE IS CRITICAL — Etsy shows it in search and NLP-scans it. Main keyword here, naturally.
 - First sentence must contain the main keyword naturally
 - Naturally weave in 3-5 of the provided keywords in the first paragraph
+- Structure: problem → empathy → product as solution → outcome. Sell benefits, not features.
 - Include: materials, use case, gift occasions, care instructions
 - Use line breaks for readability
 - End with a call to action

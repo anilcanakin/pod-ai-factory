@@ -1,3 +1,11 @@
+## ⚡ TOKEN DİSİPLİNİ (önce bunu oku)
+- DAR çalış: sana verilen net dosya + net değişikliği yap. Tüm repoyu tarama.
+- SUBAGENT AÇMA: general-purpose/code-reviewer dispatch PAHALI (3.7M token/$1.5). Gerekmedikçe açma.
+- "Araştır ve bul" denmedikçe araştırma; spesifik dosya verildiyse direkt onu düzenle.
+- Bağlam için önce STATE.md oku — baştan keşif yapma.
+- Şu klasörleri context'e ALMA (zaten .gitignore'da, ağır): assets/ (320M), node_modules/, frontend/.next/, *.png.
+- Basit iş = minimal diff. Büyük refactor önerme, istenени yap.
+- Commit mesajı kısa. Force-push yok, .env'e dokunma, onaysız migration yok, "* copy" üretme.
 # POD AI Factory — CLAUDE.md
 
 Son güncelleme: 15 Mayıs 2026

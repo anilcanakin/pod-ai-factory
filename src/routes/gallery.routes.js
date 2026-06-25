@@ -69,12 +69,13 @@ router.post('/save-mockup', async (req, res) => {
     }
 });
 
-// GET /api/gallery/recent — latest 100 images across all jobs (workspace-scoped)
+// GET /api/gallery/recent — latest 100 non-mockup images across all jobs (workspace-scoped)
 router.get('/recent', async (req, res) => {
     try {
         const images = await prisma.image.findMany({
             where: {
                 imageUrl: { not: 'PENDING' },
+                engine: { not: 'mockup' },
                 job: { workspaceId: req.workspaceId },
             },
             orderBy: { createdAt: 'desc' },
@@ -90,6 +91,13 @@ router.get('/recent', async (req, res) => {
                 createdAt: true,
                 rawResponse: true,
                 jobId: true,
+                mockups: {
+                    select: { id: true, mockupUrl: true, templateId: true },
+                    take: 1,
+                },
+                seoData: {
+                    select: { id: true, title: true, etsyListingId: true },
+                },
             },
         });
 
@@ -97,6 +105,54 @@ router.get('/recent', async (req, res) => {
             ...img,
             rawResponse: img.rawResponse ? img.rawResponse.substring(0, 300) : null,
             placeholderUrl: null,
+            seoData: img.seoData
+                ? { ...img.seoData, etsyListingId: img.seoData.etsyListingId ? img.seoData.etsyListingId.toString() : null }
+                : null,
+        }));
+
+        res.json(enriched);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/gallery/listings — images dispatched to Etsy (etsyListingId set)
+router.get('/listings', async (req, res) => {
+    try {
+        const images = await prisma.image.findMany({
+            where: {
+                engine: { not: 'mockup' },
+                job: { workspaceId: req.workspaceId },
+                seoData: { etsyListingId: { not: null } },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 200,
+            select: {
+                id: true,
+                imageUrl: true,
+                status: true,
+                isApproved: true,
+                engine: true,
+                seed: true,
+                cost: true,
+                createdAt: true,
+                jobId: true,
+                mockups: {
+                    select: { id: true, mockupUrl: true, templateId: true },
+                    take: 1,
+                },
+                seoData: {
+                    select: { id: true, title: true, etsyListingId: true },
+                },
+            },
+        });
+
+        const enriched = images.map(img => ({
+            ...img,
+            placeholderUrl: null,
+            seoData: img.seoData
+                ? { ...img.seoData, etsyListingId: img.seoData.etsyListingId ? img.seoData.etsyListingId.toString() : null }
+                : null,
         }));
 
         res.json(enriched);

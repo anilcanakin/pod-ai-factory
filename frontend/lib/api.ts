@@ -158,11 +158,14 @@ export interface GalleryImage {
     cost: number;
     createdAt: string;
     rawResponse?: string | null;
+    mockups?: { id: string; mockupUrl: string; templateId: string }[];
+    seoData?: { id: string; title: string; etsyListingId: string | null } | null;
 }
 
 export const apiGallery = {
     getImages: (jobId: string) => request<GalleryImage[]>(`/gallery/${jobId}`),
     getRecent: () => request<GalleryImage[]>('/gallery/recent'),
+    getListings: () => request<GalleryImage[]>('/gallery/listings'),
     approve: (imageId: string) => request<GalleryImage>(`/gallery/${imageId}/approve`, { method: 'POST' }),
     reject: (imageId: string) => request<GalleryImage>(`/gallery/${imageId}/reject`, { method: 'POST' }),
     regenerate: (imageId: string) => request<{ message: string }>(`/gallery/${imageId}/regenerate`, { method: 'POST' }),

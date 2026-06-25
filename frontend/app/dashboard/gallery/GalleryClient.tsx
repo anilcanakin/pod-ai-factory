@@ -12,7 +12,7 @@ import {
     CheckCircle, CheckCircle2, XCircle, RefreshCw, Loader2,
     Download, Play, Maximize2, Copy, Image as ImageIcon, Images, Info,
     History, Scissors, ZoomIn, Store, Trash2, Zap,
-    Check, X, Layers, Tag, Clock, ChevronUp, ChevronDown
+    Check, X, Layers, Tag, Clock, ChevronUp, ChevronDown, ExternalLink
 } from 'lucide-react';
 
 function timeAgo(dateStr: string): string {
@@ -68,6 +68,7 @@ function GalleryInner() {
     const [showHistory, setShowHistory] = useState(false);
     const historyRef = useRef<HTMLDivElement>(null);
     const [pipelineImage, setPipelineImage] = useState<GalleryImage | null>(null);
+    const [tab, setTab] = useState<'designs' | 'listings'>('designs');
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -92,6 +93,13 @@ function GalleryInner() {
         queryKey: ['jobs-list'],
         queryFn: apiJobs.list,
         refetchInterval: 10000,
+    });
+
+    // Fetch published listings (Etsy dispatched)
+    const { data: listings = [], isLoading: isListingsLoading } = useQuery({
+        queryKey: ['gallery-listings'],
+        queryFn: apiGallery.getListings,
+        enabled: tab === 'listings',
     });
 
     // Fetch images for active job (or all recent images)
@@ -326,10 +334,25 @@ function GalleryInner() {
     return (
         <div className="flex flex-col h-[calc(100vh-8rem)] animate-fade-in gap-4">
 
-            {/* Top Bar: History Dropdown + Active Job Info + Shortcuts */}
+            {/* Top Bar: Tabs + History Dropdown + Active Job Info + Shortcuts */}
             <div className="flex items-center gap-3">
-                {/* History Dropdown */}
-                <div ref={historyRef} className="relative">
+                {/* Tab switcher */}
+                <div className="flex items-center gap-1 p-1 bg-bg-elevated border border-border-default rounded-[8px]">
+                    <button
+                        onClick={() => setTab('designs')}
+                        className={cn('px-3 py-1.5 text-xs font-medium rounded-[6px] transition-all', tab === 'designs' ? 'bg-accent text-white shadow-sm' : 'text-text-secondary hover:text-text-primary')}
+                    >
+                        Tasarımlar
+                    </button>
+                    <button
+                        onClick={() => setTab('listings')}
+                        className={cn('px-3 py-1.5 text-xs font-medium rounded-[6px] transition-all', tab === 'listings' ? 'bg-accent text-white shadow-sm' : 'text-text-secondary hover:text-text-primary')}
+                    >
+                        Listinglerim
+                    </button>
+                </div>
+                {/* History Dropdown — designs tab only */}
+                {tab === 'designs' && <div ref={historyRef} className="relative">
                     <button
                         onClick={() => setShowHistory(v => !v)}
                         className={cn(
@@ -420,10 +443,10 @@ function GalleryInner() {
                             </div>
                         </div>
                     )}
-                </div>
+                </div>}
 
-                {/* Active job title */}
-                {activeJobId && (
+                {/* Active job title — designs tab only */}
+                {tab === 'designs' && activeJobId && (
                     <div className="flex items-center gap-2">
                         <h1 className="text-lg font-bold text-text-primary flex items-center gap-2">
                             {allImagesMode ? (
@@ -449,6 +472,35 @@ function GalleryInner() {
             </div>
 
             {/* Full-width Gallery Content */}
+            {tab === 'listings' ? (
+                <div className="flex-1 flex flex-col min-w-0 bg-bg-surface border border-border-default rounded-[12px] p-6 overflow-hidden shadow-sm">
+                    <div className="mb-4 pb-3 border-b border-border-subtle">
+                        <h2 className="text-sm font-semibold text-text-primary">Yayınlanan Listinglerim</h2>
+                        <p className="text-xs text-text-tertiary mt-0.5">Etsy'ye dispatch edilmiş tasarımlar · {listings.length} listing</p>
+                    </div>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                        {isListingsLoading ? (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                {[...Array(8)].map((_, i) => (
+                                    <div key={i} className="rounded-[10px] skeleton-shimmer bg-bg-elevated" style={{ height: '260px' }} />
+                                ))}
+                            </div>
+                        ) : listings.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-text-tertiary">
+                                <Store className="w-10 h-10 mb-2 opacity-30" />
+                                <p className="text-sm">Henüz yayınlanmış listing yok</p>
+                                <p className="text-xs mt-1">Tasarımlar sekmesinden Etsy&apos;ye dispatch et</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-4">
+                                {listings.map(img => (
+                                    <ListingCard key={img.id} img={img} />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
             <div className="flex-1 flex flex-col min-w-0 bg-bg-surface border border-border-default rounded-[12px] p-6 overflow-hidden shadow-sm relative">
 
                 {activeJobId && (
@@ -569,6 +621,7 @@ function GalleryInner() {
                     <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-bg-surface to-transparent pointer-events-none" />
                 )}
             </div>
+            )}
 
             {/* Fullscreen viewer */}
             {viewImg && (
@@ -759,6 +812,48 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                         <Trash2 className="w-3 h-3" />
                     </button>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Listing Card ─────────────────────────────────────────────────────────
+function ListingCard({ img }: { img: GalleryImage }) {
+    const displayUrl = img.mockups?.[0]?.mockupUrl || img.imageUrl;
+    const etsyUrl = img.seoData?.etsyListingId
+        ? `https://www.etsy.com/listing/${img.seoData.etsyListingId}`
+        : null;
+
+    return (
+        <div className="rounded-[10px] overflow-hidden border border-border-subtle hover:border-border-strong transition-all duration-200 bg-bg-elevated shadow-sm flex flex-col">
+            <div className="aspect-square overflow-hidden bg-bg-base shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                    src={resolveUrl(displayUrl)}
+                    alt="Listing"
+                    className="w-full h-full object-cover"
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                />
+            </div>
+            <div className="p-3 space-y-2 flex-1 flex flex-col">
+                <p className="text-xs font-medium text-text-primary line-clamp-2 leading-tight flex-1">
+                    {img.seoData?.title || 'Başlıksız listing'}
+                </p>
+                <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-text-tertiary font-mono">#{img.seoData?.etsyListingId}</span>
+                    <span className="text-[10px] text-text-tertiary">·</span>
+                    <span className="text-[10px] text-text-tertiary">{timeAgo(img.createdAt)}</span>
+                </div>
+                {etsyUrl && (
+                    <a
+                        href={etsyUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 text-[10px] font-medium rounded-[6px] border border-orange-500/30 transition-colors"
+                    >
+                        <ExternalLink className="w-3 h-3" /> Etsy&apos;de Aç
+                    </a>
+                )}
             </div>
         </div>
     );

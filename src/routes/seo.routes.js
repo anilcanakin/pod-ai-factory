@@ -45,6 +45,11 @@ router.post('/generate', async (req, res) => {
             if (imageUrl.startsWith('data:')) {
                 const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
                 if (matches) { mimeType = matches[1]; base64Data = matches[2]; }
+            } else if (/^https?:\/\//.test(imageUrl)) {
+                const axios = require('axios');
+                const resp = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
+                base64Data = Buffer.from(resp.data).toString('base64');
+                mimeType = resp.headers['content-type'] || 'image/png';
             }
             const visionResult = await visionService.analyzeImage(base64Data, mimeType);
             imageDescription = visionResult.prompt || '';

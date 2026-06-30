@@ -12,6 +12,7 @@ import {
 
 export function SEOClient() {
     const [sourceImage, setSourceImage] = useState<string | null>(null);
+    const [sourceImageId, setSourceImageId] = useState<string | null>(null);
     const [keyword, setKeyword] = useState('');
     const [result, setResult] = useState<EtsySEO | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -20,12 +21,15 @@ export function SEOClient() {
     const [publishing, setPublishing] = useState(false);
     const [publishResult, setPublishResult] = useState<string | null>(null);
     const [variationHint, setVariationHint] = useState<string | null>(null);
+    const [showPublishModal, setShowPublishModal] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const searchParams = useSearchParams();
 
     useEffect(() => {
         const urlParam = searchParams.get('imageUrl');
         if (urlParam) setSourceImage(decodeURIComponent(urlParam));
+        const idParam = searchParams.get('imageId');
+        if (idParam) setSourceImageId(idParam);
     }, [searchParams]);
 
     const processFile = (file: File) => {
@@ -102,8 +106,9 @@ export function SEOClient() {
         toast.success('Copied!');
     };
 
-    const handlePublishToEtsy = async () => {
+    const handleConfirmPublish = async () => {
         if (!result) return;
+        setShowPublishModal(false);
         setPublishing(true);
         try {
             const statusRes  = await fetch('/api/etsy/status', { credentials: 'include' });
@@ -114,16 +119,20 @@ export function SEOClient() {
                 return;
             }
 
-            const response = await fetch('/api/etsy/listings', {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({
+            const endpoint = sourceImageId ? '/api/etsy/dispatch' : '/api/etsy/listings';
+            const payload = sourceImageId
+                ? { imageId: sourceImageId }
+                : {
                     title:       result.title,
                     description: result.description,
                     tags:        result.tags,
                     imageUrls:   sourceImage ? [sourceImage] : [],
-                }),
+                  };
+            const response = await fetch(endpoint, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload),
             });
             const data = await response.json();
             if (data.success) {
@@ -260,7 +269,7 @@ export function SEOClient() {
                             )}
 
                             <button
-                                onClick={handlePublishToEtsy}
+                                onClick={() => setShowPublishModal(true)}
                                 disabled={publishing || !result}
                                 className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all disabled:opacity-40"
                             >
@@ -487,6 +496,24 @@ export function SEOClient() {
                     })()}
                 </div>
             )}
+        {showPublishModal && result && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+                <div className="bg-[#15151a] border border-white/10 rounded-[14px] max-w-md w-full p-6 space-y-4">
+                    <h3 className="text-base font-semibold text-white">Etsy'de yayınlamayı onaylıyor musun?</h3>
+                    <div className="space-y-2 text-sm text-slate-300">
+                        <p><span className="text-slate-500">Başlık:</span> {result.title}</p>
+                        <p><span className="text-slate-500">Etiket sayısı:</span> {result.tags.length}</p>
+                        <p><span className="text-slate-500">Görsel kaynağı:</span> {sourceImageId ? 'Mockup + varyantlar (dispatch)' : 'Tek görsel (basit)'}</p>
+                    </div>
+                    <div className="flex gap-2 justify-end pt-2">
+                        <button onClick={() => setShowPublishModal(false)} className="px-4 py-2 text-sm text-slate-400 hover:text-white">İptal</button>
+                        <button onClick={handleConfirmPublish} disabled={publishing} className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium rounded-[8px] disabled:opacity-40">
+                            {publishing ? 'Yayınlanıyor...' : 'Onayla ve Yayınla'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
         </div>
     );
 }

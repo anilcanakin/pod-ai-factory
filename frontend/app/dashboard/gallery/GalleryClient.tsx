@@ -606,7 +606,7 @@ function GalleryInner() {
                                     onUpscale={(scale) => handleUpscale(img.id, img.imageUrl, scale)}
                                     onPublishToEtsy={() => handlePublishToEtsy(img.id)}
                                     onMockup={() => router.push(`/dashboard/mockups?designUrl=${encodeURIComponent(resolveUrl(img.imageUrl))}&designImageId=${img.id}`)}
-                                    onSeo={() => router.push(`/dashboard/seo?imageUrl=${encodeURIComponent(resolveUrl(img.imageUrl))}`)}
+                                    onSeo={() => router.push(`/dashboard/seo?imageUrl=${encodeURIComponent(resolveUrl(img.imageUrl))}&imageId=${img.id}`)}
                                     onPipeline={() => setPipelineImage(img)}
                                     isProcessing={processingImage === img.id}
                                     isPublishing={publishingImage === img.id}

@@ -1,5 +1,10 @@
+import { Suspense } from 'react';
 import { SEOClient } from './SEOClient';
 
 export default function SEOPage() {
-    return <SEOClient />;
+    return (
+        <Suspense>
+            <SEOClient />
+        </Suspense>
+    );
 }

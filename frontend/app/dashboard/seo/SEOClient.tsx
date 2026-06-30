@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiSeo, type EtsySEO, type MarketData } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -20,6 +21,12 @@ export function SEOClient() {
     const [publishResult, setPublishResult] = useState<string | null>(null);
     const [variationHint, setVariationHint] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const searchParams = useSearchParams();
+
+    useEffect(() => {
+        const urlParam = searchParams.get('imageUrl');
+        if (urlParam) setSourceImage(decodeURIComponent(urlParam));
+    }, [searchParams]);
 
     const processFile = (file: File) => {
         if (!file.type.startsWith('image/')) {

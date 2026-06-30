@@ -9,6 +9,8 @@ interface BadgeProps {
 
 export function StatusBadge({ status, className }: BadgeProps) {
     const labels: Record<string, string> = {
+        GENERATED: 'Üretildi',
+        PROCESSED: 'İşlendi',
         COMPLETED: 'Tamamlandı',
         APPROVED: 'Onaylandı',
         REJECTED: 'Reddedildi',

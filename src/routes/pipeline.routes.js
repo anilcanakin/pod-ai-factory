@@ -317,6 +317,16 @@ router.post('/one-click', async (req, res) => {
                 }
                 seo.title = (seo.title || '').slice(0, 140);
                 seo.tags = (seo.tags || []).slice(0, 13);
+                // Başlık 70-90 karakter zorunluluğu
+                if (seo.title && seo.title.length < 70) {
+                    seo.title = seo.title + ' | Unique Graphic Tee';
+                    seo.title = seo.title.slice(0, 90);
+                }
+                if (seo.title && seo.title.length > 90) {
+                    seo.title = seo.title.slice(0, 90);
+                }
+                // Tag'leri lowercase ve max 20 karakter zorunluluğu
+                seo.tags = seo.tags.map(t => t.toLowerCase().slice(0, 20).trim());
 
                 results.steps.seo = {
                     status: seo._fallback ? 'partial' : 'success',

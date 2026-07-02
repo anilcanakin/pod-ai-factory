@@ -807,6 +807,11 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                         title="Run One-Click Pipeline">
                         <Zap className="w-3 h-3" /> Pipeline
                     </button>
+                    <button onClick={e => { e.stopPropagation(); onPublishToEtsy(); }}
+                        disabled={isPublishing}
+                        className="flex items-center gap-1 px-2 py-1 bg-orange-600/80 hover:bg-orange-500 text-white text-[10px] font-medium rounded-[6px] transition-colors disabled:opacity-50">
+                        {isPublishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Store className="w-3 h-3" />} Etsy
+                    </button>
                     <button onClick={e => { e.stopPropagation(); onDelete(); }}
                         className="flex items-center gap-1 px-2 py-1 bg-danger/60 hover:bg-danger text-white text-[10px] rounded-[6px] transition-colors ml-auto">
                         <Trash2 className="w-3 h-3" />

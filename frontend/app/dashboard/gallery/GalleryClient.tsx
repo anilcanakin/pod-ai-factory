@@ -1073,8 +1073,17 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                                     <button
                                         onClick={() => {
                                             const text = `TITLE:\n${steps.seo.title}\n\nDESCRIPTION:\n${steps.seo.description}\n\nTAGS:\n${steps.seo.tags.join(', ')}`;
-                                            navigator.clipboard.writeText(text);
-                                            toast.success('SEO copied to clipboard!');
+                                            try {
+                                                navigator.clipboard.writeText(text).then(() => toast.success('SEO copied!'));
+                                            } catch {
+                                                const el = document.createElement('textarea');
+                                                el.value = text;
+                                                document.body.appendChild(el);
+                                                el.select();
+                                                document.execCommand('copy');
+                                                document.body.removeChild(el);
+                                                toast.success('SEO copied!');
+                                            }
                                         }}
                                         className="text-[10px] px-3 py-1.5 bg-green-600/20 text-green-400 rounded-lg border border-green-500/30 hover:bg-green-600/30 transition-colors font-semibold"
                                     >

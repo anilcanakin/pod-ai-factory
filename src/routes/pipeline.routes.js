@@ -275,7 +275,7 @@ router.post('/one-click', async (req, res) => {
                 const seoResponse = await client.messages.create({
                     model: 'claude-haiku-4-5',
                     max_tokens: 4096,
-                    system: `${knowledge}\n\nReturn ONLY valid JSON. Keep description under 300 characters. Format: {"title":"...","description":"...","tags":["tag1",...,"tag13"],"topKeywords":["kw1","kw2","kw3"]}`,
+                    system: `${knowledge}\n\nCRITICAL: Return ONLY a single raw JSON object. No markdown, no code fences, no explanations, no notes before or after. Output must start with { and end with }. Format exactly: {"title":"...","description":"...","tags":["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8","tag9","tag10","tag11","tag12","tag13"],"topKeywords":["kw1","kw2","kw3"]} — tags array MUST have exactly 13 items.`,
                     messages: [{
                         role: 'user',
                         content: `Create Etsy SEO for this POD design: ${imageDescription}\nReal Etsy searches: ${etsyKeywords.slice(0, 10).join(', ')}`

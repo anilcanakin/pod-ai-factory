@@ -284,7 +284,7 @@ router.post('/one-click', async (req, res) => {
 
                 const rawText = seoResponse.content[0].text;
                 console.log(`[Pipeline:SEO] stop_reason=${seoResponse.stop_reason} output_tokens=${seoResponse.usage?.output_tokens} raw_len=${rawText.length}`);
-                console.log(`[Pipeline:SEO] raw_output (first 2000): ${rawText.slice(0, 2000)}`);
+                console.log(`[Pipeline:SEO] raw_output (first 4000): ${rawText.slice(0, 4000)}`);
 
                 const seoRaw = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
                 const seoStart = seoRaw.indexOf('{');

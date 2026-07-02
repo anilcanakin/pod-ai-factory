@@ -1065,7 +1065,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                                     <p className="text-xs font-bold text-green-400">✓ SEO Üretildi</p>
                                     <p className="text-xs text-slate-300 line-clamp-2 font-medium">{steps.seo.title}</p>
                                     <div className="flex flex-wrap gap-1">
-                                        {steps.seo.tags?.slice(0, 7).map((tag: string, i: number) => (
+                                        {steps.seo.tags?.slice(0, 13).map((tag: string, i: number) => (
                                             <span key={i} className="text-[10px] px-2 py-0.5 bg-slate-700/80 text-slate-300 rounded-full">{tag}</span>
                                         ))}
                                     </div>

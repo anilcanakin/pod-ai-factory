@@ -721,6 +721,17 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
 
             {/* Status Badge */}
             <div className="absolute top-2 right-2 z-10 shadow-sm"><StatusBadge status={img.status} /></div>
+            {img.seoData?.etsyListingId && (
+                <a
+                    href={`https://www.etsy.com/listing/${img.seoData.etsyListingId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 bg-orange-600/90 text-white text-[10px] font-semibold rounded-[6px] shadow-sm hover:bg-orange-500 transition-colors"
+                >
+                    Etsy ↗
+                </a>
+            )}
 
             {/* Image or Pending Skeleton */}
             {isPending ? (

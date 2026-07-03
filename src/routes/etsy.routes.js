@@ -197,10 +197,12 @@ router.post('/dispatch', async (req, res) => {
             orderBy: { createdAt: 'desc' },
             take: 5,
         });
-
-        const primaryUrl        = mockups.length > 0 ? mockups[0].imageUrl : image.imageUrl;
-        const additionalUrls    = mockups.slice(1).map(m => m.imageUrl);
-        const imageUrls         = [primaryUrl, ...additionalUrls].filter(Boolean);
+        if (mockups.length < 1) {
+            return res.status(400).json({ error: 'En az 1 mockup gerekli. Önce pipeline çalıştırın.' });
+        }
+        const primaryUrl     = mockups[0].imageUrl;
+        const additionalUrls = mockups.slice(1).map(m => m.imageUrl);
+        const imageUrls      = [primaryUrl, ...additionalUrls].filter(Boolean);
         const BASE_URL = process.env.BACKEND_URL || `http://localhost:3001`;
         const resolvedUrls = imageUrls.map(u => {
             if (!u) return null;

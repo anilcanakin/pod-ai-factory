@@ -75,7 +75,7 @@ router.get('/recent', async (req, res) => {
         const images = await prisma.image.findMany({
             where: {
                 imageUrl: { not: 'PENDING' },
-                engine: { not: 'mockup' },
+                engine: { notIn: ['mockup', 'bg_remove'] },
                 job: { workspaceId: req.workspaceId },
             },
             orderBy: { createdAt: 'desc' },
@@ -121,7 +121,7 @@ router.get('/listings', async (req, res) => {
     try {
         const images = await prisma.image.findMany({
             where: {
-                engine: { not: 'mockup' },
+                engine: { notIn: ['mockup', 'bg_remove'] },
                 job: { workspaceId: req.workspaceId },
                 seoData: { etsyListingId: { not: null } },
             },

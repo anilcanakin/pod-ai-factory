@@ -165,7 +165,10 @@ router.get('/listings', async (req, res) => {
 router.get('/:jobId', async (req, res) => {
     try {
         const images = await prisma.image.findMany({
-            where: { jobId: req.params.jobId },
+            where: {
+                jobId: req.params.jobId,
+                engine: { notIn: ['mockup', 'bg_remove'] },
+            },
             orderBy: { createdAt: 'asc' },
             select: {
                 id: true,
@@ -177,6 +180,14 @@ router.get('/:jobId', async (req, res) => {
                 cost: true,
                 createdAt: true,
                 rawResponse: true,
+                jobId: true,
+                mockups: {
+                    select: { id: true, mockupUrl: true, templateId: true },
+                    take: 5,
+                },
+                seoData: {
+                    select: { id: true, title: true, description: true, tags: true, etsyListingId: true },
+                },
             }
         });
 

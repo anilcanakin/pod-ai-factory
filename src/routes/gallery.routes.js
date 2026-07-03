@@ -96,7 +96,7 @@ router.get('/recent', async (req, res) => {
                     take: 1,
                 },
                 seoData: {
-                    select: { id: true, title: true, etsyListingId: true },
+                    select: { id: true, title: true, description: true, tags: true, etsyListingId: true },
                 },
             },
         });
@@ -142,7 +142,7 @@ router.get('/listings', async (req, res) => {
                     take: 1,
                 },
                 seoData: {
-                    select: { id: true, title: true, etsyListingId: true },
+                    select: { id: true, title: true, description: true, tags: true, etsyListingId: true },
                 },
             },
         });

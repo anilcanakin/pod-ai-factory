@@ -159,7 +159,7 @@ export interface GalleryImage {
     createdAt: string;
     rawResponse?: string | null;
     mockups?: { id: string; mockupUrl: string; templateId: string }[];
-    seoData?: { id: string; title: string; etsyListingId: string | null } | null;
+    seoData?: { id: string; title: string; description: string; tags: string[]; etsyListingId: string | null } | null;
 }
 
 export const apiGallery = {

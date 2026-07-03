@@ -623,25 +623,83 @@ function GalleryInner() {
             </div>
             )}
 
-            {/* Fullscreen viewer */}
+            {/* Image detail modal */}
             {viewImg && (
-                <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4" onClick={() => setViewImg(null)}>
-                    <div className="relative max-w-5xl w-full h-full flex flex-col items-center justify-center gap-6" onClick={e => e.stopPropagation()}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={resolveUrl(viewImg.imageUrl)} alt="Full view" className="max-w-full max-h-[85vh] rounded-[16px] object-contain shadow-2xl" />
-                        <div className="flex items-center gap-3 bg-bg-surface p-3 rounded-2xl border border-border-default shadow-lg">
-                            <StatusBadge status={viewImg.status} className="px-3" />
-                            <div className="w-px h-6 bg-border-default"></div>
-                            <button onClick={() => { approveMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-2 px-4 py-2 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-sm font-medium rounded-[10px] border border-[rgba(34,197,94,0.20)] transition-colors">
-                                <CheckCircle className="w-4 h-4" /> Onayla (A)
-                            </button>
-                            <button onClick={() => { rejectMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center gap-2 px-4 py-2 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-sm font-medium rounded-[10px] border border-[rgba(239,68,68,0.20)] transition-colors">
-                                <XCircle className="w-4 h-4" /> Reddet (R)
-                            </button>
-                            <div className="w-px h-6 bg-border-default ml-2"></div>
-                            <button onClick={() => setViewImg(null)} className="text-text-tertiary hover:text-text-primary px-3 text-sm transition-colors">
-                                Kapat (Esc)
-                            </button>
+                <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setViewImg(null)}>
+                    <div className="relative w-full max-w-5xl max-h-[90vh] bg-[#111827] rounded-2xl border border-border-default shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-5 py-3 border-b border-border-default flex-shrink-0">
+                            <div className="flex items-center gap-3">
+                                <StatusBadge status={viewImg.status} className="px-3" />
+                                {viewImg.seoData?.etsyListingId && (
+                                    <a href={`https://www.etsy.com/listing/${viewImg.seoData.etsyListingId}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2 py-0.5 bg-orange-600/90 text-white text-[10px] font-semibold rounded-[6px] hover:bg-orange-500 transition-colors">
+                                        Etsy ↗
+                                    </a>
+                                )}
+                                {viewImg.mockups && viewImg.mockups.length > 0 && (
+                                    <span className="text-xs text-text-tertiary">{viewImg.mockups.length} mockup</span>
+                                )}
+                            </div>
+                            <button onClick={() => setViewImg(null)} className="text-text-tertiary hover:text-text-primary text-sm px-2 py-1 rounded transition-colors">✕ Kapat</button>
+                        </div>
+                        {/* Body */}
+                        <div className="flex flex-1 overflow-hidden">
+                            {/* Left: design + mockups */}
+                            <div className="w-1/2 flex flex-col gap-3 p-4 overflow-y-auto border-r border-border-default">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={resolveUrl(viewImg.imageUrl)} alt="Full view" className="w-full rounded-xl object-contain bg-black/20" style={{ maxHeight: '320px' }} />
+                                {viewImg.mockups && viewImg.mockups.length > 0 && (
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {viewImg.mockups.map(m => (
+                                            /* eslint-disable-next-line @next/next/no-img-element */
+                                            <img key={m.id} src={resolveUrl(m.mockupUrl)} alt="Mockup" className="w-full aspect-square object-cover rounded-lg border border-border-default" />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            {/* Right: SEO + actions */}
+                            <div className="w-1/2 flex flex-col gap-4 p-4 overflow-y-auto">
+                                {viewImg.seoData ? (
+                                    <>
+                                        <div>
+                                            <p className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider mb-1">Başlık</p>
+                                            <p className="text-sm text-text-primary font-medium leading-snug">{viewImg.seoData.title}</p>
+                                        </div>
+                                        {viewImg.seoData.description && (
+                                            <div>
+                                                <p className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider mb-1">Açıklama</p>
+                                                <p className="text-xs text-text-secondary leading-relaxed line-clamp-6">{viewImg.seoData.description}</p>
+                                            </div>
+                                        )}
+                                        {viewImg.seoData.tags && viewImg.seoData.tags.length > 0 && (
+                                            <div>
+                                                <p className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider mb-2">Etiketler ({viewImg.seoData.tags.length})</p>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {viewImg.seoData.tags.map((tag, i) => (
+                                                        <span key={i} className="px-2 py-0.5 bg-slate-800 text-text-secondary text-[10px] rounded-full border border-border-default">{tag}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <p className="text-xs text-text-tertiary italic">SEO verisi yok</p>
+                                )}
+                                {/* Actions */}
+                                <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-border-default">
+                                    <button onClick={() => { approveMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-success-subtle hover:bg-[rgba(34,197,94,0.18)] text-success text-sm font-medium rounded-[10px] border border-[rgba(34,197,94,0.20)] transition-colors">
+                                        <CheckCircle className="w-4 h-4" /> Onayla
+                                    </button>
+                                    <button onClick={() => { rejectMutation.mutate(viewImg.id); setViewImg(null); }} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-danger-subtle hover:bg-[rgba(239,68,68,0.18)] text-danger text-sm font-medium rounded-[10px] border border-[rgba(239,68,68,0.20)] transition-colors">
+                                        <XCircle className="w-4 h-4" /> Reddet
+                                    </button>
+                                    {viewImg.seoData?.etsyListingId && (
+                                        <a href={`https://www.etsy.com/listing/${viewImg.seoData.etsyListingId}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 text-sm font-medium rounded-[10px] border border-orange-600/30 transition-colors">
+                                            <ExternalLink className="w-4 h-4" /> Etsy&apos;de Görüntüle
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -831,7 +831,7 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
             )}
 
             {/* Hover Overlay */}
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col">
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col" onClick={onView}>
                 {/* Top row: approve/reject */}
                 <div className="flex items-center justify-between p-2">
                     <button onClick={e => { e.stopPropagation(); onApprove(); }}

@@ -876,7 +876,11 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
     useEffect(() => {
         fetch('/api/mockups/templates', { credentials: 'include' })
             .then(r => r.json())
-            .then(data => setTemplates(data.templates || []))
+            .then(data => {
+                const t = data.templates || [];
+                setTemplates(t);
+                if (t.length > 0) setSelectedTemplateIds(t.map((tmpl: { id: string }) => tmpl.id));
+            })
             .catch(() => { });
     }, []);
 

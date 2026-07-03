@@ -201,13 +201,19 @@ router.post('/dispatch', async (req, res) => {
         const primaryUrl        = mockups.length > 0 ? mockups[0].imageUrl : image.imageUrl;
         const additionalUrls    = mockups.slice(1).map(m => m.imageUrl);
         const imageUrls         = [primaryUrl, ...additionalUrls].filter(Boolean);
+        const BASE_URL = process.env.BACKEND_URL || `http://localhost:3001`;
+        const resolvedUrls = imageUrls.map(u => {
+            if (!u) return null;
+            if (u.startsWith('http')) return u;
+            return `${BASE_URL}/${u.replace(/^\//, '')}`;
+        }).filter(Boolean);
 
         const result = await etsy.createDraftListing(req.workspaceId, {
             title:       seoContent.title,
             description: seoContent.description,
             tags:        seoContent.tags,
             price:       process.env.DEFAULT_LISTING_PRICE || '19.99',
-            imageUrls,
+            imageUrls: resolvedUrls,
         });
 
         // etsyListingId'yi SEOData'ya kaydet

@@ -110,6 +110,13 @@ router.post('/one-click', async (req, res) => {
         const { imageId, imageUrl, templateIds = [], bgModel = 'birefnet', options = {} } = req.body;
         const workspaceId = req.workspaceId;
 
+        // Kaynak görselin jobId'sini al
+        let sourceJobId = null;
+        if (imageId) {
+            const sourceImage = await prisma.image.findUnique({ where: { id: imageId }, select: { jobId: true } });
+            sourceJobId = sourceImage?.jobId || null;
+        }
+
         if (!workspaceId) return res.status(401).json({ error: 'Unauthorized' });
         if (!imageUrl) return res.status(400).json({ error: 'imageUrl required' });
 
@@ -157,15 +164,14 @@ router.post('/one-click', async (req, res) => {
                     results.steps.bgRemove = { status: 'success', url: bgUrl };
                     results.finalImageUrl = bgUrl;
 
-                    // Persist to DB under a shared "processed" job
-                    const processedJob = await prisma.designJob.findFirst({
-                        where: { workspaceId, mode: 'processed' }
-                    }) || await prisma.designJob.create({
-                        data: { workspaceId, originalImage: 'processed', mode: 'processed', status: 'COMPLETED', basePrompt: 'Processed Images' }
-                    });
-
+                    // Persist to DB under source job or shared "processed" job
+                    const bgJobId = sourceJobId || (await (async () => {
+                        const j = await prisma.designJob.findFirst({ where: { workspaceId, mode: 'processed' } })
+                            || await prisma.designJob.create({ data: { workspaceId, originalImage: 'processed', mode: 'processed', status: 'COMPLETED', basePrompt: 'Processed Images' } });
+                        return j.id;
+                    })());
                     const savedBg = await prisma.image.create({
-                        data: { jobId: processedJob.id, variantType: 'bg_removed', promptUsed: 'Pipeline BG Remove', engine: 'bg_remove', imageUrl: bgUrl, status: 'COMPLETED', isApproved: true, cost: 0 }
+                        data: { jobId: bgJobId, variantType: 'bg_removed', promptUsed: 'Pipeline BG Remove', engine: 'bg_remove', imageUrl: bgUrl, status: 'COMPLETED', isApproved: true, cost: 0 }
                     });
                     results.steps.bgRemove.imageId = savedBg.id;
                 } else {
@@ -212,7 +218,7 @@ router.post('/one-click', async (req, res) => {
                         });
 
                         await prisma.image.create({
-                            data: { jobId: mockupJob.id, variantType: 'mockup', promptUsed: `Pipeline Mockup - ${template.name}`, engine: 'mockup', imageUrl: mockupResult, status: 'COMPLETED', isApproved: true, cost: 0 }
+                            data: { jobId: sourceJobId || mockupJob.id, variantType: 'mockup', promptUsed: `Pipeline Mockup - ${template.name}`, engine: 'mockup', imageUrl: mockupResult, status: 'COMPLETED', isApproved: true, cost: 0 }
                         });
 
                         results.steps.mockups.push({ templateId, templateName: template.name, status: 'success', url: mockupResult });

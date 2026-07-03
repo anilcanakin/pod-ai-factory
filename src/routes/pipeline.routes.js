@@ -336,6 +336,28 @@ router.post('/one-click', async (req, res) => {
                     topKeywords: seo.topKeywords || [],
                     ...(seo._fallback && { warning: 'SEO JSON truncated — fallback used' })
                 };
+                // SEO'yu DB'ye kaydet
+                if (imageId) {
+                    try {
+                        await prisma.sEOData.upsert({
+                            where: { imageId },
+                            update: {
+                                title: seo.title,
+                                description: seo.description,
+                                tags: seo.tags,
+                            },
+                            create: {
+                                imageId,
+                                title: seo.title,
+                                description: seo.description,
+                                tags: seo.tags,
+                            },
+                        });
+                        console.log(`[Pipeline:SEO] DB'ye kaydedildi — imageId: ${imageId}`);
+                    } catch (dbErr) {
+                        console.warn('[Pipeline:SEO] DB kayıt hatası:', dbErr.message);
+                    }
+                }
             } catch (err) {
                 console.warn('[Pipeline:OneClick] SEO failed:', err.message);
                 results.steps.seo = { status: 'failed', error: err.message };

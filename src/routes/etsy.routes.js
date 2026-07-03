@@ -212,7 +212,7 @@ router.post('/dispatch', async (req, res) => {
 
         const result = await etsy.createDraftListing(req.workspaceId, {
             title:       seoContent.title,
-            description: seoContent.description,
+            description: seoContent.description + '\n\n---\nThis design was created using AI-based tools. Production partner: Prinella (Montebello, NY).',
             tags:        seoContent.tags,
             price:       process.env.DEFAULT_LISTING_PRICE || '19.99',
             imageUrls: resolvedUrls,

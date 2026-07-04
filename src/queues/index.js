@@ -22,6 +22,16 @@ const mockupQueue    = new Queue('mockup-generation', queueOpts);
 const batchQueue      = new Queue('batch-generation',  queueOpts);
 const batchSetupQueue = new Queue('batch-setup',       queueOpts);
 
+const personalizationQueue = new Queue('personalization-composite', {
+  connection,
+  defaultJobOptions: {
+    attempts:  3,
+    backoff:   { type: 'exponential', delay: 5000 },
+    removeOnComplete: { count: 100, age: 86_400  },
+    removeOnFail:     { count: 50,  age: 172_800 },
+  },
+});
+
 module.exports = {
     visionQueue,
     variationQueue,
@@ -30,5 +40,6 @@ module.exports = {
     mockupQueue,
     batchQueue,
     batchSetupQueue,
+    personalizationQueue,
     defaultJobOptions,
 };

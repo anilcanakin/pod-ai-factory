@@ -33,6 +33,8 @@ model Workspace {
   seoKnowledge    SeoKnowledgeBase[]
   corporateMemories CorporateMemory[]
   styleProfiles   StyleProfile[]
+  photoTemplates        PhotoTemplate[]
+  personalizationOrders PersonalizationOrder[]
 
   // ─── Billing (Sprint 4) ──────────────────────
   planName              String    @default("starter")
@@ -364,4 +366,57 @@ model FinancialTransaction {
 
   @@index([workspaceId, createdAt])
   @@index([workspaceId, type])
+}
+
+// ─── Photo Personalization ────────────────────────────────────────────────────
+
+enum PersonalizationStatus {
+  PENDING
+  COMPOSITING
+  COMPOSITED
+  APPROVED
+  REJECTED
+  SENT
+  FAILED
+}
+
+model PhotoTemplate {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id])
+  name           String
+  occasion       String
+  baseArtworkUrl String
+  photoSlot      Json
+  textLayers     Json
+  printWidthPx   Int
+  printHeightPx  Int
+  mockupConfig   Json
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  orders         PersonalizationOrder[]
+
+  @@index([workspaceId, occasion])
+}
+
+model PersonalizationOrder {
+  id               String                @id @default(uuid())
+  workspaceId      String
+  workspace        Workspace             @relation(fields: [workspaceId], references: [id])
+  etsyOrderRef     String?
+  templateId       String
+  template         PhotoTemplate         @relation(fields: [templateId], references: [id])
+  customerPhotoUrl String
+  variables        Json
+  status           PersonalizationStatus @default(PENDING)
+  printFileUrl     String?
+  mockupUrl        String?
+  warnings         Json?
+  rejectionReason  String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([workspaceId, status])
 }

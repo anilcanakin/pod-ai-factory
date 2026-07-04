@@ -196,6 +196,7 @@ router.post('/one-click', async (req, res) => {
                     if (!template) continue;
 
                     const designImageId = results.steps.bgRemove?.imageId || imageId;
+<<<<<<< HEAD
 
                     // Own-server assets → absolute disk path; FAL CDN/external URLs pass through
                     const assetM = results.finalImageUrl.match(/assets\/.*/);
@@ -210,6 +211,15 @@ router.post('/one-click', async (req, res) => {
                         workspaceId,
                     });
 
+=======
+                    const mockupResult = await renderMockup({
+                        designPath: results.finalImageUrl,
+                        template,
+                        imageId: designImageId,
+                        workspaceId,
+                    });
+
+>>>>>>> origin/feature/photo-personalization
                     if (mockupResult) {
                         const mockupJob = await prisma.designJob.findFirst({
                             where: { workspaceId, mode: 'mockup_gallery' }
@@ -218,7 +228,11 @@ router.post('/one-click', async (req, res) => {
                         });
 
                         await prisma.image.create({
+<<<<<<< HEAD
                             data: { jobId: sourceJobId || mockupJob.id, variantType: 'mockup', promptUsed: `Pipeline Mockup - ${template.name}`, engine: 'mockup', imageUrl: mockupResult, status: 'COMPLETED', isApproved: true, cost: 0 }
+=======
+                            data: { jobId: mockupJob.id, variantType: 'mockup', promptUsed: `Pipeline Mockup - ${template.name}`, engine: 'mockup', imageUrl: mockupResult, status: 'COMPLETED', isApproved: true, cost: 0 }
+>>>>>>> origin/feature/photo-personalization
                         });
 
                         results.steps.mockups.push({ templateId, templateName: template.name, status: 'success', url: mockupResult });

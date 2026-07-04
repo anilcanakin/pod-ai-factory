@@ -274,7 +274,7 @@ router.post('/sync-performance', async (req, res) => {
                     where:  { imageId: row.imageId },
                     update: { impressions: views, favorites: favorers },
                     create: { imageId: row.imageId, impressions: views, favorites: favorers,
-                              visits: 0, orders: 0, revenue: 0, score: 0 },
+                              visits: 0, orders: 0, score: 0 },
                 });
                 synced++;
             } catch (err) {

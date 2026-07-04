@@ -32,7 +32,7 @@ export function AnalyticsClient({ onSendToBrainstorm }: { onSendToBrainstorm?: (
     const handleEtsySync = async () => {
         setSyncing(true);
         try {
-            const res = await fetch(`${API_BASE}/api/etsy/sync-performance`, {
+            const res = await fetch(`/api/etsy/sync-performance`, {
                 method: 'POST',
                 credentials: 'include',
             });

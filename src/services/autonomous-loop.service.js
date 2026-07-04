@@ -304,7 +304,7 @@ async function _autoPublishToEtsy(image, seo, workspaceId) {
             title:       seo.title,
             description: seo.description,
             tags:        seo.tags,
-            imageUrl:    image.imageUrl,
+            imageUrls:   image.imageUrl ? [image.imageUrl] : [],
             price:       process.env.DEFAULT_LISTING_PRICE || '19.99',
         });
         console.log(`[AutoLoop] ✓ Etsy'ye otomatik taslak oluşturuldu: imageId:${image.id}`);

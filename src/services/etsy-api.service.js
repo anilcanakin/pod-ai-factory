@@ -85,7 +85,7 @@ async function getAuthUrl(workspaceId) {
         response_type:         'code',
         client_id:             process.env.ETSY_API_KEY,
         redirect_uri:          process.env.ETSY_REDIRECT_URI,
-        scope:                 'listings_w listings_r shops_r',
+        scope:                 'listings_w listings_r shops_r transactions_r',
         state:                 workspaceId,
         code_challenge:        challenge,
         code_challenge_method: 'S256',

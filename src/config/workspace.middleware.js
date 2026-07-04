@@ -13,7 +13,7 @@ function workspaceMiddleware(req, res, next) {
     const token = match ? decodeURIComponent(match[1]) : null;
 
     if (!token) {
-        req.workspaceId = null;
+        req.workspaceId = process.env.WORKSPACE_ID || null;
         req.userId = null;
         return next();
     }

@@ -158,7 +158,7 @@ async function getVariations(basePrompt, count = 4, variationMode = 'subject') {
                 messages: [
                     {
                         role: 'system',
-                        content: `You are a POD design prompt engineer. Given a base prompt, generate ${count} variations. Each variation should change the ${variationMode} while keeping the overall style consistent. Return ONLY a JSON array of strings: ["prompt1", "prompt2", ...]`
+                        content: `You are a POD design prompt engineer. Given a base prompt, generate ${count} variations. CRITICAL RULE: The core subject/keyword/niche from the base prompt MUST remain identical in every variation — never replace, drop, or paraphrase it. Only change visual style, color palette, layout, or typography treatment. Return ONLY a JSON array of strings: ["prompt1", "prompt2", ...]`
                     },
                     {
                         role: 'user',

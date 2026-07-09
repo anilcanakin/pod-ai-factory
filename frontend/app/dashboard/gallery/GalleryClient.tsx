@@ -985,9 +985,9 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
     const steps = results ? (results.steps as any) : null;
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-[60] bg-black/70" onClick={onClose}>
             <div
-                className="bg-[#111827] border border-slate-700/60 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-y-auto"
+                className="bg-[#111827] border border-slate-700/60 w-full h-full shadow-2xl overflow-y-auto"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}

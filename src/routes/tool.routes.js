@@ -15,6 +15,10 @@ router.post('/remove-bg', async (req, res) => {
         const { imageUrl, model = 'birefnet' } = req.body;
         if (!imageUrl) return res.status(400).json({ error: 'imageUrl is required' });
 
+        // Local asset URL'lerini tam URL'ye çevir
+        const BASE_URL = process.env.BACKEND_URL || `http://localhost:3001`;
+        const resolvedUrl = imageUrl.startsWith('http') ? imageUrl : `${BASE_URL}/${imageUrl.replace(/^\//, '')}`;
+
         const workspaceId = req.workspaceId;
         if (!workspaceId) return res.status(401).json({ error: 'Authentication required.' });
 
@@ -23,18 +27,18 @@ router.post('/remove-bg', async (req, res) => {
         if (model === 'bria') {
             // Bria RMBG 2.0 — ücretli, ticari lisanslı ($0.018/görsel)
             result = await fal.subscribe('fal-ai/bria/background/remove', {
-                input: { image_url: imageUrl }
+                input: { image_url: resolvedUrl }
             });
         } else if (model === 'pixelcut') {
             // Pixelcut — e-commerce optimized background removal
             result = await fal.subscribe('pixelcut/background-removal', {
-                input: { image_url: imageUrl }
+                input: { image_url: resolvedUrl }
             });
         } else {
             // BiRefNet — ücretsiz, yüksek kalite (default)
             result = await fal.subscribe('fal-ai/birefnet', {
                 input: {
-                    image_url: imageUrl,
+                    image_url: resolvedUrl,
                     model: 'General Use (Light)',
                     operating_resolution: '1024x1024',
                     output_format: 'png'

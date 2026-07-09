@@ -948,7 +948,8 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
             .then(data => {
                 const t = data.templates || [];
                 setTemplates(t);
-                if (t.length > 0) setSelectedTemplateIds(t.map((tmpl: { id: string }) => tmpl.id));
+                // Varsayılan olarak hiçbir şablon seçili gelmesin
+                setSelectedTemplateIds([]);
             })
             .catch(() => { });
     }, []);
@@ -1062,7 +1063,7 @@ function PipelineModal({ image, onClose }: { image: GalleryImage; onClose: () =>
                             {templates.length === 0 ? (
                                 <p className="text-xs text-slate-500 italic">Şablon bulunamadı. Önce Mockuplar sayfasından yükleyin.</p>
                             ) : (
-                                <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
+                                <div className="grid grid-cols-4 gap-2 max-h-72 overflow-y-auto custom-scrollbar">
                                     {templates.map(t => (
                                         <button
                                             key={t.id}

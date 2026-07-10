@@ -101,17 +101,17 @@ router.get('/recent', async (req, res) => {
             },
         });
 
-        // Pipeline mockuplarını Image tablosundan çek
-        const jobIds = [...new Set(images.map(img => img.jobId).filter(Boolean))];
-        const pipelineMockups = jobIds.length > 0 ? await prisma.image.findMany({
-            where: { jobId: { in: jobIds }, engine: 'mockup' },
-            select: { id: true, imageUrl: true, jobId: true },
+        // Pipeline mockuplarını Image tablosundan çek — seed alanı sourceImageId'yi tutar
+        const imageIds = images.map(img => img.id).filter(Boolean);
+        const pipelineMockups = imageIds.length > 0 ? await prisma.image.findMany({
+            where: { seed: { in: imageIds }, engine: 'mockup' },
+            select: { id: true, imageUrl: true, seed: true },
             orderBy: { createdAt: 'desc' },
         }) : [];
-        const mockupsByJobId = {};
+        const mockupsByImageId = {};
         for (const m of pipelineMockups) {
-            if (!mockupsByJobId[m.jobId]) mockupsByJobId[m.jobId] = [];
-            mockupsByJobId[m.jobId].push({ id: m.id, mockupUrl: m.imageUrl, templateId: null });
+            if (!mockupsByImageId[m.seed]) mockupsByImageId[m.seed] = [];
+            mockupsByImageId[m.seed].push({ id: m.id, mockupUrl: m.imageUrl, templateId: null });
         }
         const enriched = images.map(img => ({
             ...img,
@@ -120,7 +120,7 @@ router.get('/recent', async (req, res) => {
             seoData: img.seoData
                 ? { ...img.seoData, etsyListingId: img.seoData.etsyListingId ? img.seoData.etsyListingId.toString() : null }
                 : null,
-            mockups: (img.mockups && img.mockups.length > 0) ? img.mockups : (mockupsByJobId[img.jobId] || []),
+            mockups: (img.mockups && img.mockups.length > 0) ? img.mockups : (mockupsByImageId[img.id] || []),
         }));
         res.json(enriched);
     } catch (err) {
@@ -159,17 +159,17 @@ router.get('/listings', async (req, res) => {
             },
         });
 
-        // Pipeline mockuplarını Image tablosundan çek
-        const jobIds = [...new Set(images.map(img => img.jobId).filter(Boolean))];
-        const pipelineMockups = jobIds.length > 0 ? await prisma.image.findMany({
-            where: { jobId: { in: jobIds }, engine: 'mockup' },
-            select: { id: true, imageUrl: true, jobId: true },
+        // Pipeline mockuplarını Image tablosundan çek — seed alanı sourceImageId'yi tutar
+        const imageIds = images.map(img => img.id).filter(Boolean);
+        const pipelineMockups = imageIds.length > 0 ? await prisma.image.findMany({
+            where: { seed: { in: imageIds }, engine: 'mockup' },
+            select: { id: true, imageUrl: true, seed: true },
             orderBy: { createdAt: 'desc' },
         }) : [];
-        const mockupsByJobId = {};
+        const mockupsByImageId = {};
         for (const m of pipelineMockups) {
-            if (!mockupsByJobId[m.jobId]) mockupsByJobId[m.jobId] = [];
-            mockupsByJobId[m.jobId].push({ id: m.id, mockupUrl: m.imageUrl, templateId: null });
+            if (!mockupsByImageId[m.seed]) mockupsByImageId[m.seed] = [];
+            mockupsByImageId[m.seed].push({ id: m.id, mockupUrl: m.imageUrl, templateId: null });
         }
         const enriched = images.map(img => ({
             ...img,
@@ -177,7 +177,7 @@ router.get('/listings', async (req, res) => {
             seoData: img.seoData
                 ? { ...img.seoData, etsyListingId: img.seoData.etsyListingId ? img.seoData.etsyListingId.toString() : null }
                 : null,
-            mockups: (img.mockups && img.mockups.length > 0) ? img.mockups : (mockupsByJobId[img.jobId] || []),
+            mockups: (img.mockups && img.mockups.length > 0) ? img.mockups : (mockupsByImageId[img.id] || []),
         }));
         res.json(enriched);
     } catch (err) {
@@ -215,17 +215,17 @@ router.get('/:jobId', async (req, res) => {
             }
         });
 
-        // Pipeline mockuplarını Image tablosundan çek
-        const jobIds = [...new Set(images.map(img => img.jobId).filter(Boolean))];
-        const pipelineMockups = jobIds.length > 0 ? await prisma.image.findMany({
-            where: { jobId: { in: jobIds }, engine: 'mockup' },
-            select: { id: true, imageUrl: true, jobId: true },
+        // Pipeline mockuplarını Image tablosundan çek — seed alanı sourceImageId'yi tutar
+        const imageIds = images.map(img => img.id).filter(Boolean);
+        const pipelineMockups = imageIds.length > 0 ? await prisma.image.findMany({
+            where: { seed: { in: imageIds }, engine: 'mockup' },
+            select: { id: true, imageUrl: true, seed: true },
             orderBy: { createdAt: 'desc' },
         }) : [];
-        const mockupsByJobId = {};
+        const mockupsByImageId = {};
         for (const m of pipelineMockups) {
-            if (!mockupsByJobId[m.jobId]) mockupsByJobId[m.jobId] = [];
-            mockupsByJobId[m.jobId].push({ id: m.id, mockupUrl: m.imageUrl, templateId: null });
+            if (!mockupsByImageId[m.seed]) mockupsByImageId[m.seed] = [];
+            mockupsByImageId[m.seed].push({ id: m.id, mockupUrl: m.imageUrl, templateId: null });
         }
         // Enrich each image: add placeholderUrl, truncate rawResponse
         const enriched = images.map(img => {
@@ -242,7 +242,7 @@ router.get('/:jobId', async (req, res) => {
                 seoData: img.seoData
                     ? { ...img.seoData, etsyListingId: img.seoData.etsyListingId ? img.seoData.etsyListingId.toString() : null }
                     : null,
-                mockups: (img.mockups && img.mockups.length > 0) ? img.mockups : (mockupsByJobId[img.jobId] || []),
+                mockups: (img.mockups && img.mockups.length > 0) ? img.mockups : (mockupsByImageId[img.id] || []),
             };
         });
         res.json(enriched);

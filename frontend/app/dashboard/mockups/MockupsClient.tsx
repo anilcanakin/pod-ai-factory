@@ -1099,28 +1099,25 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             ctx.restore();
         }
 
-        // Print region border
-        ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
-        ctx.lineWidth = Math.max(2, canvas.width * 0.003);
-        ctx.setLineDash([8, 5]);
-        ctx.strokeRect(paX, paY, paW, paH);
-        ctx.setLineDash([]);
-
-        // Corner handles
-        const hs = Math.max(10, canvas.width * 0.015);
-        ctx.fillStyle = '#3b82f6';
-        ctx.fillRect(paX + paW - hs, paY + paH - hs, hs, hs); // bottom-right
-
-        // Center label
-        const labelCx = paX + paW / 2;
-        const labelCy = paY + paH / 2;
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.5)';
-        ctx.font = `${Math.max(12, canvas.width * 0.015)}px sans-serif`;
-        ctx.textAlign = 'center';
-        if (!designImgRef.current) {
-            ctx.fillText('Print Area', labelCx, labelCy);
+        // Print region border — sadece printAreas boşsa göster
+        if (printAreas.length === 0) {
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
+            ctx.lineWidth = Math.max(2, canvas.width * 0.003);
+            ctx.setLineDash([8, 5]);
+            ctx.strokeRect(paX, paY, paW, paH);
+            ctx.setLineDash([]);
+            const hs = Math.max(10, canvas.width * 0.015);
+            ctx.fillStyle = '#3b82f6';
+            ctx.fillRect(paX + paW - hs, paY + paH - hs, hs, hs);
+            const labelCx = paX + paW / 2;
+            const labelCy = paY + paH / 2;
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.5)';
+            ctx.font = `${Math.max(12, canvas.width * 0.015)}px sans-serif`;
+            ctx.textAlign = 'center';
+            if (!designImgRef.current) {
+                ctx.fillText('Print Area', labelCx, labelCy);
+            }
         }
-
         // Additional print areas
         if (printAreas.length > 0) {
             const areaColors = ['rgba(59,130,246,0.25)', 'rgba(234,179,8,0.25)', 'rgba(34,197,94,0.25)', 'rgba(239,68,68,0.25)'];

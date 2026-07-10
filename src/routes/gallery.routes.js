@@ -101,6 +101,18 @@ router.get('/recent', async (req, res) => {
             },
         });
 
+        // Pipeline mockuplarını Image tablosundan çek
+        const jobIds = [...new Set(images.map(img => img.jobId).filter(Boolean))];
+        const pipelineMockups = jobIds.length > 0 ? await prisma.image.findMany({
+            where: { jobId: { in: jobIds }, engine: 'mockup' },
+            select: { id: true, imageUrl: true, jobId: true },
+            orderBy: { createdAt: 'desc' },
+        }) : [];
+        const mockupsByJobId = {};
+        for (const m of pipelineMockups) {
+            if (!mockupsByJobId[m.jobId]) mockupsByJobId[m.jobId] = [];
+            mockupsByJobId[m.jobId].push({ id: m.id, mockupUrl: m.imageUrl, templateId: null });
+        }
         const enriched = images.map(img => ({
             ...img,
             rawResponse: img.rawResponse ? img.rawResponse.substring(0, 300) : null,
@@ -108,8 +120,8 @@ router.get('/recent', async (req, res) => {
             seoData: img.seoData
                 ? { ...img.seoData, etsyListingId: img.seoData.etsyListingId ? img.seoData.etsyListingId.toString() : null }
                 : null,
+            mockups: (img.mockups && img.mockups.length > 0) ? img.mockups : (mockupsByJobId[img.jobId] || []),
         }));
-
         res.json(enriched);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -147,14 +159,26 @@ router.get('/listings', async (req, res) => {
             },
         });
 
+        // Pipeline mockuplarını Image tablosundan çek
+        const jobIds = [...new Set(images.map(img => img.jobId).filter(Boolean))];
+        const pipelineMockups = jobIds.length > 0 ? await prisma.image.findMany({
+            where: { jobId: { in: jobIds }, engine: 'mockup' },
+            select: { id: true, imageUrl: true, jobId: true },
+            orderBy: { createdAt: 'desc' },
+        }) : [];
+        const mockupsByJobId = {};
+        for (const m of pipelineMockups) {
+            if (!mockupsByJobId[m.jobId]) mockupsByJobId[m.jobId] = [];
+            mockupsByJobId[m.jobId].push({ id: m.id, mockupUrl: m.imageUrl, templateId: null });
+        }
         const enriched = images.map(img => ({
             ...img,
             placeholderUrl: null,
             seoData: img.seoData
                 ? { ...img.seoData, etsyListingId: img.seoData.etsyListingId ? img.seoData.etsyListingId.toString() : null }
                 : null,
+            mockups: (img.mockups && img.mockups.length > 0) ? img.mockups : (mockupsByJobId[img.jobId] || []),
         }));
-
         res.json(enriched);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -191,23 +215,36 @@ router.get('/:jobId', async (req, res) => {
             }
         });
 
+        // Pipeline mockuplarını Image tablosundan çek
+        const jobIds = [...new Set(images.map(img => img.jobId).filter(Boolean))];
+        const pipelineMockups = jobIds.length > 0 ? await prisma.image.findMany({
+            where: { jobId: { in: jobIds }, engine: 'mockup' },
+            select: { id: true, imageUrl: true, jobId: true },
+            orderBy: { createdAt: 'desc' },
+        }) : [];
+        const mockupsByJobId = {};
+        for (const m of pipelineMockups) {
+            if (!mockupsByJobId[m.jobId]) mockupsByJobId[m.jobId] = [];
+            mockupsByJobId[m.jobId].push({ id: m.id, mockupUrl: m.imageUrl, templateId: null });
+        }
         // Enrich each image: add placeholderUrl, truncate rawResponse
         const enriched = images.map(img => {
             const isPending = !img.imageUrl || img.imageUrl === 'PENDING';
             const isFailed = img.status === 'FAILED' || img.status === 'REJECTED';
             return {
                 ...img,
-                // Never send huge rawResponse to frontend
                 rawResponse: img.rawResponse ? img.rawResponse.substring(0, 300) : null,
-                // placeholderUrl is used by UI when real imageUrl is not available
                 placeholderUrl: isPending
                     ? PLACEHOLDER_URL
                     : isFailed
                         ? FAILED_PLACEHOLDER
                         : null,
+                seoData: img.seoData
+                    ? { ...img.seoData, etsyListingId: img.seoData.etsyListingId ? img.seoData.etsyListingId.toString() : null }
+                    : null,
+                mockups: (img.mockups && img.mockups.length > 0) ? img.mockups : (mockupsByJobId[img.jobId] || []),
             };
         });
-
         res.json(enriched);
     } catch (err) {
         res.status(500).json({ error: err.message });

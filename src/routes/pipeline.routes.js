@@ -218,7 +218,7 @@ router.post('/one-click', async (req, res) => {
                         });
 
                         await prisma.image.create({
-                            data: { jobId: sourceJobId || mockupJob.id, variantType: 'mockup', promptUsed: `Pipeline Mockup - ${template.name}`, engine: 'mockup', imageUrl: mockupResult, status: 'COMPLETED', isApproved: true, cost: 0 }
+                            data: { jobId: sourceJobId || mockupJob.id, variantType: 'mockup', promptUsed: `Pipeline Mockup - ${template.name}`, engine: 'mockup', imageUrl: mockupResult, status: 'COMPLETED', isApproved: true, cost: 0, seed: imageId || null }
                         });
 
                         results.steps.mockups.push({ templateId, templateName: template.name, status: 'success', url: mockupResult });

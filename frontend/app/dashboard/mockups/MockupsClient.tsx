@@ -173,6 +173,7 @@ export function MockupsClient() {
     // Bulk Render state
     const [bulkMode, setBulkMode] = useState(false);
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkDeleting, setBulkDeleting] = useState(false);
     const [bulkDesignUrl, setBulkDesignUrl] = useState<string | null>(null);
     const [bulkDesignImageId, setBulkDesignImageId] = useState<string | null>(null);
     const [bulkShowDesignPicker, setBulkShowDesignPicker] = useState(false);
@@ -369,6 +370,27 @@ export function MockupsClient() {
                                 className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
                             >
                                 Clear selection
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (!confirm(`${bulkSelectedIds.size} şablonu silmek istediğine emin misin?`)) return;
+                                    setBulkDeleting(true);
+                                    try {
+                                        await Promise.all(Array.from(bulkSelectedIds).map(id =>
+                                            fetch(`/api/mockups/templates/${id}`, { method: 'DELETE', credentials: 'include' })
+                                        ));
+                                        setBulkSelectedIds(new Set());
+                                        queryClient.invalidateQueries({ queryKey: ['mockup-templates'] });
+                                    } catch (err) {
+                                        alert('Silme başarısız');
+                                    } finally {
+                                        setBulkDeleting(false);
+                                    }
+                                }}
+                                disabled={bulkDeleting}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/80 hover:bg-red-500 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {bulkDeleting ? 'Siliniyor...' : `Sil (${bulkSelectedIds.size})`}
                             </button>
                         </div>
                     </div>

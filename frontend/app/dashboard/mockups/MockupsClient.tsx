@@ -1019,23 +1019,16 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         if (!template?.configJson) return;
         
         const normalizedAreas: any[] = [];
-        
-        // Legacy single printArea handling
-        if (template.configJson.printArea) {
+        // printAreas array varsa onu kullan, yoksa tekil printArea'dan oluştur
+        if (Array.isArray(template.configJson.printAreas) && template.configJson.printAreas.length > 0) {
+            template.configJson.printAreas.forEach((area: any) => {
+                normalizedAreas.push(area);
+            });
+        } else if (template.configJson.printArea) {
             normalizedAreas.push({
                 id: 'main',
-                label: 'Ana Baskı', // Standard label used in the UI
+                label: 'Ana Baskı',
                 ...template.configJson.printArea
-            });
-        }
-        
-        // New multi-print areas array handling
-        if (Array.isArray(template.configJson.printAreas)) {
-            template.configJson.printAreas.forEach((area: any) => {
-                // Prevent duplication if 'main' was already added or ID already exists
-                if (!normalizedAreas.find(a => a.id === area.id)) {
-                    normalizedAreas.push(area);
-                }
             });
         }
         

@@ -380,7 +380,7 @@ export function MockupsClient() {
                                             fetch(`/api/mockups/templates/${id}`, { method: 'DELETE', credentials: 'include' })
                                         ));
                                         setBulkSelectedIds(new Set());
-                                        queryClient.invalidateQueries({ queryKey: ['mockup-templates'] });
+                                        window.location.reload();
                                     } catch (err) {
                                         alert('Silme başarısız');
                                     } finally {

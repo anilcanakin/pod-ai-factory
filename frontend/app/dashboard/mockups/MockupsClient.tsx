@@ -549,16 +549,13 @@ export function MockupsClient() {
                         <TemplateCard
                             key={t.id}
                             template={t}
-                            onSelect={() => {
-                                if (bulkMode) {
-                                    setBulkSelectedIds(prev => {
-                                        const next = new Set(prev);
-                                        if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
-                                        return next;
-                                    });
-                                } else {
-                                    setSelectedTemplate(t); setShowEditor(true);
-                                }
+                            onSelect={() => { setSelectedTemplate(t); setShowEditor(true); }}
+                            onToggleSelect={() => {
+                                setBulkSelectedIds(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
+                                    return next;
+                                });
                             }}
                             onDelete={() => handleDelete(t.id)}
                             onGenerateShadow={() => handleGenerateShadow(t)}
@@ -631,8 +628,8 @@ export function MockupsClient() {
 }
 
 // ─── Template Card ───────────────────────────────────────────────────────────
-function TemplateCard({ template, onSelect, onDelete, onGenerateShadow, shadowGenerating, bulkMode, isSelected }: {
-    template: MockupTemplate; onSelect: () => void; onDelete: () => void;
+function TemplateCard({ template, onSelect, onToggleSelect, onDelete, onGenerateShadow, shadowGenerating, bulkMode, isSelected }: {
+    template: MockupTemplate; onSelect: () => void; onToggleSelect?: () => void; onDelete: () => void;
     onGenerateShadow?: () => void; shadowGenerating?: boolean;
     bulkMode?: boolean; isSelected?: boolean;
 }) {
@@ -652,23 +649,28 @@ function TemplateCard({ template, onSelect, onDelete, onGenerateShadow, shadowGe
                     className="w-full h-full object-contain p-2"
                     onError={e => { e.currentTarget.style.display = 'none'; }}
                 />
-                {bulkMode ? (
-                    <div className={cn(
-                        'absolute inset-0 flex items-center justify-center transition-colors',
-                        isSelected ? 'bg-purple-600/20' : 'bg-transparent hover:bg-purple-600/10'
-                    )}>
+                {bulkMode && (
+                    <>
+                        {/* selection tint — pointer-events-none so card click still opens editor */}
                         <div className={cn(
-                            'w-6 h-6 rounded-md border-2 flex items-center justify-center',
-                            isSelected ? 'bg-purple-600 border-purple-500' : 'bg-transparent border-slate-400'
-                        )}>
+                            'absolute inset-0 pointer-events-none transition-colors',
+                            isSelected ? 'bg-purple-600/20' : 'bg-transparent'
+                        )} />
+                        {/* checkbox corner button — stopPropagation so it doesn't open editor */}
+                        <button
+                            className={cn(
+                                'absolute top-2 left-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all',
+                                isSelected ? 'bg-purple-600 border-purple-500' : 'bg-black/40 border-slate-400 hover:border-purple-400'
+                            )}
+                            onClick={(e) => { e.stopPropagation(); onToggleSelect?.(); }}
+                        >
                             {isSelected && <span className="text-white text-xs font-bold">✓</span>}
-                        </div>
-                    </div>
-                ) : (
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-4">
-                        <span className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-full font-medium shadow-lg">Open Editor</span>
-                    </div>
+                        </button>
+                    </>
                 )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-4 pointer-events-none">
+                    <span className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-full font-medium shadow-lg">Open Editor</span>
+                </div>
             </div>
             <div className="p-3 flex items-center justify-between">
                 <div className="min-w-0">

@@ -2161,6 +2161,8 @@ function RenderedMockupsSection({ renderedMockups, refetchMockups, addToast }: {
     addToast: (type: ToastType, msg: string) => void;
 }) {
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkDeleting, setBulkDeleting] = useState(false);
 
     const grouped = useMemo(() => {
         const map = new Map<string, GalleryImage[]>();
@@ -2180,6 +2182,12 @@ function RenderedMockupsSection({ renderedMockups, refetchMockups, addToast }: {
         return next;
     });
 
+    const toggleSelect = (id: string) => setSelectedIds(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+    });
+
     const handleDelete = async (imageId: string) => {
         try {
             await fetch(`${API_BASE}/api/gallery/${imageId}`, {
@@ -2193,12 +2201,50 @@ function RenderedMockupsSection({ renderedMockups, refetchMockups, addToast }: {
         }
     };
 
+    const handleBulkDelete = async () => {
+        if (!confirm(`${selectedIds.size} mockup'u silmek istediğine emin misin?`)) return;
+        setBulkDeleting(true);
+        try {
+            await Promise.all(Array.from(selectedIds).map(id =>
+                fetch(`${API_BASE}/api/gallery/${id}`, { method: 'DELETE', credentials: 'include' })
+            ));
+            setSelectedIds(new Set());
+            refetchMockups();
+            addToast('success', `${selectedIds.size} mockup silindi`);
+        } catch {
+            addToast('error', 'Silme başarısız');
+        } finally {
+            setBulkDeleting(false);
+        }
+    };
+
     return (
         <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <ImageIcon className="w-5 h-5 text-purple-400" />
-                Rendered Mockups ({renderedMockups.length})
-            </h2>
+            <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <ImageIcon className="w-5 h-5 text-purple-400" />
+                    Rendered Mockups ({renderedMockups.length})
+                </h2>
+                {selectedIds.size > 0 && (
+                    <div className="flex items-center gap-3">
+                        <span className="text-xs text-slate-400">{selectedIds.size} seçili</span>
+                        <button
+                            onClick={() => setSelectedIds(new Set())}
+                            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                        >
+                            Temizle
+                        </button>
+                        <button
+                            onClick={handleBulkDelete}
+                            disabled={bulkDeleting}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/80 hover:bg-red-500 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                        >
+                            <Trash2 className="w-3 h-3" />
+                            {bulkDeleting ? 'Siliniyor...' : `Sil (${selectedIds.size})`}
+                        </button>
+                    </div>
+                )}
+            </div>
             <div className="space-y-3">
                 {grouped.map(([date, imgs]) => {
                     const isOpen = !collapsed.has(date);
@@ -2226,15 +2272,36 @@ function RenderedMockupsSection({ renderedMockups, refetchMockups, addToast }: {
                                         const url = img.imageUrl.startsWith('http')
                                             ? img.imageUrl
                                             : `${API_BASE}/${img.imageUrl}`;
+                                        const isSelected = selectedIds.has(img.id);
                                         return (
-                                            <div key={img.id} className="group relative aspect-square bg-slate-900/50 border border-slate-700 rounded-xl overflow-hidden hover:border-purple-500/50 transition-all">
+                                            <div
+                                                key={img.id}
+                                                className={cn(
+                                                    'group relative aspect-square bg-slate-900/50 border rounded-xl overflow-hidden transition-all cursor-pointer',
+                                                    isSelected
+                                                        ? 'border-purple-500 ring-2 ring-purple-500/50'
+                                                        : 'border-slate-700 hover:border-purple-500/50'
+                                                )}
+                                                onClick={() => toggleSelect(img.id)}
+                                            >
                                                 <img
                                                     src={url}
                                                     alt="Mockup"
                                                     className="w-full h-full object-cover"
                                                     onError={e => { e.currentTarget.style.display = 'none'; }}
                                                 />
-                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                                {/* Checkbox top-left */}
+                                                <div className={cn(
+                                                    'absolute top-1.5 left-1.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                                                    isSelected
+                                                        ? 'bg-purple-500 border-purple-500'
+                                                        : 'bg-black/40 border-slate-500 opacity-0 group-hover:opacity-100'
+                                                )}>
+                                                    {isSelected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                </div>
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
+                                                    onClick={e => e.stopPropagation()}
+                                                >
                                                     <button
                                                         onClick={async () => {
                                                             try {

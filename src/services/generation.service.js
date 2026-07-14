@@ -33,6 +33,13 @@ const SUPPORTED_MODELS = {
         speed: 'medium',
         strength: 'general',
         provider: 'google-genai'   // informational — routing handled by ImageRouter
+    },
+    // ── OpenAI provider (via FAL.ai) ─────────────────────────────────────────
+    'fal-ai/openai/gpt-image-1': {
+        name: 'GPT-Image-1',
+        description: 'OpenAI — yüksek kalite, fotogerçekçi',
+        speed: 'slow',
+        strength: 'photo'
     }
 };
 
@@ -43,7 +50,8 @@ const MODEL_COSTS = {
     'fal-ai/flux/schnell': 0.003,  // Flux Schnell — fast & cheap, ~$0.003/img
     'fal-ai/ideogram/v3':  0.080,  // Ideogram 3.0 — typography specialist, ~$0.08/img
     'fal-ai/recraft-v3':   0.040,  // Recraft V3 — vector/screen print, ~$0.04/img
-    'nano-banana':         0.000,  // Google GenAI — pricing TBD / free tier
+    'nano-banana':                  0.000,  // Google GenAI — pricing TBD / free tier
+    'fal-ai/openai/gpt-image-1':    0.040,  // GPT-Image-1 — OpenAI via FAL.ai, ~$0.04/img
 };
 const FALLBACK_COST = 0.020; // used for unknown/new models
 
@@ -139,6 +147,21 @@ function buildModelInput(modelId, prompt, imageSize, negativePrompt = '') {
     // Google GenAI (nano-banana family) — only prompt is supported
     if (modelId.startsWith('nano-banana')) {
         return base;
+    }
+
+    // OpenAI GPT-Image-1 via FAL.ai
+    if (modelId.includes('gpt-image')) {
+        const sizeMap = {
+            'square_hd':     '1024x1024',
+            'portrait_4_3':  '1024x1536',
+            'landscape_4_3': '1536x1024',
+        };
+        return {
+            ...base,
+            size: sizeMap[imageSize] || '1024x1024',
+            quality: 'high',
+            n: 1,
+        };
     }
 
     if (modelId.includes('ideogram')) {

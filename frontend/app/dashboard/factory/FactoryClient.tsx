@@ -128,6 +128,7 @@ export function FactoryClient() {
     const [variationMode, setVariationMode] = useState<'subject' | 'style' | 'color'>('subject');
     const [variationCount, setVariationCount] = useState(4);
     const [model, setModel] = useState('fal-ai/flux/dev');
+    const [additionalModels, setAdditionalModels] = useState<string[]>([]);
     
     const [negativePrompt, setNegativePrompt] = useState('blurry, low quality, watermark, text, background, scenery');
     const [activePreset, setActivePreset] = useState<string | null>(null);
@@ -338,7 +339,8 @@ export function FactoryClient() {
                 prompts: selectedPrompts,
                 model,
                 imageSize,
-                negativePrompt
+                negativePrompt,
+                additionalModels: additionalModels.length > 0 ? additionalModels : undefined,
             });
             setLastJobId(data.jobId);
             toast.success(`${data.imageCount} images queued for generation!`);
@@ -862,7 +864,7 @@ export function FactoryClient() {
                                 models.map(m => (
                                     <button
                                         key={m.id}
-                                        onClick={() => setModel(m.id)}
+                                        onClick={() => { setModel(m.id); setAdditionalModels(prev => prev.filter(id => id !== m.id)); }}
                                         className={cn(
                                             "flex flex-col gap-1.5 p-3 rounded-[10px] border text-left transition-all",
                                             model === m.id
@@ -877,11 +879,52 @@ export function FactoryClient() {
                                             {m.strength === 'speed' && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-success-subtle text-success border border-[rgba(34,197,94,0.20)]">⚡ Fast</span>}
                                             {m.strength === 'typography' && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-warning-subtle text-warning border border-[rgba(234,179,8,0.20)]">T Typography</span>}
                                             {m.strength === 'vector' && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent-subtle text-accent border border-accent/20">◈ Vector</span>}
+                                            {m.strength === 'photo' && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[rgba(14,165,233,0.10)] text-sky-400 border border-sky-400/20">◉ Photo</span>}
                                         </div>
                                     </button>
                                 ))
                             )}
                         </div>
+
+                        {/* Çoklu model üretimi */}
+                        {models.filter(m => m.id !== model).length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-border-default">
+                                <p className="text-[11px] text-text-tertiary mb-2">Aynı promptu şu modellerle de üret:</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {models.filter(m => m.id !== model).map(m => {
+                                        const checked = additionalModels.includes(m.id);
+                                        return (
+                                            <button
+                                                key={m.id}
+                                                type="button"
+                                                onClick={() => setAdditionalModels(prev =>
+                                                    checked ? prev.filter(id => id !== m.id) : [...prev, m.id]
+                                                )}
+                                                className={cn(
+                                                    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-[8px] border text-xs transition-all",
+                                                    checked
+                                                        ? "border-accent bg-accent-subtle text-accent"
+                                                        : "border-border-default bg-bg-base text-text-secondary hover:border-border-strong hover:text-text-primary"
+                                                )}
+                                            >
+                                                <span className={cn(
+                                                    "w-3.5 h-3.5 rounded-sm border flex items-center justify-center flex-shrink-0",
+                                                    checked ? "bg-accent border-accent" : "border-border-strong"
+                                                )}>
+                                                    {checked && <span className="text-white text-[9px] leading-none">✓</span>}
+                                                </span>
+                                                {m.name}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {additionalModels.length > 0 && (
+                                    <p className="text-[10px] text-text-tertiary mt-1.5">
+                                        {additionalModels.length + 1} model × prompt sayısı görsel üretilecek
+                                    </p>
+                                )}
+                            </div>
+                        )}
                     </section>
 
                     {/* Settings */}

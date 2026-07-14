@@ -139,7 +139,7 @@ router.post('/get-variations', usageMiddleware, async (req, res) => {
 router.post('/generate', usageMiddleware, async (req, res) => {
     let jobId = null;
     try {
-        const { prompts, model, modelTier, imageSize = 'square_hd', negativePrompt = '' } = req.body;
+        const { prompts, model, modelTier, imageSize = 'square_hd', negativePrompt = '', additionalModels = [] } = req.body;
 
         if (!prompts || !Array.isArray(prompts) || prompts.length === 0) {
             return res.status(400).json({ error: 'prompts must be a non-empty array of strings.' });
@@ -177,6 +177,7 @@ router.post('/generate', usageMiddleware, async (req, res) => {
         await logService.logEvent(jobId, 'FACTORY_GENERATION_START', 'SUCCESS', `Starting generation of ${prompts.length} images.`);
 
         // 2. Create Image records (PENDING) — engine stores the resolved FAL model ID
+        // Primary model × all prompts
         for (const prompt of prompts) {
             await prisma.image.create({
                 data: {
@@ -189,11 +190,30 @@ router.post('/generate', usageMiddleware, async (req, res) => {
                 }
             });
         }
-        await logService.logEvent(jobId, 'VARIATIONS_CREATED', 'SUCCESS', `Created ${prompts.length} image records.`);
+        // Additional models × all prompts
+        const validAdditional = Array.isArray(additionalModels)
+            ? additionalModels.map(m => resolveModelId(m)).filter(m => m !== resolvedModel)
+            : [];
+        for (const extraModel of validAdditional) {
+            for (const prompt of prompts) {
+                await prisma.image.create({
+                    data: {
+                        jobId,
+                        variantType: 'prompt_based',
+                        promptUsed: prompt,
+                        engine: extraModel,
+                        imageUrl: 'PENDING',
+                        status: 'GENERATED'
+                    }
+                });
+            }
+        }
+        const totalImageCount = prompts.length * (1 + validAdditional.length);
+        await logService.logEvent(jobId, 'VARIATIONS_CREATED', 'SUCCESS', `Created ${totalImageCount} image records (${1 + validAdditional.length} models).`);
 
         // 3. Start generation (uses existing generationService)
         try {
-            await generationService.runGeneration(jobId, 'fal', prompts.length, imageSize, negativePrompt);
+            await generationService.runGeneration(jobId, 'fal', totalImageCount, imageSize, negativePrompt);
             await logService.logEvent(jobId, 'GENERATION_DONE', 'SUCCESS', 'All images generated.');
         } catch (err) {
             await logService.logEvent(jobId, 'GENERATION_DONE', 'FAILED', err.message);
@@ -207,7 +227,7 @@ router.post('/generate', usageMiddleware, async (req, res) => {
 
         res.json({
             jobId,
-            imageCount: prompts.length,
+            imageCount: totalImageCount,
             message: 'Generation started'
         });
 

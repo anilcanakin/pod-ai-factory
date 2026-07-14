@@ -120,6 +120,7 @@ export const apiFactory = {
         model: string;
         imageSize: string;
         negativePrompt?: string;
+        additionalModels?: string[];
     }) =>
         request<{ jobId: string; imageCount: number; message: string }>(
             '/factory/generate',

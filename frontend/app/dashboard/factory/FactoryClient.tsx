@@ -15,6 +15,13 @@ import {
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+function resolveUrl(p: string | undefined | null): string {
+    if (!p) return '';
+    if (p.startsWith('http') || p.startsWith('data:')) return p;
+    return `${API_BASE}/${p.replace(/^\//, '')}`;
+}
+
 const STYLE_PRESETS = [
   { 
     id: 'vintage', 
@@ -950,7 +957,7 @@ export function FactoryClient() {
 
                             <div className="space-y-3">
                                 {generatedImages.map(img => {
-                                    const displayUrl = upscaledUrls[img.id] || bgRemovedUrls[img.id] || img.imageUrl;
+                                    const displayUrl = resolveUrl(upscaledUrls[img.id] || bgRemovedUrls[img.id] || img.imageUrl);
                                     const isBgProcessing = processingImageId === img.id + '-bg';
                                     const isUpProcessing = processingImageId === img.id + '-up';
                                     const hasBgRemoved = !!bgRemovedUrls[img.id];

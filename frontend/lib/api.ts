@@ -96,7 +96,7 @@ export interface AIModel {
     name: string;
     description: string;
     speed: 'fast' | 'medium' | 'slow';
-    strength: 'general' | 'speed' | 'typography' | 'vector';
+    strength: 'general' | 'speed' | 'typography' | 'vector' | 'photo';
 }
 
 export const apiFactory = {

@@ -35,8 +35,8 @@ const SUPPORTED_MODELS = {
         provider: 'google-genai'   // informational — routing handled by ImageRouter
     },
     // ── OpenAI provider (via FAL.ai) ─────────────────────────────────────────
-    'fal-ai/openai/gpt-image-1': {
-        name: 'GPT-Image-1',
+    'fal-ai/gpt-image-2': {
+        name: 'GPT-Image-2',
         description: 'OpenAI — yüksek kalite, fotogerçekçi',
         speed: 'slow',
         strength: 'photo'
@@ -51,7 +51,7 @@ const MODEL_COSTS = {
     'fal-ai/ideogram/v3':  0.080,  // Ideogram 3.0 — typography specialist, ~$0.08/img
     'fal-ai/recraft-v3':   0.040,  // Recraft V3 — vector/screen print, ~$0.04/img
     'nano-banana':                  0.000,  // Google GenAI — pricing TBD / free tier
-    'fal-ai/openai/gpt-image-1':    0.040,  // GPT-Image-1 — OpenAI via FAL.ai, ~$0.04/img
+    'fal-ai/gpt-image-2':           0.040,  // GPT-Image-2 — OpenAI via FAL.ai, ~$0.04/img
 };
 const FALLBACK_COST = 0.020; // used for unknown/new models
 
@@ -149,18 +149,14 @@ function buildModelInput(modelId, prompt, imageSize, negativePrompt = '') {
         return base;
     }
 
-    // OpenAI GPT-Image-1 via FAL.ai
+    // OpenAI GPT-Image-2 via FAL.ai — fal-native params (not OpenAI passthrough)
     if (modelId.includes('gpt-image')) {
-        const sizeMap = {
-            'square_hd':     '1024x1024',
-            'portrait_4_3':  '1024x1536',
-            'landscape_4_3': '1536x1024',
-        };
         return {
             ...base,
-            size: sizeMap[imageSize] || '1024x1024',
+            image_size: imageSize || 'square_hd',
             quality: 'high',
-            n: 1,
+            num_images: 1,
+            output_format: 'png',
         };
     }
 

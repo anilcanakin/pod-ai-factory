@@ -41,6 +41,17 @@ function getTitleFontSize(petName) {
   return 150;
 }
 
+// Grunge scratch/grain dokusu — random noise, düşük alpha ile overlay blend
+async function buildGrainOverlay(width, height, opacity) {
+  const buf = Buffer.alloc(width * height);
+  for (let i = 0; i < buf.length; i++) buf[i] = Math.floor(Math.random() * 256);
+  return sharp(buf, { raw: { width, height, channels: 1 } })
+    .toColourspace('srgb')
+    .ensureAlpha(opacity)
+    .png()
+    .toBuffer();
+}
+
 /**
  * "<petName> OF FURY" grunge tur posteri — gri/duotone evcil hayvan fotoğrafı,
  * siyah zemin, üstte grunge başlık, altta sabit tur şehri listesi.
@@ -73,9 +84,16 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     throw new Error(`customerPhotoPath not found: ${srcInput}`);
   }
 
-  // ── 1-2: gri tonlama + kontrast normalize (linear boost, threshold yok — detay korunur) ─
-  const stencil = await sharp(srcInput)
-    .rotate() // EXIF auto-orient
+  // ── 1: basit center crop — üst %60 (yüz genellikle üstte) ────────────────
+  const orientedBuffer = await sharp(srcInput).rotate().toBuffer(); // EXIF auto-orient
+  const srcMeta        = await sharp(orientedBuffer).metadata();
+  const cropHeight     = Math.max(1, Math.round(srcMeta.height * 0.6));
+  const croppedBuffer  = await sharp(orientedBuffer)
+    .extract({ left: 0, top: 0, width: srcMeta.width, height: cropHeight })
+    .toBuffer();
+
+  // ── 2: gri tonlama + kontrast normalize (linear boost, threshold yok — detay korunur) ─
+  const fitted = await sharp(croppedBuffer)
     .resize(slotW, slotH, {
       fit:      slot.fit === 'contain' ? 'contain' : 'cover',
       position: slot.align ? mapAlign(slot.align) : 'centre',
@@ -84,6 +102,14 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     .normalize()
     .linear(1.5, -30)
     .toColourspace('srgb')
+    .toBuffer();
+
+  // ── 2b: halftone/grunge grain — küçült+büyüt (posterize blur) ────────────
+  const haltoneW = Math.max(1, Math.round(slotW / 4));
+  const haltoneH = Math.max(1, Math.round(slotH / 4));
+  const stencil  = await sharp(fitted)
+    .resize(haltoneW, haltoneH)
+    .resize(slotW, slotH)
     .toBuffer();
 
   // ── 3: bej/krem ton — multiply blend (beyaz alanlar tint alır, siyah kalır) ─
@@ -151,8 +177,16 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     chain = sharp(buf).composite([{ input: Buffer.from(citySvg), blend: 'over' }]);
   }
 
-  // ── 7: final PNG ───────────────────────────────────────────────────────────
-  const outputBuffer = await chain.png().toBuffer();
+  // ── 7: final PNG — subtle grunge grain zemine dahil tüm postere ──────────
+  // Not: chain.composite() ikinci kez çağrılırsa önceki composite'i override eder
+  // (merge etmez) — o yüzden grain'den önce mutlaka materialize edip yeniden sarmalıyoruz.
+  buf = await chain.png().toBuffer();
+  const grain = await buildGrainOverlay(OUTPUT_W, OUTPUT_H, 0.10);
+  // 'over' (düz alpha blend) — 'overlay' blend modu bu düşük alpha'da neredeyse görünmez kalıyor
+  const outputBuffer = await sharp(buf)
+    .composite([{ input: grain, blend: 'over' }])
+    .png()
+    .toBuffer();
 
   if (outputPath) {
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });

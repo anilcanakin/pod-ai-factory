@@ -33,6 +33,14 @@ function resolvePath(p) {
   return path.isAbsolute(p) ? p : path.join(REPO_ROOT, p);
 }
 
+// petName uzunsa küçül — uzun isimler maxWidth textLength sıkıştırmasıyla ezilmesin
+function getTitleFontSize(petName) {
+  const len = String(petName).length;
+  if (len < 10) return 280;
+  if (len <= 15) return 200;
+  return 150;
+}
+
 /**
  * "<petName> OF FURY" grunge tur posteri — gri/duotone evcil hayvan fotoğrafı,
  * siyah zemin, üstte grunge başlık, altta sabit tur şehri listesi.
@@ -41,9 +49,10 @@ function resolvePath(p) {
  * @param {string|Buffer} opts.customerPhotoPath - Dosya yolu (repo-relative/absolute) veya Buffer
  * @param {string}         opts.petName
  * @param {object}         [opts.templateConfig]
- * @param {object}         [opts.templateConfig.photoSlot] - { x, y, width, height, fit }
- * @param {string}         [opts.templateConfig.tintColor] - Varsayılan '#C8A97A'
- * @param {string[]}       [opts.templateConfig.cities]    - Varsayılan DEFAULT_TOUR_CITIES
+ * @param {object}         [opts.templateConfig.photoSlot]     - { x, y, width, height, fit }
+ * @param {string}         [opts.templateConfig.tintColor]     - Varsayılan '#C8A97A'
+ * @param {string[]}       [opts.templateConfig.cities]        - Varsayılan DEFAULT_TOUR_CITIES (baseArtworkUrl varsa kullanılmaz)
+ * @param {string}         [opts.templateConfig.baseArtworkUrl] - Verilirse siyah zemin yerine bu görsel kullanılır, şehir listesi metni çizilmez
  * @param {string}         [opts.outputPath] - Verilirse PNG diske de yazılır
  * @returns {Promise<{ buffer: Buffer, outputPath: string|null, width: number, height: number }>}
  */
@@ -64,7 +73,7 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     throw new Error(`customerPhotoPath not found: ${srcInput}`);
   }
 
-  // ── 1-2: gri tonlama + kontrast normalize (threshold 128) ────────────────
+  // ── 1-2: gri tonlama + kontrast normalize (linear boost, threshold yok — detay korunur) ─
   const stencil = await sharp(srcInput)
     .rotate() // EXIF auto-orient
     .resize(slotW, slotH, {
@@ -73,7 +82,7 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     })
     .grayscale()
     .normalize()
-    .threshold(128)
+    .linear(1.5, -30)
     .toColourspace('srgb')
     .toBuffer();
 
@@ -87,14 +96,18 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     .png()
     .toBuffer();
 
-  // ── 4: siyah zemin üzerine photoSlot koordinatlarına yerleştir ───────────
-  let chain = sharp({
-    create: { width: OUTPUT_W, height: OUTPUT_H, channels: 3, background: { r: 0, g: 0, b: 0 } },
-  }).composite([{ input: duotonePhoto, left: Math.round(slotX), top: Math.round(slotY) }]);
+  // ── 4: zemin — baseArtworkUrl varsa onu kullan, yoksa siyah — photoSlot'a yerleştir ─
+  const baseArtworkUrl = templateConfig.baseArtworkUrl || null;
+  const baseInput = baseArtworkUrl
+    ? sharp(resolvePath(baseArtworkUrl)).resize(OUTPUT_W, OUTPUT_H, { fit: 'cover' })
+    : sharp({ create: { width: OUTPUT_W, height: OUTPUT_H, channels: 3, background: { r: 0, g: 0, b: 0 } } });
 
-  // ── 5: üst başlık — "<petName> OF FURY", grunge font, büyük ──────────────
+  let chain = baseInput
+    .composite([{ input: duotonePhoto, left: Math.round(slotX), top: Math.round(slotY) }]);
+
+  // ── 5: üst başlık — "<petName> OF FURY", grunge font, isim uzunluğuna göre boyut ─
   const titleText = `${String(petName).toUpperCase()} OF FURY`;
-  const titleSize = Math.round(OUTPUT_W * 0.11);
+  const titleSize = getTitleFontSize(petName);
   const titleSvg  = buildTextSvg({
     canvasW: OUTPUT_W,
     canvasH: OUTPUT_H,
@@ -114,27 +127,29 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
   let buf = await chain.png().toBuffer();
   chain = sharp(buf).composite([{ input: Buffer.from(titleSvg), blend: 'over' }]);
 
-  // ── 6: alt metin — sabit tur şehirleri listesi ────────────────────────────
-  const citySize = Math.round(OUTPUT_W * 0.028);
-  const cityY    = slotY + slotH + Math.round((OUTPUT_H - (slotY + slotH)) * 0.45);
-  const citySvg  = buildTextSvg({
-    canvasW: OUTPUT_W,
-    canvasH: OUTPUT_H,
-    layer: {
-      x: OUTPUT_W / 2,
-      y: cityY,
-      font: CITY_FONT_NAME,
-      size: citySize,
-      color: '#FFFFFF',
-      align: 'center',
-      maxWidth: Math.round(OUTPUT_W * 0.85),
-    },
-    text: cities.join('   •   '),
-    fontB64: loadFontB64(CITY_FONT_PATH),
-  });
+  // ── 6: alt metin — sabit tur şehirleri listesi (baseArtworkUrl zaten içeriyorsa atla) ─
+  if (!baseArtworkUrl) {
+    const citySize = Math.round(OUTPUT_W * 0.028);
+    const cityY    = slotY + slotH + Math.round((OUTPUT_H - (slotY + slotH)) * 0.45);
+    const citySvg  = buildTextSvg({
+      canvasW: OUTPUT_W,
+      canvasH: OUTPUT_H,
+      layer: {
+        x: OUTPUT_W / 2,
+        y: cityY,
+        font: CITY_FONT_NAME,
+        size: citySize,
+        color: '#FFFFFF',
+        align: 'center',
+        maxWidth: Math.round(OUTPUT_W * 0.85),
+      },
+      text: cities.join('   •   '),
+      fontB64: loadFontB64(CITY_FONT_PATH),
+    });
 
-  buf = await chain.png().toBuffer();
-  chain = sharp(buf).composite([{ input: Buffer.from(citySvg), blend: 'over' }]);
+    buf = await chain.png().toBuffer();
+    chain = sharp(buf).composite([{ input: Buffer.from(citySvg), blend: 'over' }]);
+  }
 
   // ── 7: final PNG ───────────────────────────────────────────────────────────
   const outputBuffer = await chain.png().toBuffer();

@@ -31,6 +31,7 @@ import {
     BarChart2,
     Eye,
     RefreshCw,
+    Wand2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SHORTCUT_LABELS } from '@/hooks/useKeyboardShortcuts';
@@ -55,6 +56,7 @@ const navItems = [
     { href: '/dashboard/etsy-listings', label: 'Listelerim',    icon: Store },
     { href: '/dashboard/agent',         label: 'YZ Yöneticisi', icon: Bot },
     { href: '/dashboard/orders',        label: 'Siparişler',    icon: ShoppingBag },
+    { href: '/dashboard/personalization', label: 'Kişiselleştirme', icon: Wand2 },
     { href: '/dashboard/settings',      label: 'Ayarlar',       icon: Settings },
 ];
 

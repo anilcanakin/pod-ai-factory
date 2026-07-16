@@ -20,6 +20,9 @@ export function StatusBadge({ status, className }: BadgeProps) {
         SUCCESS: 'Başarılı',
         WINNER: '🏆 Kazanan',
         LOW_SCORE: '💀 Düşük Puan',
+        COMPOSITING: 'Birleştiriliyor',
+        COMPOSITED: 'Hazır',
+        SENT: 'Gönderildi',
     };
 
     return (

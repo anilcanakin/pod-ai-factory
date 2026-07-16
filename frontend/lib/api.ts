@@ -1462,3 +1462,73 @@ export const apiApify = {
             }
         ),
 };
+
+// ─── Photo Templates (Personalization) ────────────────────────
+export interface PhotoTextLayer {
+    key: string;
+    x: number; y: number;
+    font: string; size: number;
+    color: string; align: string;
+    maxWidth: number; transform: string | null;
+}
+
+export interface PhotoSlot {
+    x: number; y: number; width: number; height: number;
+    fit: string; align: string; borderRadius?: number; rotation?: number;
+}
+
+export interface PhotoTemplate {
+    id: string;
+    name: string;
+    occasion: string;
+    baseArtworkUrl: string;
+    photoSlot: PhotoSlot;
+    textLayers: PhotoTextLayer[];
+    printWidthPx: number;
+    printHeightPx: number;
+    mockupConfig: Record<string, unknown>;
+    active: boolean;
+    createdAt: string;
+}
+
+export const apiPhotoTemplates = {
+    list: (occasion?: string) =>
+        request<{ success: boolean; templates: PhotoTemplate[] }>(
+            `/photo-templates${occasion ? `?occasion=${encodeURIComponent(occasion)}` : ''}`
+        ),
+    get: (id: string) =>
+        request<{ success: boolean; template: PhotoTemplate }>(`/photo-templates/${id}`),
+};
+
+// ─── Personalization Orders ────────────────────────────────────
+export type PersonalizationStatus = 'PENDING' | 'COMPOSITING' | 'COMPOSITED' | 'APPROVED' | 'REJECTED' | 'SENT' | 'FAILED';
+
+export interface PersonalizationOrder {
+    id: string;
+    templateId: string;
+    template?: { name: string; occasion: string };
+    customerPhotoUrl: string;
+    variables: Record<string, string>;
+    status: PersonalizationStatus;
+    printFileUrl: string | null;
+    mockupUrl: string | null;
+    warnings: unknown;
+    rejectionReason: string | null;
+    etsyOrderRef: string | null;
+    createdAt: string;
+}
+
+export const apiPersonalization = {
+    listOrders: (status?: string) =>
+        request<{ success: boolean; orders: PersonalizationOrder[]; count: number }>(
+            `/personalization/orders${status ? `?status=${encodeURIComponent(status)}` : ''}`
+        ),
+    createOrder: (formData: FormData) =>
+        fetch(`${BASE}/personalization/orders`, { method: 'POST', credentials: 'include', body: formData }).then(async (res) => {
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `HTTP ${res.status}`);
+            }
+            return res.json() as Promise<{ success: boolean; order: PersonalizationOrder }>;
+        }),
+};

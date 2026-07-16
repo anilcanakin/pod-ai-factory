@@ -3,6 +3,7 @@
 const sharp = require('sharp');
 const path  = require('path');
 const fs    = require('fs');
+const os    = require('os');
 const { loadFontB64, buildTextSvg, mapAlign } = require('./composite-engine.service');
 
 const ASSETS_ROOT = path.join(__dirname, '../../assets');
@@ -12,10 +13,37 @@ const REPO_ROOT    = path.join(__dirname, '../../');
 const OUTPUT_W = 4500;
 const OUTPUT_H = 5400;
 
-const TITLE_FONT_NAME = 'MetalMania';
+// TTF internal name table'dan (name ID 1) — CSS @font-face data-URI/file:// embed
+// librsvg'de test edildi, çalışmıyor (bogus font adıyla identical output üretiyor).
+// Bunun yerine assets/fonts'u fontconfig dizini olarak kaydedip düz font-family
+// eşleşmesiyle çözüyoruz — font-family değeri TTF içindeki GERÇEK isimle eşleşmeli.
+const TITLE_FONT_NAME = 'Metal Mania';
 const TITLE_FONT_PATH = path.join(ASSETS_ROOT, 'fonts/MetalMania-Regular.ttf');
 const CITY_FONT_NAME  = 'Anton';
 const CITY_FONT_PATH  = path.join(ASSETS_ROOT, 'fonts/Anton-Regular.ttf');
+
+// fontconfig'e assets/fonts dizinini ekle — process başına bir kez, modül yüklenirken.
+// Sistem varsayılan config'ini <include> ile korur, sadece kendi font dizinimizi ekler.
+function registerFontsDirOnce() {
+  try {
+    const fontsDir = path.join(ASSETS_ROOT, 'fonts').replace(/\\/g, '/');
+    const cacheDir = path.join(os.tmpdir(), 'pod-ai-fontconfig-cache');
+    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+    const confPath = path.join(os.tmpdir(), 'pod-ai-fontconfig.conf');
+    const conf = `<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+  <dir>${fontsDir}</dir>
+  <cachedir>${cacheDir.replace(/\\/g, '/')}</cachedir>
+</fontconfig>`;
+    fs.writeFileSync(confPath, conf);
+    process.env.FONTCONFIG_FILE = confPath;
+  } catch (err) {
+    console.warn('[PhotoComposite] fontconfig registration failed, custom fonts may fall back:', err.message);
+  }
+}
+registerFontsDirOnce();
 
 const DEFAULT_TINT = '#C8A97A';
 const DEFAULT_TOUR_CITIES = [
@@ -52,6 +80,20 @@ async function buildGrainOverlay(width, height, opacity) {
     .toBuffer();
 }
 
+// Fotoğrafın alt %20'si şeffaflığa (siyah zemine) fade eder — dest-in alpha mask
+function buildBottomFadeMaskSvg(width, height, fadeStart = 0.8) {
+  return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="white" stop-opacity="1"/>
+      <stop offset="${fadeStart}" stop-color="white" stop-opacity="1"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="${width}" height="${height}" fill="url(#fade)"/>
+</svg>`;
+}
+
 /**
  * "<petName> OF FURY" grunge tur posteri — gri/duotone evcil hayvan fotoğrafı,
  * siyah zemin, üstte grunge başlık, altta sabit tur şehri listesi.
@@ -72,10 +114,10 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
   if (!petName) throw new Error('petName required');
 
   const slot   = templateConfig.photoSlot || {};
-  const slotW  = slot.width  ?? Math.round(OUTPUT_W * 0.75);
+  const slotW  = slot.width  ?? OUTPUT_W; // tam genişlik, kenardan kenara — border yok
   const slotH  = slot.height ?? Math.round(OUTPUT_H * 0.55);
   const slotX  = slot.x ?? Math.round((OUTPUT_W - slotW) / 2);
-  const slotY  = slot.y ?? Math.round((OUTPUT_H - slotH) / 2);
+  const slotY  = slot.y ?? Math.round(OUTPUT_H * 0.12);
   const tint   = templateConfig.tintColor || DEFAULT_TINT;
   const cities = templateConfig.cities?.length ? templateConfig.cities : DEFAULT_TOUR_CITIES;
 
@@ -117,8 +159,15 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     create: { width: slotW, height: slotH, channels: 3, background: hexToRgb(tint) },
   }).png().toBuffer();
 
-  const duotonePhoto = await sharp(stencil)
+  const tinted = await sharp(stencil)
     .composite([{ input: tintOverlay, blend: 'multiply' }])
+    .png()
+    .toBuffer();
+
+  // ── 3b: alt %20 siyah zemine fade — dest-in alpha mask ────────────────────
+  const fadeMaskSvg = buildBottomFadeMaskSvg(slotW, slotH, 0.8);
+  const duotonePhoto = await sharp(tinted)
+    .composite([{ input: Buffer.from(fadeMaskSvg), blend: 'dest-in' }])
     .png()
     .toBuffer();
 
@@ -181,7 +230,7 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
   // Not: chain.composite() ikinci kez çağrılırsa önceki composite'i override eder
   // (merge etmez) — o yüzden grain'den önce mutlaka materialize edip yeniden sarmalıyoruz.
   buf = await chain.png().toBuffer();
-  const grain = await buildGrainOverlay(OUTPUT_W, OUTPUT_H, 0.10);
+  const grain = await buildGrainOverlay(OUTPUT_W, OUTPUT_H, 0.05);
   // 'over' (düz alpha blend) — 'overlay' blend modu bu düşük alpha'da neredeyse görünmez kalıyor
   const outputBuffer = await sharp(buf)
     .composite([{ input: grain, blend: 'over' }])

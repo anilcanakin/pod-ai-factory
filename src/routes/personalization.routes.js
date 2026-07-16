@@ -6,8 +6,8 @@ const path    = require('path');
 const fs      = require('fs');
 const router  = express.Router();
 const prisma  = require('../lib/prisma');
-const { uploadToStorage }      = require('../services/storage.service');
-const { personalizationQueue } = require('../queues/index');
+const { uploadToStorage }        = require('../services/storage.service');
+const { generateFuryTourPoster } = require('../services/photo-composite.service');
 
 const upload = multer({
   dest: 'uploads/temp/',
@@ -22,6 +22,7 @@ const upload = multer({
 
 // POST /api/personalization/orders
 router.post('/orders', upload.single('customerPhoto'), async (req, res) => {
+  let order = null;
   try {
     const { templateId, variables: variablesRaw, etsyOrderRef } = req.body;
 
@@ -34,6 +35,7 @@ router.post('/orders', upload.single('customerPhoto'), async (req, res) => {
         return res.status(400).json({ error: 'variables must be a valid JSON string' });
       }
     }
+    if (!variables.petName) return res.status(400).json({ error: 'variables.petName required' });
 
     const template = await prisma.photoTemplate.findFirst({
       where: { id: templateId, workspaceId: req.workspaceId, active: true },
@@ -46,26 +48,84 @@ router.post('/orders', upload.single('customerPhoto'), async (req, res) => {
     const photoUrl  = await uploadToStorage(req.file.path, storePath);
     try { fs.unlinkSync(req.file.path); } catch (_) {}
 
-    const order = await prisma.personalizationOrder.create({
+    order = await prisma.personalizationOrder.create({
       data: {
         workspaceId:      req.workspaceId,
         templateId,
         customerPhotoUrl: photoUrl,
         variables,
         etsyOrderRef:     etsyOrderRef || null,
-        status:           'PENDING',
+        status:           'COMPOSITING',
       },
     });
 
-    await personalizationQueue.add('composite', {
-      orderId:     order.id,
-      workspaceId: req.workspaceId,
+    // Sharp-only, no AI call — fast enough to run inline, no queue needed.
+    const { buffer } = await generateFuryTourPoster({
+      customerPhotoPath: photoUrl,
+      petName:           variables.petName,
+      templateConfig: {
+        photoSlot:  template.photoSlot,
+        tintColor:  template.mockupConfig?.tintColor,
+        cities:     template.mockupConfig?.cities,
+      },
+    });
+
+    const tmpPrint = path.join('uploads/temp', `${order.id}_print.png`);
+    fs.writeFileSync(tmpPrint, buffer);
+    let printFileUrl;
+    try {
+      printFileUrl = await uploadToStorage(tmpPrint, `personalization/print-files/${order.id}_print.png`);
+    } finally {
+      try { fs.unlinkSync(tmpPrint); } catch (_) {}
+    }
+
+    order = await prisma.personalizationOrder.update({
+      where: { id: order.id },
+      data:  { status: 'COMPOSITED', printFileUrl },
     });
 
     res.status(201).json({ success: true, order });
   } catch (err) {
     console.error('[Personalization POST /orders]', err.message);
+    if (order) {
+      await prisma.personalizationOrder.update({
+        where: { id: order.id },
+        data:  { status: 'FAILED', rejectionReason: err.message },
+      }).catch(() => {});
+    }
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/personalization/preview — no DB write, returns base64 PNG for quick testing
+router.post('/preview', upload.single('customerPhoto'), async (req, res) => {
+  try {
+    const { petName } = req.body;
+    if (!req.file) return res.status(400).json({ error: 'customerPhoto file required' });
+    if (!petName)  return res.status(400).json({ error: 'petName required' });
+
+    let templateConfig = {};
+    if (req.body.templateConfig) {
+      try { templateConfig = JSON.parse(req.body.templateConfig); } catch (_) {
+        return res.status(400).json({ error: 'templateConfig must be a valid JSON string' });
+      }
+    }
+
+    const { buffer } = await generateFuryTourPoster({
+      customerPhotoPath: req.file.path,
+      petName,
+      templateConfig,
+    });
+
+    res.json({
+      success:    true,
+      previewUrl: `data:image/png;base64,${buffer.toString('base64')}`,
+    });
+  } catch (err) {
+    console.error('[Personalization POST /preview]', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (req.file) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
   }
 });
 

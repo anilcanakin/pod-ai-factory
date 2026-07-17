@@ -4,7 +4,10 @@ const sharp = require('sharp');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
+const fetch = require('node-fetch');
 const { loadFontB64, buildTextSvg, mapAlign } = require('./composite-engine.service');
+const secretsService = require('./secrets.service');
+const falProvider     = require('./providers/fal.provider');
 
 const ASSETS_ROOT = path.join(__dirname, '../../assets');
 const REPO_ROOT    = path.join(__dirname, '../../');
@@ -113,14 +116,14 @@ async function buildHalftoneDots(grayBuffer, width, height, cellSize = 9) {
 // akışının yaklaşımı) — opak bej blend yerine, piksel ne kadar koyuysa o kadar
 // şeffaflaştırılır; koyu renk tişört üzerine composite edilince tasarım
 // kumaşın dokusundan çıkmış/baskısı zayıflamış gibi görünür. Parlak alanlar
-// opak kalır (tam görünür), en koyu alanlar bile minAlpha altına düşmez
-// (tamamen kaybolmasın, hafif iz kalsın).
+// opak kalır (tam görünür), en koyu alanlar minAlpha=0 varsayılanıyla tamamen
+// şeffaflaşır (kutu/çerçeve hissi kalmasın diye) — iz bırakmak istenirse minAlpha>0 verilir.
 //
 // Not: Kittl'ın kendi "Intensity" formülü kapalı kaynak — burada intensity'yi
 // bir gamma eğrisi üsse çeviriyoruz (intensity=28 → gamma≈2.4). Yüksek
 // intensity = koyu tonlar daha agresif şeffaflaşır (eğri daha dik).
 async function applyFabricBlendEffect(imageBuffer, options = {}) {
-  const { intensity = 28, minAlpha = 0.15 } = options;
+  const { intensity = 28, minAlpha = 0 } = options;
 
   const { data, info } = await sharp(imageBuffer)
     .grayscale()
@@ -145,7 +148,17 @@ async function applyFabricBlendEffect(imageBuffer, options = {}) {
     rgba[o + 3] = alpha;
   }
 
-  return sharp(rgba, { raw: { width, height, channels: 4 } }).png().toBuffer();
+  // Opak→şeffaf geçişi sert kalıyor (minAlpha=0 ile tam kenar) — sadece alpha
+  // kanalına gaussian blur uygulayıp RGB'yi bozmadan geçişi yumuşatıyoruz,
+  // "kutu kenarı" hissi böyle erir.
+  const rgbaSharp   = sharp(rgba, { raw: { width, height, channels: 4 } });
+  const blurredAlpha = await rgbaSharp.clone().extractChannel(3).blur(4).raw().toBuffer();
+  const rgbOnly       = await rgbaSharp.clone().removeAlpha().raw().toBuffer();
+
+  return sharp(rgbOnly, { raw: { width, height, channels: 3 } })
+    .joinChannel(blurredAlpha, { raw: { width, height, channels: 1 } })
+    .png()
+    .toBuffer();
 }
 
 // Grunge scratch/grain dokusu — random noise, düşük alpha ile overlay blend
@@ -188,6 +201,97 @@ function buildSideFadeMaskSvg(width, height, fadePercent) {
 </svg>`;
 }
 
+// ── KATMAN 1: AI Fotoğraf Dönüşümü (fal-ai/gpt-image-2, image-to-image) ────────
+const AI_TRANSFORM_MODEL  = 'openai/gpt-image-2/edit'; // edit/i2i varyantı — image_urls'i gerçekten referans alır, düz 'fal-ai/gpt-image-2' text-to-image'dir ve girdi görselini yok sayar
+const AI_TRANSFORM_PROMPT = 'Transform this photo into a vintage 90s bootleg band tour '
+  + 't-shirt illustration style, distressed grunge texture, halftone print effect, faded '
+  + "single-color sepia/cream print look on black background, keep the subject's likeness "
+  + 'and pose recognizable, no text, no lettering, just the illustrated portrait, isolated '
+  + 'on plain black background';
+
+// customerPhoto → stilize illüstrasyon buffer. Hata durumunda çağıran taraf (generateFuryTourPoster)
+// Sharp-only fallback'e düşer — burada fırlatılan hata orada yakalanır.
+async function transformPhotoWithAI(photoBuffer, workspaceId = null, useRealBgRemove = true) {
+  const falKey = await secretsService.getKey('fal', workspaceId, true);
+  // fal 25MB base64 dosya limiti — kaynak fotoğraf (gerçek kamera/stok fotoğrafı) çok
+  // büyük olabilir, uzun kenarı 1600px'e indirip jpeg'e çeviriyoruz (stil transferi için yeterli).
+  const jpegBuffer = await sharp(photoBuffer)
+    .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+  const dataUrl = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
+
+  const crypto = require('crypto');
+  const reqId = Math.random().toString(36).slice(2, 8);
+  const inputHash = crypto.createHash('sha256').update(jpegBuffer).digest('hex').slice(0, 12);
+  const tStart = Date.now();
+  console.log(`[DEBUG-AI][${reqId}] request start t=${new Date(tStart).toISOString()} inputJpegHash=${inputHash} inputJpegBytes=${jpegBuffer.length}`);
+
+  const url = `https://fal.run/${AI_TRANSFORM_MODEL}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 180000); // 3 dk — GPT-Image-2 yavaş, fal.provider.js ile aynı süre
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Key ${falKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: AI_TRANSFORM_PROMPT,
+        image_urls: [dataUrl],
+        image_size: 'square_hd',
+        quality: 'high',
+        num_images: 1,
+        output_format: 'png',
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('AI transform timed out (180s)');
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const elapsedMs = Date.now() - tStart;
+  console.log(`[DEBUG-AI][${reqId}] HTTP response status=${response.status} elapsed=${elapsedMs}ms`);
+
+  const responseText = await response.text();
+  let data = {};
+  try { data = JSON.parse(responseText); } catch { data = {}; }
+
+  if (!response.ok) {
+    const errMsg = data.detail || data.message || data.error || responseText;
+    const errStr = typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg);
+    throw new Error(`AI transform HTTP ${response.status}: ${errStr.substring(0, 500)}`);
+  }
+
+  const imageUrl = data.images?.[0]?.url || data.image?.url || data.output?.[0]?.url || null;
+  if (!imageUrl) throw new Error('AI transform: response içinde image URL yok');
+  console.log(`[DEBUG-AI][${reqId}] fal returned imageUrl=${imageUrl}`);
+
+  // Piksel-luminance tabanlı manuel alpha (applyFabricBlendEffect) sert/görünür kutu kenarı
+  // bırakıyordu — gerçek segmentasyon modeli (BiRefNet) kullanıp doğru object/background
+  // ayrımıyla şeffaf PNG alıyoruz. AI görseli zaten fal CDN'de barındığı için re-upload
+  // gerekmiyor, aynı URL doğrudan removeBackground'a veriliyor.
+  let finalUrl = imageUrl;
+  if (useRealBgRemove) {
+    try {
+      const rmbg = await falProvider.removeBackground(imageUrl, workspaceId);
+      finalUrl = rmbg.image_url;
+      console.log(`[DEBUG-AI][${reqId}] BiRefNet BG-remove ✓ ${finalUrl}`);
+    } catch (err) {
+      console.warn(`[DEBUG-AI][${reqId}] BiRefNet BG-remove başarısız, opak AI görseliyle devam:`, err.message);
+    }
+  }
+
+  const imgRes = await fetch(finalUrl);
+  const outBuf = Buffer.from(await imgRes.arrayBuffer());
+  const outHash = crypto.createHash('sha256').update(outBuf).digest('hex').slice(0, 12);
+  console.log(`[DEBUG-AI][${reqId}] downloaded final output bytes=${outBuf.length} outHash=${outHash} hasRealAlpha=${finalUrl !== imageUrl}`);
+  return outBuf;
+}
+
 /**
  * "<petName> OF FURY" grunge tur posteri — gri/duotone evcil hayvan fotoğrafı.
  *
@@ -211,22 +315,25 @@ function buildSideFadeMaskSvg(width, height, fadePercent) {
  * @param {string}         [opts.templateConfig.subtitle]      - Varsayılan "WORLD TOUR '94" (yalnızca poster modda)
  * @param {string[]}       [opts.templateConfig.cities]        - Varsayılan DEFAULT_TOUR_CITIES (yalnızca poster modda)
  * @param {string}         [opts.templateConfig.baseArtworkUrl] - Verilirse shell moduna geçilir — metin çizilmez, sadece foto yerleştirilir
- * @param {boolean}        [opts.fabricBlend] - true ise halftone+opak bej blend yerine "kumaşa gömülü" alpha efekti uygulanır (bkz. applyFabricBlendEffect). Varsayılan false.
- * @param {number}         [opts.fabricIntensity] - fabricBlend true iken alpha eğrisi agresifliği. Varsayılan 28.
  * @param {string}         [opts.outputPath] - Verilirse PNG diske de yazılır
+ * @param {boolean}        [opts.useRealBgRemove=true] - AI stilizasyon sonrası BiRefNet ile gerçek segmentasyon/şeffaflık; false ise applyFabricBlendEffect/halftone (manuel piksel-alpha) kullanılır
  * @returns {Promise<{ buffer: Buffer, outputPath: string|null, width: number, height: number }>}
  */
 async function generateFuryTourPoster({
   customerPhotoPath, petName, templateConfig = {}, outputPath = null,
-  fabricBlend = false, fabricIntensity = 28,
+  useAI = true, workspaceId = null,
+  fabricBlend = true, fabricIntensity = 28,
+  useRealBgRemove = true,
 }) {
   if (!customerPhotoPath) throw new Error('customerPhotoPath required');
-  if (!petName) throw new Error('petName required');
 
   const slot          = templateConfig.photoSlot || {};
   const tint          = templateConfig.tintColor || DEFAULT_TINT;
   const baseArtworkUrl = templateConfig.baseArtworkUrl || null;
   const isShellMode   = !!baseArtworkUrl;
+
+  // petName yalnızca poster modda çizilir (shell modda başlık şablona gömülü)
+  if (!isShellMode && !petName) throw new Error('petName required (poster mode)');
 
   const srcInput = resolvePath(customerPhotoPath);
   if (!Buffer.isBuffer(srcInput) && !fs.existsSync(srcInput)) {
@@ -289,26 +396,55 @@ async function generateFuryTourPoster({
       .toBuffer();
   }
 
-  // ── 2: gri tonlama + kontrast ─────────────────────────────────────────────
-  // fabricBlend orta tonların gradyanına ihtiyaç duyar (alpha eğrisi onlar
-  // üzerinden çalışır) — halftone'un sert kontrastı (1.8/-45) burada orta
-  // tonları zaten siyah/beyaza yapıştırıp eğriyi işlevsiz bırakır.
+  // ── 1b: KATMAN 1 — AI stilizasyon (opsiyonel, başarısızsa Sharp-only fallback) ──
+  let aiStylizedBuffer = null;
+  let aiHasRealAlpha   = false; // BiRefNet gerçek segmentasyonla şeffaf arka plan verdiyse true
+  if (useAI) {
+    try {
+      aiStylizedBuffer = await transformPhotoWithAI(cropSourceBuffer, workspaceId, useRealBgRemove);
+      const aiMeta = await sharp(aiStylizedBuffer).metadata();
+      aiHasRealAlpha = useRealBgRemove && !!aiMeta.hasAlpha;
+      console.log(`[PhotoComposite] AI dönüşüm ✓ (fal-ai/gpt-image-2)${aiHasRealAlpha ? ' + BiRefNet gerçek alpha' : ''}`);
+    } catch (err) {
+      console.warn('[PhotoComposite] AI dönüşüm başarısız, Sharp-only fallback kullanılıyor:', err.message);
+    }
+  }
+  const fitSourceBuffer = aiStylizedBuffer || cropSourceBuffer;
+
+  // ── 2: KATMAN 2 — normalizasyon: AI çıktısı ne olursa olsun aynı kontrast
+  // seviyesine zorlanır. AI kullanılmadıysa (fallback), kenar algılama eklenerek
+  // düz bej bloklar yerine kontur hissi verilmeye çalışılır. fabricBlend orta
+  // tonların gradyanına ihtiyaç duyar (alpha eğrisi onlar üzerinden çalışır) —
+  // halftone'un sert kontrastı (1.8/-45) orta tonları siyah/beyaza yapıştırıp
+  // eğriyi işlevsiz bırakırdı, o yüzden fabricBlend true iken daha yumuşak.
   const [contrastMul, contrastOffset] = fabricBlend ? [1.15, -10] : [1.8, -45];
-  const fitted = await sharp(cropSourceBuffer)
+
+  let fitPipeline = sharp(fitSourceBuffer)
     .resize(slotW, slotH, {
       fit:      slot.fit === 'contain' ? 'contain' : 'cover',
       position: slot.align ? mapAlign(slot.align) : 'centre',
     })
-    .grayscale()
+    .grayscale();
+
+  if (!aiStylizedBuffer) {
+    fitPipeline = fitPipeline.convolve({ width: 3, height: 3, kernel: [-1, -1, -1, -1, 8, -1, -1, -1, -1] });
+  }
+
+  const fitted = await fitPipeline
     .normalize()
     .linear(contrastMul, contrastOffset)
     .toColourspace('srgb')
     .toBuffer();
 
-  // ── 2b/3: fabricBlend true ise "kumaşa gömülü" alpha efekti, değilse mevcut
-  // halftone nokta deseni + opak bej multiply blend ──────────────────────────
+  // ── 2b/3: KATMAN 2 son adımı — aiHasRealAlpha ise BiRefNet zaten doğru
+  // object/background ayrımını yapıp gerçek şeffaflık üretti, piksel-luminance
+  // tabanlı manuel alpha hesaplaması (applyFabricBlendEffect) sert/görünür kutu
+  // kenarı bırakıyordu, o yüzden bu durumda atlanır. Değilse fabricBlend true
+  // ise "kumaşa gömülü" alpha efekti, değilse halftone + opak bej multiply blend ──
   let duotonePhoto;
-  if (fabricBlend) {
+  if (aiHasRealAlpha) {
+    duotonePhoto = fitted;
+  } else if (fabricBlend) {
     duotonePhoto = await applyFabricBlendEffect(fitted, { intensity: fabricIntensity });
   } else {
     const stencil = await buildHalftoneDots(fitted, slotW, slotH, 9);
@@ -335,6 +471,26 @@ async function generateFuryTourPoster({
     const sideFadeSvg = buildSideFadeMaskSvg(slotW, slotH, 0.05);
     duotonePhoto = await sharp(bottomFaded)
       .composite([{ input: Buffer.from(sideFadeSvg), blend: 'dest-in' }])
+      .png()
+      .toBuffer();
+  }
+
+  // ── 3c: sıkı clip — composite() left/top verilince input'u canvas'a göre
+  // KIRPMAZ, kendi gerçek boyutuyla yapıştırır. fitted/duotonePhoto adımları
+  // teorik olarak slotW×slotH çıkarır ama garanti değil (ör. fabricBlend'in raw
+  // pipeline'ı veya ileride eklenecek bir adım boyutu kaydırabilir) — bu yüzden
+  // composite'ten hemen önce gerçek boyutu ölçüp slotW×slotH'e sıkı kırpıyoruz.
+  const duotoneMeta = await sharp(duotonePhoto).metadata();
+  console.log(`[PhotoComposite] duotonePhoto boyutu: ${duotoneMeta.width}x${duotoneMeta.height} — beklenen slot: ${slotW}x${slotH}`);
+  if (duotoneMeta.width !== slotW || duotoneMeta.height !== slotH) {
+    console.warn('[PhotoComposite] Boyut uyuşmuyor — slot sınırlarına sıkı kırpılıyor.');
+    duotonePhoto = await sharp(duotonePhoto)
+      .extract({
+        left: 0,
+        top: 0,
+        width: Math.min(slotW, duotoneMeta.width),
+        height: Math.min(slotH, duotoneMeta.height),
+      })
       .png()
       .toBuffer();
   }
@@ -442,46 +598,39 @@ async function generateFuryTourPoster({
   return { buffer: outputBuffer, outputPath, width: OUTPUT_W, height: OUTPUT_H };
 }
 
+/**
+ * 3 katmanlı akış için pozisyonel sarmalayıcı — AI stilizasyon + normalizasyon + kompozisyon.
+ * @param {string|Buffer} customerPhotoPath
+ * @param {object} [templateConfig]
+ * @param {object} [options]
+ * @param {string}  [options.petName]          - poster modda zorunlu, shell modda kullanılmaz
+ * @param {string}  [options.outputPath]
+ * @param {boolean} [options.useAI=true]       - false ise Sharp-only fallback
+ * @param {string}  [options.workspaceId]      - workspace-scoped FAL key çözümü için
+ * @param {boolean} [options.fabricBlend=true] - false ise halftone+opak bej blend
+ * @param {number}  [options.fabricIntensity=28]
+ * @param {boolean} [options.useRealBgRemove=true] - BiRefNet ile gerçek şeffaflık; false ise manuel alpha hesaplaması
+ */
+async function composePhoto(customerPhotoPath, templateConfig = {}, options = {}) {
+  return generateFuryTourPoster({
+    customerPhotoPath,
+    petName:         options.petName || '',
+    templateConfig,
+    outputPath:      options.outputPath || null,
+    useAI:           options.useAI !== false,
+    workspaceId:     options.workspaceId || null,
+    fabricBlend:     options.fabricBlend !== false,
+    fabricIntensity: options.fabricIntensity,
+    useRealBgRemove: options.useRealBgRemove !== false,
+  });
+}
+
 module.exports = {
   OUTPUT_W,
   OUTPUT_H,
   DEFAULT_TINT,
   DEFAULT_TOUR_CITIES,
   generateFuryTourPoster,
+  composePhoto,
   applyFabricBlendEffect,
 };
-
-// ─── CLI self-test ──────────────────────────────────────────────────────────
-// Kullanım: node src/services/photo-composite.service.js <foto-yolu> [intensity]
-// applyFabricBlendEffect'i izole test eder — koyu bir "tişört" zemine composite
-// edip çıktıyı temp dizine yazar, poster'ın tüm başlık/şehir metni olmadan.
-if (require.main === module) {
-  (async () => {
-    const testPhoto = process.argv[2];
-    if (!testPhoto) {
-      console.error('Kullanım: node src/services/photo-composite.service.js <foto-yolu> [intensity]');
-      process.exit(1);
-    }
-    const intensity = parseFloat(process.argv[3]) || 28;
-    const swatchW = 1000, swatchH = 1200;
-
-    const prepped = await sharp(testPhoto)
-      .rotate()
-      .resize(swatchW, swatchH, { fit: 'cover' })
-      .grayscale()
-      .normalize()
-      .linear(1.15, -10) // fabricBlend'in kendi yumuşak kontrastı — bkz. generateFuryTourPoster
-      .toColourspace('srgb')
-      .toBuffer();
-
-    const fabricLayer = await applyFabricBlendEffect(prepped, { intensity });
-
-    const swatch = await sharp({
-      create: { width: swatchW, height: swatchH, channels: 3, background: { r: 35, g: 33, b: 30 } }, // koyu tişört rengi
-    }).composite([{ input: fabricLayer }]).png().toBuffer();
-
-    const outPath = path.join(os.tmpdir(), `fabric-blend-test-i${intensity}.png`);
-    fs.writeFileSync(outPath, swatch);
-    console.log('Yazıldı:', outPath);
-  })().catch(err => { console.error('FAIL', err); process.exit(1); });
-}

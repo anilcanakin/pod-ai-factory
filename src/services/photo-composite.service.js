@@ -109,6 +109,45 @@ async function buildHalftoneDots(grayBuffer, width, height, cellSize = 9) {
   return sharp(Buffer.from(svg)).resize(width, height).toColourspace('srgb').png().toBuffer();
 }
 
+// "Kumaşa gömülü" efekti (Kittl'daki Foto Filtre → Remove Color → Intensity
+// akışının yaklaşımı) — opak bej blend yerine, piksel ne kadar koyuysa o kadar
+// şeffaflaştırılır; koyu renk tişört üzerine composite edilince tasarım
+// kumaşın dokusundan çıkmış/baskısı zayıflamış gibi görünür. Parlak alanlar
+// opak kalır (tam görünür), en koyu alanlar bile minAlpha altına düşmez
+// (tamamen kaybolmasın, hafif iz kalsın).
+//
+// Not: Kittl'ın kendi "Intensity" formülü kapalı kaynak — burada intensity'yi
+// bir gamma eğrisi üsse çeviriyoruz (intensity=28 → gamma≈2.4). Yüksek
+// intensity = koyu tonlar daha agresif şeffaflaşır (eğri daha dik).
+async function applyFabricBlendEffect(imageBuffer, options = {}) {
+  const { intensity = 28, minAlpha = 0.15 } = options;
+
+  const { data, info } = await sharp(imageBuffer)
+    .grayscale()
+    .normalize()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width, height, channels } = info;
+  const gamma  = 1 + intensity / 20;
+  const minA   = Math.round(minAlpha * 255);
+  const rgba   = Buffer.alloc(width * height * 4);
+
+  for (let i = 0; i < width * height; i++) {
+    const lum    = data[i * channels]; // grayscale — tek kanal
+    const curved = Math.pow(lum / 255, gamma);
+    const alpha  = Math.round(minA + (255 - minA) * curved);
+
+    const o = i * 4;
+    rgba[o]     = lum;
+    rgba[o + 1] = lum;
+    rgba[o + 2] = lum;
+    rgba[o + 3] = alpha;
+  }
+
+  return sharp(rgba, { raw: { width, height, channels: 4 } }).png().toBuffer();
+}
+
 // Grunge scratch/grain dokusu — random noise, düşük alpha ile overlay blend
 async function buildGrainOverlay(width, height, opacity) {
   const buf = Buffer.alloc(width * height);
@@ -172,10 +211,15 @@ function buildSideFadeMaskSvg(width, height, fadePercent) {
  * @param {string}         [opts.templateConfig.subtitle]      - Varsayılan "WORLD TOUR '94" (yalnızca poster modda)
  * @param {string[]}       [opts.templateConfig.cities]        - Varsayılan DEFAULT_TOUR_CITIES (yalnızca poster modda)
  * @param {string}         [opts.templateConfig.baseArtworkUrl] - Verilirse shell moduna geçilir — metin çizilmez, sadece foto yerleştirilir
+ * @param {boolean}        [opts.fabricBlend] - true ise halftone+opak bej blend yerine "kumaşa gömülü" alpha efekti uygulanır (bkz. applyFabricBlendEffect). Varsayılan false.
+ * @param {number}         [opts.fabricIntensity] - fabricBlend true iken alpha eğrisi agresifliği. Varsayılan 28.
  * @param {string}         [opts.outputPath] - Verilirse PNG diske de yazılır
  * @returns {Promise<{ buffer: Buffer, outputPath: string|null, width: number, height: number }>}
  */
-async function generateFuryTourPoster({ customerPhotoPath, petName, templateConfig = {}, outputPath = null }) {
+async function generateFuryTourPoster({
+  customerPhotoPath, petName, templateConfig = {}, outputPath = null,
+  fabricBlend = false, fabricIntensity = 28,
+}) {
   if (!customerPhotoPath) throw new Error('customerPhotoPath required');
   if (!petName) throw new Error('petName required');
 
@@ -245,7 +289,11 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
       .toBuffer();
   }
 
-  // ── 2: gri tonlama + sert kontrast (halftone dokusu net ayrışsın) ────────
+  // ── 2: gri tonlama + kontrast ─────────────────────────────────────────────
+  // fabricBlend orta tonların gradyanına ihtiyaç duyar (alpha eğrisi onlar
+  // üzerinden çalışır) — halftone'un sert kontrastı (1.8/-45) burada orta
+  // tonları zaten siyah/beyaza yapıştırıp eğriyi işlevsiz bırakır.
+  const [contrastMul, contrastOffset] = fabricBlend ? [1.15, -10] : [1.8, -45];
   const fitted = await sharp(cropSourceBuffer)
     .resize(slotW, slotH, {
       fit:      slot.fit === 'contain' ? 'contain' : 'cover',
@@ -253,22 +301,27 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     })
     .grayscale()
     .normalize()
-    .linear(1.8, -45)
+    .linear(contrastMul, contrastOffset)
     .toColourspace('srgb')
     .toBuffer();
 
-  // ── 2b: gerçek halftone nokta deseni (ekran baskı efekti) ────────────────
-  const stencil = await buildHalftoneDots(fitted, slotW, slotH, 9);
+  // ── 2b/3: fabricBlend true ise "kumaşa gömülü" alpha efekti, değilse mevcut
+  // halftone nokta deseni + opak bej multiply blend ──────────────────────────
+  let duotonePhoto;
+  if (fabricBlend) {
+    duotonePhoto = await applyFabricBlendEffect(fitted, { intensity: fabricIntensity });
+  } else {
+    const stencil = await buildHalftoneDots(fitted, slotW, slotH, 9);
 
-  // ── 3: bej/krem ton — multiply blend (beyaz alanlar tint alır, siyah kalır) ─
-  const tintOverlay = await sharp({
-    create: { width: slotW, height: slotH, channels: 3, background: hexToRgb(tint) },
-  }).png().toBuffer();
+    const tintOverlay = await sharp({
+      create: { width: slotW, height: slotH, channels: 3, background: hexToRgb(tint) },
+    }).png().toBuffer();
 
-  let duotonePhoto = await sharp(stencil)
-    .composite([{ input: tintOverlay, blend: 'multiply' }])
-    .png()
-    .toBuffer();
+    duotonePhoto = await sharp(stencil)
+      .composite([{ input: tintOverlay, blend: 'multiply' }])
+      .png()
+      .toBuffer();
+  }
 
   // ── 3b: alt/yan fade — sadece poster modda (shell modda şablonun kendi
   // dikdörtgen çerçevesi zaten kenar sınırı, fade gereksiz/yanlış görünür) ──
@@ -395,4 +448,40 @@ module.exports = {
   DEFAULT_TINT,
   DEFAULT_TOUR_CITIES,
   generateFuryTourPoster,
+  applyFabricBlendEffect,
 };
+
+// ─── CLI self-test ──────────────────────────────────────────────────────────
+// Kullanım: node src/services/photo-composite.service.js <foto-yolu> [intensity]
+// applyFabricBlendEffect'i izole test eder — koyu bir "tişört" zemine composite
+// edip çıktıyı temp dizine yazar, poster'ın tüm başlık/şehir metni olmadan.
+if (require.main === module) {
+  (async () => {
+    const testPhoto = process.argv[2];
+    if (!testPhoto) {
+      console.error('Kullanım: node src/services/photo-composite.service.js <foto-yolu> [intensity]');
+      process.exit(1);
+    }
+    const intensity = parseFloat(process.argv[3]) || 28;
+    const swatchW = 1000, swatchH = 1200;
+
+    const prepped = await sharp(testPhoto)
+      .rotate()
+      .resize(swatchW, swatchH, { fit: 'cover' })
+      .grayscale()
+      .normalize()
+      .linear(1.15, -10) // fabricBlend'in kendi yumuşak kontrastı — bkz. generateFuryTourPoster
+      .toColourspace('srgb')
+      .toBuffer();
+
+    const fabricLayer = await applyFabricBlendEffect(prepped, { intensity });
+
+    const swatch = await sharp({
+      create: { width: swatchW, height: swatchH, channels: 3, background: { r: 35, g: 33, b: 30 } }, // koyu tişört rengi
+    }).composite([{ input: fabricLayer }]).png().toBuffer();
+
+    const outPath = path.join(os.tmpdir(), `fabric-blend-test-i${intensity}.png`);
+    fs.writeFileSync(outPath, swatch);
+    console.log('Yazıldı:', outPath);
+  })().catch(err => { console.error('FAIL', err); process.exit(1); });
+}

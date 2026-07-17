@@ -90,6 +90,8 @@ router.post('/orders', upload.single('customerPhoto'), async (req, res) => {
         tintColor:  template.mockupConfig?.tintColor,
         cities:     template.mockupConfig?.cities,
       },
+      fabricBlend:     template.mockupConfig?.fabricBlend === true,
+      fabricIntensity: template.mockupConfig?.fabricIntensity,
     });
 
     const tmpPrint = path.join('uploads/temp', `${order.id}_print.png`);
@@ -122,7 +124,7 @@ router.post('/orders', upload.single('customerPhoto'), async (req, res) => {
 // POST /api/personalization/preview — no DB write, returns base64 PNG for quick testing
 router.post('/preview', upload.single('customerPhoto'), async (req, res) => {
   try {
-    const { petName } = req.body;
+    const { petName, fabricBlend, fabricIntensity } = req.body;
     if (!req.file) return res.status(400).json({ error: 'customerPhoto file required' });
     if (!petName)  return res.status(400).json({ error: 'petName required' });
 
@@ -137,6 +139,8 @@ router.post('/preview', upload.single('customerPhoto'), async (req, res) => {
       customerPhotoPath: req.file.path,
       petName,
       templateConfig,
+      fabricBlend:     fabricBlend === 'true' || fabricBlend === true,
+      fabricIntensity: fabricIntensity !== undefined ? parseFloat(fabricIntensity) : undefined,
     });
 
     res.json({
@@ -211,6 +215,8 @@ router.post('/sync-etsy-orders', async (req, res) => {
               tintColor: template.mockupConfig?.tintColor,
               cities:    template.mockupConfig?.cities,
             },
+            fabricBlend:     template.mockupConfig?.fabricBlend === true,
+            fabricIntensity: template.mockupConfig?.fabricIntensity,
           });
 
           const tmpPrint = path.join('uploads/temp', `${order.id}_print.png`);

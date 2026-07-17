@@ -112,18 +112,28 @@ function buildSideFadeMaskSvg(width, height, fadePercent) {
 }
 
 /**
- * "<petName> OF FURY" grunge tur posteri — gri/duotone evcil hayvan fotoğrafı,
- * siyah zemin, üstte grunge başlık, altta sabit tur şehri listesi.
+ * "<petName> OF FURY" grunge tur posteri — gri/duotone evcil hayvan fotoğrafı.
+ *
+ * İki mod:
+ *  - Shell modu (templateConfig.baseArtworkUrl verilirse): başlık/altyazı/şehir
+ *    listesi zaten şablon görselinin içine gömülü — sadece fotoğraf işlenip
+ *    şablonun boş alanına yerleştirilir, hiçbir metin ÇİZİLMEZ. photoSlot
+ *    oranları (0..1) şablonun KENDİ native px boyutuna göredir, contain-fit
+ *    ile OUTPUT_W×OUTPUT_H tuvaline ölçeklenip offsetlenir (şablonun kendi
+ *    en-boy oranı bozulmadan/kırpılmadan).
+ *  - Poster modu (baseArtworkUrl yoksa): siyah zemin + üstte grunge başlık +
+ *    altta "WORLD TOUR '94" + çok satırlı şehir listesi bu fonksiyon çizer,
+ *    photoSlot değerleri OUTPUT_W×OUTPUT_H tuvaline göre MUTLAK px'tir.
  *
  * @param {object} opts
  * @param {string|Buffer} opts.customerPhotoPath - Dosya yolu (repo-relative/absolute) veya Buffer
  * @param {string}         opts.petName
  * @param {object}         [opts.templateConfig]
- * @param {object}         [opts.templateConfig.photoSlot]     - { x, y, width, height, fit }
+ * @param {object}         [opts.templateConfig.photoSlot]     - Poster modda mutlak px { x,y,width,height,fit }; shell modda oran (0..1) { x,y,width,height,fit }
  * @param {string}         [opts.templateConfig.tintColor]     - Varsayılan '#C8A97A'
- * @param {string}         [opts.templateConfig.subtitle]      - Varsayılan "WORLD TOUR '94"
- * @param {string[]}       [opts.templateConfig.cities]        - Varsayılan DEFAULT_TOUR_CITIES, CITIES_PER_ROW'luk satırlara bölünür (baseArtworkUrl varsa kullanılmaz)
- * @param {string}         [opts.templateConfig.baseArtworkUrl] - Verilirse siyah zemin yerine bu görsel kullanılır, şehir listesi metni çizilmez
+ * @param {string}         [opts.templateConfig.subtitle]      - Varsayılan "WORLD TOUR '94" (yalnızca poster modda)
+ * @param {string[]}       [opts.templateConfig.cities]        - Varsayılan DEFAULT_TOUR_CITIES (yalnızca poster modda)
+ * @param {string}         [opts.templateConfig.baseArtworkUrl] - Verilirse shell moduna geçilir — metin çizilmez, sadece foto yerleştirilir
  * @param {string}         [opts.outputPath] - Verilirse PNG diske de yazılır
  * @returns {Promise<{ buffer: Buffer, outputPath: string|null, width: number, height: number }>}
  */
@@ -131,30 +141,74 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
   if (!customerPhotoPath) throw new Error('customerPhotoPath required');
   if (!petName) throw new Error('petName required');
 
-  const slot     = templateConfig.photoSlot || {};
-  const slotW    = slot.width  ?? Math.round(OUTPUT_W * 0.85);
-  const slotH    = slot.height ?? Math.round(OUTPUT_H * 0.55);
-  const slotX    = slot.x ?? Math.round((OUTPUT_W - slotW) / 2);
-  const slotY    = slot.y ?? Math.round(OUTPUT_H * 0.15);
-  const tint     = templateConfig.tintColor || DEFAULT_TINT;
-  const subtitle = templateConfig.subtitle ?? DEFAULT_SUBTITLE;
-  const cities   = templateConfig.cities?.length ? templateConfig.cities : DEFAULT_TOUR_CITIES;
+  const slot          = templateConfig.photoSlot || {};
+  const tint          = templateConfig.tintColor || DEFAULT_TINT;
+  const baseArtworkUrl = templateConfig.baseArtworkUrl || null;
+  const isShellMode   = !!baseArtworkUrl;
 
   const srcInput = resolvePath(customerPhotoPath);
   if (!Buffer.isBuffer(srcInput) && !fs.existsSync(srcInput)) {
     throw new Error(`customerPhotoPath not found: ${srcInput}`);
   }
 
-  // ── 1: basit center crop — üst %75 (yüz odaklı) ───────────────────────────
-  const orientedBuffer = await sharp(srcInput).rotate().toBuffer(); // EXIF auto-orient
-  const srcMeta        = await sharp(orientedBuffer).metadata();
-  const cropHeight     = Math.max(1, Math.round(srcMeta.height * 0.75));
-  const croppedBuffer  = await sharp(orientedBuffer)
-    .extract({ left: 0, top: 0, width: srcMeta.width, height: cropHeight })
-    .toBuffer();
+  // ── zemin + photoSlot geometrisi ──────────────────────────────────────────
+  let slotX, slotY, slotW, slotH, baseInput;
 
-  // ── 2: gri tonlama + kontrast normalize (linear boost, threshold yok — detay korunur) ─
-  const fitted = await sharp(croppedBuffer)
+  if (isShellMode) {
+    const shellPath = resolvePath(baseArtworkUrl);
+    const shellMeta = await sharp(shellPath).metadata();
+    const shellW    = shellMeta.width;
+    const shellH    = shellMeta.height;
+
+    // contain-fit — şablonun kendi en-boy oranı OUTPUT_W×OUTPUT_H'ten farklı
+    // olabilir (bu şablon 592×1136), 'cover' kullanırsak kırpılıp bozulur.
+    const containScale = Math.min(OUTPUT_W / shellW, OUTPUT_H / shellH);
+    const containW = Math.round(shellW * containScale);
+    const containH = Math.round(shellH * containScale);
+    const offsetX  = Math.round((OUTPUT_W - containW) / 2);
+    const offsetY  = Math.round((OUTPUT_H - containH) / 2);
+
+    // photoSlot burada ORAN (0..1), şablonun native boyutuna göre
+    const ratioX = slot.x ?? 0;
+    const ratioY = slot.y ?? 0;
+    const ratioW = slot.width  ?? 1;
+    const ratioH = slot.height ?? 1;
+
+    slotX = offsetX + Math.round(ratioX * containW);
+    slotY = offsetY + Math.round(ratioY * containH);
+    slotW = Math.round(ratioW * containW);
+    slotH = Math.round(ratioH * containH);
+
+    // Not: composite() ikinci kez çağrılırsa öncekini override eder (merge etmez) —
+    // bu yüzden shell'i tuvale materialize edip TEK composite ile devam ediyoruz;
+    // aksi halde birazdan eklenecek foto composite'i şablonu sessizce silerdi.
+    const shellResized = await sharp(shellPath).resize(containW, containH).toBuffer();
+    const canvasWithShell = await sharp({
+      create: { width: OUTPUT_W, height: OUTPUT_H, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    }).composite([{ input: shellResized, left: offsetX, top: offsetY }]).png().toBuffer();
+    baseInput = sharp(canvasWithShell);
+  } else {
+    // Poster modu — mutlak px, varsayılanlar
+    slotW = slot.width  ?? Math.round(OUTPUT_W * 0.85);
+    slotH = slot.height ?? Math.round(OUTPUT_H * 0.55);
+    slotX = slot.x ?? Math.round((OUTPUT_W - slotW) / 2);
+    slotY = slot.y ?? Math.round(OUTPUT_H * 0.15);
+    baseInput = sharp({ create: { width: OUTPUT_W, height: OUTPUT_H, channels: 3, background: { r: 0, g: 0, b: 0 } } });
+  }
+
+  // ── 1: crop — poster modda yüz odaklı üst %75, shell modda düz cover-fit ──
+  const orientedBuffer = await sharp(srcInput).rotate().toBuffer(); // EXIF auto-orient
+  let cropSourceBuffer = orientedBuffer;
+  if (!isShellMode) {
+    const srcMeta    = await sharp(orientedBuffer).metadata();
+    const cropHeight = Math.max(1, Math.round(srcMeta.height * 0.75));
+    cropSourceBuffer = await sharp(orientedBuffer)
+      .extract({ left: 0, top: 0, width: srcMeta.width, height: cropHeight })
+      .toBuffer();
+  }
+
+  // ── 2: gri tonlama + kontrast normalize (threshold yok — detay korunur) ──
+  const fitted = await sharp(cropSourceBuffer)
     .resize(slotW, slotH, {
       fit:      slot.fit === 'contain' ? 'contain' : 'cover',
       position: slot.align ? mapAlign(slot.align) : 'centre',
@@ -178,58 +232,57 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     create: { width: slotW, height: slotH, channels: 3, background: hexToRgb(tint) },
   }).png().toBuffer();
 
-  const tinted = await sharp(stencil)
+  let duotonePhoto = await sharp(stencil)
     .composite([{ input: tintOverlay, blend: 'multiply' }])
     .png()
     .toBuffer();
 
-  // ── 3b: alt %15 + sol/sağ %5 siyah zemine fade — art arda dest-in mask ────
-  const bottomFadeSvg = buildBottomFadeMaskSvg(slotW, slotH, 0.85);
-  const bottomFaded = await sharp(tinted)
-    .composite([{ input: Buffer.from(bottomFadeSvg), blend: 'dest-in' }])
-    .png()
-    .toBuffer();
+  // ── 3b: alt/yan fade — sadece poster modda (shell modda şablonun kendi
+  // dikdörtgen çerçevesi zaten kenar sınırı, fade gereksiz/yanlış görünür) ──
+  if (!isShellMode) {
+    const bottomFadeSvg = buildBottomFadeMaskSvg(slotW, slotH, 0.85);
+    const bottomFaded = await sharp(duotonePhoto)
+      .composite([{ input: Buffer.from(bottomFadeSvg), blend: 'dest-in' }])
+      .png()
+      .toBuffer();
 
-  const sideFadeSvg = buildSideFadeMaskSvg(slotW, slotH, 0.05);
-  const duotonePhoto = await sharp(bottomFaded)
-    .composite([{ input: Buffer.from(sideFadeSvg), blend: 'dest-in' }])
-    .png()
-    .toBuffer();
+    const sideFadeSvg = buildSideFadeMaskSvg(slotW, slotH, 0.05);
+    duotonePhoto = await sharp(bottomFaded)
+      .composite([{ input: Buffer.from(sideFadeSvg), blend: 'dest-in' }])
+      .png()
+      .toBuffer();
+  }
 
-  // ── 4: zemin — baseArtworkUrl varsa onu kullan, yoksa siyah — photoSlot'a yerleştir ─
-  const baseArtworkUrl = templateConfig.baseArtworkUrl || null;
-  const baseInput = baseArtworkUrl
-    ? sharp(resolvePath(baseArtworkUrl)).resize(OUTPUT_W, OUTPUT_H, { fit: 'cover' })
-    : sharp({ create: { width: OUTPUT_W, height: OUTPUT_H, channels: 3, background: { r: 0, g: 0, b: 0 } } });
-
+  // ── 4: fotoğrafı zemine (siyah tuval veya şablon) yerleştir ───────────────
   let chain = baseInput
     .composite([{ input: duotonePhoto, left: Math.round(slotX), top: Math.round(slotY) }]);
 
-  // ── 5: üst başlık — "<petName> OF FURY", grunge font, isim uzunluğuna göre boyut ─
-  const titleText = `${String(petName).toUpperCase()} OF FURY`;
-  const titleSize = getTitleFontSize(petName);
-  const titleSvg  = buildTextSvg({
-    canvasW: OUTPUT_W,
-    canvasH: OUTPUT_H,
-    layer: {
-      x: OUTPUT_W / 2,
-      y: Math.round(OUTPUT_H * 0.08),
-      font: TITLE_FONT_NAME,
-      size: titleSize,
-      color: tint,
-      align: 'center',
-      maxWidth: Math.round(OUTPUT_W * 0.9),
-    },
-    text: titleText,
-    fontB64: loadFontB64(TITLE_FONT_PATH),
-  });
+  // ── 5-6: başlık + altyazı + şehir listesi — YALNIZCA poster modda ────────
+  // Shell modda tüm metin şablon görselinin içine gömülü, burada çizilmez.
+  if (!isShellMode) {
+    const titleText = `${String(petName).toUpperCase()} OF FURY`;
+    const titleSize = getTitleFontSize(petName);
+    const titleSvg  = buildTextSvg({
+      canvasW: OUTPUT_W,
+      canvasH: OUTPUT_H,
+      layer: {
+        x: OUTPUT_W / 2,
+        y: Math.round(OUTPUT_H * 0.08),
+        font: TITLE_FONT_NAME,
+        size: titleSize,
+        color: tint,
+        align: 'center',
+        maxWidth: Math.round(OUTPUT_W * 0.9),
+      },
+      text: titleText,
+      fontB64: loadFontB64(TITLE_FONT_PATH),
+    });
 
-  let buf = await chain.png().toBuffer();
-  chain = sharp(buf).composite([{ input: Buffer.from(titleSvg), blend: 'over' }]);
+    let buf = await chain.png().toBuffer();
+    chain = sharp(buf).composite([{ input: Buffer.from(titleSvg), blend: 'over' }]);
 
-  // ── 6: "WORLD TOUR '94" alt başlık + çok satırlı şehir listesi ────────────
-  // (baseArtworkUrl zaten içeriyorsa atla)
-  if (!baseArtworkUrl) {
+    const subtitle = templateConfig.subtitle ?? DEFAULT_SUBTITLE;
+    const cities   = templateConfig.cities?.length ? templateConfig.cities : DEFAULT_TOUR_CITIES;
     const cityFontB64 = loadFontB64(CITY_FONT_PATH);
 
     const subtitleSize = Math.round(OUTPUT_W * 0.036);
@@ -287,10 +340,10 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
   // ── 7: final PNG — subtle grunge grain zemine dahil tüm postere ──────────
   // Not: chain.composite() ikinci kez çağrılırsa önceki composite'i override eder
   // (merge etmez) — o yüzden grain'den önce mutlaka materialize edip yeniden sarmalıyoruz.
-  buf = await chain.png().toBuffer();
+  const preGrainBuf = await chain.png().toBuffer();
   const grain = await buildGrainOverlay(OUTPUT_W, OUTPUT_H, 0.03);
   // 'over' (düz alpha blend) — 'overlay' blend modu bu düşük alpha'da neredeyse görünmez kalıyor
-  const outputBuffer = await sharp(buf)
+  const outputBuffer = await sharp(preGrainBuf)
     .composite([{ input: grain, blend: 'over' }])
     .png()
     .toBuffer();

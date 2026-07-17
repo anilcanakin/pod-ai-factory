@@ -25,6 +25,14 @@ const upload = multer({
 // ama hangisinin hangi soruya ait olduğunu ayırt eden bir alan (question_id vb.)
 // yok. Burada URL-şekilli değeri foto, diğerini pet adı sayıyoruz. Gerçek bir
 // test siparişiyle doğrulanmalı.
+// form-data / JSON body'den gelen boolean flag'leri parse eder — undefined ise
+// dokunmaz (generateFuryTourPoster'ın kendi default'u — true — geçerli olur).
+function parseBoolFlag(val) {
+  if (val === undefined) return undefined;
+  if (typeof val === 'boolean') return val;
+  return val === 'true';
+}
+
 function extractPersonalizationAnswers(transaction) {
   const variations = transaction.variations || [];
   const personalizationVars = variations.filter(v => v.property_id === 54);
@@ -81,7 +89,8 @@ router.post('/orders', upload.single('customerPhoto'), async (req, res) => {
       },
     });
 
-    // Sharp-only, no AI call — fast enough to run inline, no queue needed.
+    // AI dönüşüm (fal-ai/gpt-image-2) + fabricBlend varsayılan açık — 180s'e kadar
+    // sürebilir, sipariş akışı senkron bekliyor (kuyruğa alınmadı).
     const { buffer } = await generateFuryTourPoster({
       customerPhotoPath: photoUrl,
       petName:           variables.petName,
@@ -90,6 +99,10 @@ router.post('/orders', upload.single('customerPhoto'), async (req, res) => {
         tintColor:  template.mockupConfig?.tintColor,
         cities:     template.mockupConfig?.cities,
       },
+      useAI:           template.mockupConfig?.useAI !== false,
+      fabricBlend:     template.mockupConfig?.fabricBlend !== false,
+      fabricIntensity: template.mockupConfig?.fabricIntensity,
+      workspaceId:     req.workspaceId,
     });
 
     const tmpPrint = path.join('uploads/temp', `${order.id}_print.png`);
@@ -122,7 +135,7 @@ router.post('/orders', upload.single('customerPhoto'), async (req, res) => {
 // POST /api/personalization/preview — no DB write, returns base64 PNG for quick testing
 router.post('/preview', upload.single('customerPhoto'), async (req, res) => {
   try {
-    const { petName } = req.body;
+    const { petName, fabricBlend, fabricIntensity, useAI } = req.body;
     if (!req.file) return res.status(400).json({ error: 'customerPhoto file required' });
     if (!petName)  return res.status(400).json({ error: 'petName required' });
 
@@ -137,6 +150,10 @@ router.post('/preview', upload.single('customerPhoto'), async (req, res) => {
       customerPhotoPath: req.file.path,
       petName,
       templateConfig,
+      useAI:           parseBoolFlag(useAI),
+      fabricBlend:     parseBoolFlag(fabricBlend),
+      fabricIntensity: fabricIntensity !== undefined ? parseFloat(fabricIntensity) : undefined,
+      workspaceId:     req.workspaceId,
     });
 
     res.json({
@@ -211,6 +228,10 @@ router.post('/sync-etsy-orders', async (req, res) => {
               tintColor: template.mockupConfig?.tintColor,
               cities:    template.mockupConfig?.cities,
             },
+            useAI:           template.mockupConfig?.useAI !== false,
+            fabricBlend:     template.mockupConfig?.fabricBlend !== false,
+            fabricIntensity: template.mockupConfig?.fabricIntensity,
+            workspaceId:     req.workspaceId,
           });
 
           const tmpPrint = path.join('uploads/temp', `${order.id}_print.png`);

@@ -5,7 +5,7 @@ const prisma = require('../lib/prisma');
 const { logNotification } = require('./notification.routes');
 const { uploadUrlToStorage } = require('../services/storage.service');
 
-fal.config({ 
+fal.config({
     credentials: process.env.FAL_API_KEY || process.env.FAL_KEY 
 });
 
@@ -15,9 +15,15 @@ router.post('/remove-bg', async (req, res) => {
         const { imageUrl, model = 'birefnet' } = req.body;
         if (!imageUrl) return res.status(400).json({ error: 'imageUrl is required' });
 
-        // Local asset URL'lerini tam URL'ye çevir
+        // Fal.ai "HTTPS URL veya Data URI" kabul ediyor — base64 data URI'yi (drag-drop'tan
+        // FileReader ile üretilmiş) OLDUĞU GİBİ geçiriyoruz. Eski kod data: URI'yi de
+        // BASE_URL+'/' ile prefixliyordu (yalnızca 'http' ile başlamayanlar için), bu da
+        // "http://localhost:3001/data:image/..." gibi bozuk bir string üretip 422'ye
+        // sebep oluyordu — asıl bug buydu, Fal'ın data URI'yi reddetmesi değil.
         const BASE_URL = process.env.BACKEND_URL || `http://localhost:3001`;
-        const resolvedUrl = imageUrl.startsWith('http') ? imageUrl : `${BASE_URL}/${imageUrl.replace(/^\//, '')}`;
+        const resolvedUrl = imageUrl.startsWith('data:') || imageUrl.startsWith('http')
+            ? imageUrl
+            : `${BASE_URL}/${imageUrl.replace(/^\//, '')}`;
 
         const workspaceId = req.workspaceId;
         if (!workspaceId) return res.status(401).json({ error: 'Authentication required.' });

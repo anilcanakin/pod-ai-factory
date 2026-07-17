@@ -320,6 +320,75 @@ async function createDraftListing(workspaceId, { title, description, tags, price
     return result;
 }
 
+// Listing'e kişiselleştirme soruları ekler — foto yükleme + metin sorusu.
+// Etsy'nin "supports_multiple_personalization_questions" migration'ı sonrası
+// (11 Mayıs 2026) native olarak PNG/JPG/SVG/HEIC/PDF dosya yükleme destekliyor.
+async function setPersonalizationQuestions(workspaceId, listingId, questions) {
+    const accessToken = await getValidToken(workspaceId);
+    const tokens       = await _loadTokens(workspaceId);
+
+    const res = await fetch(
+        `https://api.etsy.com/v3/application/shops/${tokens.shopId}/listings/${listingId}/personalization?supports_multiple_personalization_questions=true`,
+        {
+            method:  'POST',
+            headers: {
+                'x-api-key':    `${process.env.ETSY_API_KEY}:${process.env.ETSY_API_SECRET}`,
+                Authorization:  `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ personalization_questions: questions }),
+        }
+    );
+    _trackRateLimit(res);
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Etsy personalization soruları eklenemedi: ${err}`);
+    }
+    return res.json();
+}
+
+// Pet portre ürünleri için standart soru seti — foto + isim
+function petPortraitPersonalizationQuestions() {
+    return [
+        {
+            question_type: 'unlabeled_upload',
+            question_text: 'Upload your pet\'s photo',
+            instructions:  'Clear, front-facing photo works best',
+            required:      true,
+            max_allowed_files: 1,
+        },
+        {
+            question_type: 'text',
+            question_text: 'Pet\'s name',
+            instructions:  'How should we print your pet\'s name?',
+            required:      true,
+        },
+    ];
+}
+
+// Ödemesi tamamlanmış son siparişleri (receipt) getirir — transactions dahil.
+async function getNewReceipts(workspaceId, { limit = 25 } = {}) {
+    const accessToken = await getValidToken(workspaceId);
+    const tokens       = await _loadTokens(workspaceId);
+
+    const res = await fetch(
+        `https://api.etsy.com/v3/application/shops/${tokens.shopId}/receipts?was_paid=true&limit=${limit}&sort_on=created&sort_order=desc`,
+        {
+            headers: {
+                'x-api-key':   `${process.env.ETSY_API_KEY}:${process.env.ETSY_API_SECRET}`,
+                Authorization: `Bearer ${accessToken}`,
+            },
+        }
+    );
+    _trackRateLimit(res);
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Etsy receipts alınamadı: ${err}`);
+    }
+    const data = await res.json();
+    return data.results || [];
+}
+
 async function _uploadImage(accessToken, shopId, listingId, imageUrl, rank) {
     try {
         const imgRes = await fetch(imageUrl);
@@ -392,4 +461,9 @@ async function updateListingInventory(workspaceId, listingId) {
     return { ok: true, listingId, productCount: template.productCount, data };
 }
 
-module.exports = { getAuthUrl, exchangeCode, getValidToken, getStatus, refreshShopInfo, createDraftListing, updateListingInventory };
+module.exports = {
+    getAuthUrl, exchangeCode, getValidToken, getStatus, refreshShopInfo,
+    createDraftListing, updateListingInventory,
+    setPersonalizationQuestions, petPortraitPersonalizationQuestions,
+    getNewReceipts,
+};

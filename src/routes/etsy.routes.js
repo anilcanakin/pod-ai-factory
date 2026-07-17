@@ -49,7 +49,7 @@ router.get('/callback', async (req, res) => {
 
 // POST /api/etsy/listings — Resmi API ile ilan oluştur
 router.post('/listings', async (req, res) => {
-    const { title, description, tags, price, imageUrls, imageId } = req.body;
+    const { title, description, tags, price, imageUrls, imageId, enablePersonalization } = req.body;
     if (!title) return res.status(400).json({ error: 'title zorunlu' });
 
     try {
@@ -68,6 +68,24 @@ router.post('/listings', async (req, res) => {
                 where: { imageId },
                 data:  { etsyListingId: BigInt(result.listingId) },
             }).catch(() => {});
+        }
+
+        // Pet portre gibi kişiselleştirilebilir ürünler için Etsy'nin native
+        // foto yükleme + metin sorularını listing'e ekle (dosya yükleme, 11 Mayıs
+        // 2026 migration sonrası desteklenir).
+        if (enablePersonalization && result.listingId) {
+            try {
+                await etsy.setPersonalizationQuestions(
+                    req.workspaceId,
+                    result.listingId,
+                    etsy.petPortraitPersonalizationQuestions()
+                );
+                result.personalizationApplied = true;
+            } catch (persErr) {
+                console.error(`[Etsy Listings] Personalization soruları eklenemedi (listing ${result.listingId}): ${persErr.message}`);
+                result.personalizationApplied = false;
+                result.personalizationError   = persErr.message;
+            }
         }
 
         res.json({ success: true, ...result });

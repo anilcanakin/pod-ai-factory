@@ -71,6 +71,44 @@ function getTitleFontSize(petName) {
   return 150;
 }
 
+// Gerçek yarım-ton (halftone) nokta deseni — klasik ekran baskı efekti.
+// Blur/downsample-upsample "sahte halftone" yerine: gri tonlu görseli
+// cellSize×cellSize hücrelere böler, her hücrenin ortalama koyuluğuna göre
+// orantılı yarıçapta bir daire çizer (koyu = büyük daire). SVG'de tüm daireler
+// tek seferde çizilip rasterize edilir.
+async function buildHalftoneDots(grayBuffer, width, height, cellSize = 9) {
+  const cols = Math.max(1, Math.round(width / cellSize));
+  const rows = Math.max(1, Math.round(height / cellSize));
+
+  // Her hücre için ortalama parlaklığı almak üzere cols×rows'a küçült
+  const { data } = await sharp(grayBuffer)
+    .resize(cols, rows, { fit: 'fill' })
+    .grayscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const maxR = cellSize * 0.68; // en koyu hücrede komşu daireler hafif örtüşsün, düz siyah hissi versin
+  let circles = '';
+  for (let ry = 0; ry < rows; ry++) {
+    for (let rx = 0; rx < cols; rx++) {
+      const lum = data[ry * cols + rx]; // grayscale → 1 kanal
+      const darkness = 1 - lum / 255;
+      const r = darkness * maxR;
+      if (r < 0.4) continue;
+      const cx = (rx + 0.5) * cellSize;
+      const cy = (ry + 0.5) * cellSize;
+      circles += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}"/>`;
+    }
+  }
+
+  const svg = `<svg width="${cols * cellSize}" height="${rows * cellSize}" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100%" height="100%" fill="white"/>
+  <g fill="black">${circles}</g>
+</svg>`;
+
+  return sharp(Buffer.from(svg)).resize(width, height).toColourspace('srgb').png().toBuffer();
+}
+
 // Grunge scratch/grain dokusu — random noise, düşük alpha ile overlay blend
 async function buildGrainOverlay(width, height, opacity) {
   const buf = Buffer.alloc(width * height);
@@ -207,7 +245,7 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
       .toBuffer();
   }
 
-  // ── 2: gri tonlama + kontrast normalize (threshold yok — detay korunur) ──
+  // ── 2: gri tonlama + sert kontrast (halftone dokusu net ayrışsın) ────────
   const fitted = await sharp(cropSourceBuffer)
     .resize(slotW, slotH, {
       fit:      slot.fit === 'contain' ? 'contain' : 'cover',
@@ -215,17 +253,12 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     })
     .grayscale()
     .normalize()
-    .linear(1.5, -30)
+    .linear(1.8, -45)
     .toColourspace('srgb')
     .toBuffer();
 
-  // ── 2b: halftone/grunge grain — küçült+büyüt (posterize blur) ────────────
-  const haltoneW = Math.max(1, Math.round(slotW / 4));
-  const haltoneH = Math.max(1, Math.round(slotH / 4));
-  const stencil  = await sharp(fitted)
-    .resize(haltoneW, haltoneH)
-    .resize(slotW, slotH)
-    .toBuffer();
+  // ── 2b: gerçek halftone nokta deseni (ekran baskı efekti) ────────────────
+  const stencil = await buildHalftoneDots(fitted, slotW, slotH, 9);
 
   // ── 3: bej/krem ton — multiply blend (beyaz alanlar tint alır, siyah kalır) ─
   const tintOverlay = await sharp({

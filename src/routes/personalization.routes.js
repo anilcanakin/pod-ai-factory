@@ -20,6 +20,28 @@ const upload = multer({
   },
 });
 
+// Etsy'nin "supports_multiple_personalization_questions" formatı resmi dokümanda
+// tam netleşmemiş — birden fazla property_id:54 objesi olabileceği belirtiliyor
+// ama hangisinin hangi soruya ait olduğunu ayırt eden bir alan (question_id vb.)
+// yok. Burada URL-şekilli değeri foto, diğerini pet adı sayıyoruz. Gerçek bir
+// test siparişiyle doğrulanmalı.
+function extractPersonalizationAnswers(transaction) {
+  const variations = transaction.variations || [];
+  const personalizationVars = variations.filter(v => v.property_id === 54);
+  let photoUrl = null;
+  let petName  = null;
+  for (const v of personalizationVars) {
+    const val = String(v.formatted_value || '').trim();
+    if (!val) continue;
+    if (/^https?:\/\//i.test(val)) {
+      if (!photoUrl) photoUrl = val;
+    } else if (!petName) {
+      petName = val;
+    }
+  }
+  return { photoUrl, petName };
+}
+
 // POST /api/personalization/orders
 router.post('/orders', upload.single('customerPhoto'), async (req, res) => {
   let order = null;
@@ -126,6 +148,103 @@ router.post('/preview', upload.single('customerPhoto'), async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     if (req.file) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
+  }
+});
+
+// POST /api/personalization/sync-etsy-orders — ödemesi geçmiş yeni Etsy
+// siparişlerini çeker, personalization cevaplarından (foto+isim) otomatik
+// PersonalizationOrder oluşturup composite eder. Şimdilik workspace'teki tek
+// aktif PhotoTemplate'e sabit — çoklu ürüne geçilince listing_id eşlemesi eklenir.
+router.post('/sync-etsy-orders', async (req, res) => {
+  try {
+    const etsy = require('../services/etsy-api.service');
+    const fetch = require('node-fetch');
+
+    const template = await prisma.photoTemplate.findFirst({
+      where: { workspaceId: req.workspaceId, active: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!template) {
+      return res.status(400).json({ error: 'Aktif PhotoTemplate bulunamadı — önce bir şablon oluştur.' });
+    }
+
+    const receipts = await etsy.getNewReceipts(req.workspaceId);
+
+    const created = [];
+    const skipped = [];
+    const errors  = [];
+
+    for (const receipt of receipts) {
+      const receiptId = String(receipt.receipt_id);
+
+      const existing = await prisma.personalizationOrder.findFirst({
+        where: { workspaceId: req.workspaceId, etsyOrderRef: receiptId },
+      });
+      if (existing) { skipped.push(receiptId); continue; }
+
+      for (const tx of receipt.transactions || []) {
+        let order = null;
+        try {
+          const { photoUrl, petName } = extractPersonalizationAnswers(tx);
+          if (!photoUrl || !petName) continue; // bu transaction'da personalization cevabı eksik
+
+          const photoRes = await fetch(photoUrl);
+          if (!photoRes.ok) throw new Error(`Foto indirilemedi: HTTP ${photoRes.status}`);
+          const photoBuffer = Buffer.from(await photoRes.arrayBuffer());
+
+          order = await prisma.personalizationOrder.create({
+            data: {
+              workspaceId:      req.workspaceId,
+              templateId:       template.id,
+              customerPhotoUrl: photoUrl,
+              variables:        { petName },
+              etsyOrderRef:     receiptId,
+              status:           'COMPOSITING',
+            },
+          });
+
+          const { buffer } = await generateFuryTourPoster({
+            customerPhotoPath: photoBuffer,
+            petName,
+            templateConfig: {
+              photoSlot: template.photoSlot,
+              tintColor: template.mockupConfig?.tintColor,
+              cities:    template.mockupConfig?.cities,
+            },
+          });
+
+          const tmpPrint = path.join('uploads/temp', `${order.id}_print.png`);
+          fs.writeFileSync(tmpPrint, buffer);
+          let printFileUrl;
+          try {
+            printFileUrl = await uploadToStorage(tmpPrint, `personalization/print-files/${order.id}_print.png`);
+          } finally {
+            try { fs.unlinkSync(tmpPrint); } catch (_) {}
+          }
+
+          await prisma.personalizationOrder.update({
+            where: { id: order.id },
+            data:  { status: 'COMPOSITED', printFileUrl },
+          });
+
+          created.push({ receiptId, orderId: order.id });
+        } catch (txErr) {
+          console.error(`[Personalization SyncEtsy] receipt ${receiptId} hata:`, txErr.message);
+          if (order) {
+            await prisma.personalizationOrder.update({
+              where: { id: order.id },
+              data:  { status: 'FAILED', rejectionReason: txErr.message },
+            }).catch(() => {});
+          }
+          errors.push({ receiptId, error: txErr.message });
+        }
+      }
+    }
+
+    res.json({ success: true, created, skipped, errors });
+  } catch (err) {
+    console.error('[Personalization POST /sync-etsy-orders]', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

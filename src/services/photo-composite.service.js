@@ -46,9 +46,11 @@ function registerFontsDirOnce() {
 registerFontsDirOnce();
 
 const DEFAULT_TINT = '#C8A97A';
+const DEFAULT_SUBTITLE = "WORLD TOUR '94";
 const DEFAULT_TOUR_CITIES = [
   'NEW YORK', 'LONDON', 'BERLIN', 'TOKYO', 'PARIS', 'LOS ANGELES',
 ];
+const CITIES_PER_ROW = 3;
 
 function hexToRgb(hex) {
   const clean = String(hex).replace('#', '');
@@ -80,13 +82,28 @@ async function buildGrainOverlay(width, height, opacity) {
     .toBuffer();
 }
 
-// Fotoğrafın alt %20'si şeffaflığa (siyah zemine) fade eder — dest-in alpha mask
-function buildBottomFadeMaskSvg(width, height, fadeStart = 0.8) {
+// Fotoğrafın alt kenarı şeffaflığa (siyah zemine) fade eder — dest-in alpha mask
+function buildBottomFadeMaskSvg(width, height, fadeStart) {
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="white" stop-opacity="1"/>
       <stop offset="${fadeStart}" stop-color="white" stop-opacity="1"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="${width}" height="${height}" fill="url(#fade)"/>
+</svg>`;
+}
+
+// Fotoğrafın sol/sağ kenarları şeffaflığa fade eder — dest-in alpha mask
+function buildSideFadeMaskSvg(width, height, fadePercent) {
+  return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="white" stop-opacity="0"/>
+      <stop offset="${fadePercent}" stop-color="white" stop-opacity="1"/>
+      <stop offset="${1 - fadePercent}" stop-color="white" stop-opacity="1"/>
       <stop offset="1" stop-color="white" stop-opacity="0"/>
     </linearGradient>
   </defs>
@@ -104,7 +121,8 @@ function buildBottomFadeMaskSvg(width, height, fadeStart = 0.8) {
  * @param {object}         [opts.templateConfig]
  * @param {object}         [opts.templateConfig.photoSlot]     - { x, y, width, height, fit }
  * @param {string}         [opts.templateConfig.tintColor]     - Varsayılan '#C8A97A'
- * @param {string[]}       [opts.templateConfig.cities]        - Varsayılan DEFAULT_TOUR_CITIES (baseArtworkUrl varsa kullanılmaz)
+ * @param {string}         [opts.templateConfig.subtitle]      - Varsayılan "WORLD TOUR '94"
+ * @param {string[]}       [opts.templateConfig.cities]        - Varsayılan DEFAULT_TOUR_CITIES, CITIES_PER_ROW'luk satırlara bölünür (baseArtworkUrl varsa kullanılmaz)
  * @param {string}         [opts.templateConfig.baseArtworkUrl] - Verilirse siyah zemin yerine bu görsel kullanılır, şehir listesi metni çizilmez
  * @param {string}         [opts.outputPath] - Verilirse PNG diske de yazılır
  * @returns {Promise<{ buffer: Buffer, outputPath: string|null, width: number, height: number }>}
@@ -113,23 +131,24 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
   if (!customerPhotoPath) throw new Error('customerPhotoPath required');
   if (!petName) throw new Error('petName required');
 
-  const slot   = templateConfig.photoSlot || {};
-  const slotW  = slot.width  ?? OUTPUT_W; // tam genişlik, kenardan kenara — border yok
-  const slotH  = slot.height ?? Math.round(OUTPUT_H * 0.55);
-  const slotX  = slot.x ?? Math.round((OUTPUT_W - slotW) / 2);
-  const slotY  = slot.y ?? Math.round(OUTPUT_H * 0.12);
-  const tint   = templateConfig.tintColor || DEFAULT_TINT;
-  const cities = templateConfig.cities?.length ? templateConfig.cities : DEFAULT_TOUR_CITIES;
+  const slot     = templateConfig.photoSlot || {};
+  const slotW    = slot.width  ?? Math.round(OUTPUT_W * 0.85);
+  const slotH    = slot.height ?? Math.round(OUTPUT_H * 0.55);
+  const slotX    = slot.x ?? Math.round((OUTPUT_W - slotW) / 2);
+  const slotY    = slot.y ?? Math.round(OUTPUT_H * 0.15);
+  const tint     = templateConfig.tintColor || DEFAULT_TINT;
+  const subtitle = templateConfig.subtitle ?? DEFAULT_SUBTITLE;
+  const cities   = templateConfig.cities?.length ? templateConfig.cities : DEFAULT_TOUR_CITIES;
 
   const srcInput = resolvePath(customerPhotoPath);
   if (!Buffer.isBuffer(srcInput) && !fs.existsSync(srcInput)) {
     throw new Error(`customerPhotoPath not found: ${srcInput}`);
   }
 
-  // ── 1: basit center crop — üst %60 (yüz genellikle üstte) ────────────────
+  // ── 1: basit center crop — üst %75 (yüz odaklı) ───────────────────────────
   const orientedBuffer = await sharp(srcInput).rotate().toBuffer(); // EXIF auto-orient
   const srcMeta        = await sharp(orientedBuffer).metadata();
-  const cropHeight     = Math.max(1, Math.round(srcMeta.height * 0.6));
+  const cropHeight     = Math.max(1, Math.round(srcMeta.height * 0.75));
   const croppedBuffer  = await sharp(orientedBuffer)
     .extract({ left: 0, top: 0, width: srcMeta.width, height: cropHeight })
     .toBuffer();
@@ -164,10 +183,16 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     .png()
     .toBuffer();
 
-  // ── 3b: alt %20 siyah zemine fade — dest-in alpha mask ────────────────────
-  const fadeMaskSvg = buildBottomFadeMaskSvg(slotW, slotH, 0.8);
-  const duotonePhoto = await sharp(tinted)
-    .composite([{ input: Buffer.from(fadeMaskSvg), blend: 'dest-in' }])
+  // ── 3b: alt %15 + sol/sağ %5 siyah zemine fade — art arda dest-in mask ────
+  const bottomFadeSvg = buildBottomFadeMaskSvg(slotW, slotH, 0.85);
+  const bottomFaded = await sharp(tinted)
+    .composite([{ input: Buffer.from(bottomFadeSvg), blend: 'dest-in' }])
+    .png()
+    .toBuffer();
+
+  const sideFadeSvg = buildSideFadeMaskSvg(slotW, slotH, 0.05);
+  const duotonePhoto = await sharp(bottomFaded)
+    .composite([{ input: Buffer.from(sideFadeSvg), blend: 'dest-in' }])
     .png()
     .toBuffer();
 
@@ -188,7 +213,7 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
     canvasH: OUTPUT_H,
     layer: {
       x: OUTPUT_W / 2,
-      y: Math.round(slotY * 0.6),
+      y: Math.round(OUTPUT_H * 0.08),
       font: TITLE_FONT_NAME,
       size: titleSize,
       color: tint,
@@ -202,35 +227,68 @@ async function generateFuryTourPoster({ customerPhotoPath, petName, templateConf
   let buf = await chain.png().toBuffer();
   chain = sharp(buf).composite([{ input: Buffer.from(titleSvg), blend: 'over' }]);
 
-  // ── 6: alt metin — sabit tur şehirleri listesi (baseArtworkUrl zaten içeriyorsa atla) ─
+  // ── 6: "WORLD TOUR '94" alt başlık + çok satırlı şehir listesi ────────────
+  // (baseArtworkUrl zaten içeriyorsa atla)
   if (!baseArtworkUrl) {
-    const citySize = Math.round(OUTPUT_W * 0.028);
-    const cityY    = slotY + slotH + Math.round((OUTPUT_H - (slotY + slotH)) * 0.45);
-    const citySvg  = buildTextSvg({
+    const cityFontB64 = loadFontB64(CITY_FONT_PATH);
+
+    const subtitleSize = Math.round(OUTPUT_W * 0.036);
+    const subtitleY     = slotY + slotH + Math.round(OUTPUT_H * 0.03);
+    const subtitleSvg  = buildTextSvg({
       canvasW: OUTPUT_W,
       canvasH: OUTPUT_H,
       layer: {
         x: OUTPUT_W / 2,
-        y: cityY,
+        y: subtitleY,
         font: CITY_FONT_NAME,
-        size: citySize,
-        color: '#FFFFFF',
+        size: subtitleSize,
+        color: tint,
         align: 'center',
-        maxWidth: Math.round(OUTPUT_W * 0.85),
+        maxWidth: Math.round(OUTPUT_W * 0.8),
       },
-      text: cities.join('   •   '),
-      fontB64: loadFontB64(CITY_FONT_PATH),
+      text: subtitle,
+      fontB64: cityFontB64,
     });
 
     buf = await chain.png().toBuffer();
-    chain = sharp(buf).composite([{ input: Buffer.from(citySvg), blend: 'over' }]);
+    chain = sharp(buf).composite([{ input: Buffer.from(subtitleSvg), blend: 'over' }]);
+
+    // Şehirler CITIES_PER_ROW'luk satırlara bölünür, her satır ayrı çizilir
+    const citySize   = Math.round(OUTPUT_W * 0.028);
+    const rowGap     = Math.round(citySize * 1.5);
+    const citiesY0   = Math.round(OUTPUT_H * 0.82);
+    const rows = [];
+    for (let i = 0; i < cities.length; i += CITIES_PER_ROW) {
+      rows.push(cities.slice(i, i + CITIES_PER_ROW));
+    }
+
+    for (let r = 0; r < rows.length; r++) {
+      const citySvg = buildTextSvg({
+        canvasW: OUTPUT_W,
+        canvasH: OUTPUT_H,
+        layer: {
+          x: OUTPUT_W / 2,
+          y: citiesY0 + r * rowGap,
+          font: CITY_FONT_NAME,
+          size: citySize,
+          color: tint,
+          align: 'center',
+          maxWidth: Math.round(OUTPUT_W * 0.85),
+        },
+        text: rows[r].join('   •   '),
+        fontB64: cityFontB64,
+      });
+
+      buf = await chain.png().toBuffer();
+      chain = sharp(buf).composite([{ input: Buffer.from(citySvg), blend: 'over' }]);
+    }
   }
 
   // ── 7: final PNG — subtle grunge grain zemine dahil tüm postere ──────────
   // Not: chain.composite() ikinci kez çağrılırsa önceki composite'i override eder
   // (merge etmez) — o yüzden grain'den önce mutlaka materialize edip yeniden sarmalıyoruz.
   buf = await chain.png().toBuffer();
-  const grain = await buildGrainOverlay(OUTPUT_W, OUTPUT_H, 0.05);
+  const grain = await buildGrainOverlay(OUTPUT_W, OUTPUT_H, 0.03);
   // 'over' (düz alpha blend) — 'overlay' blend modu bu düşük alpha'da neredeyse görünmez kalıyor
   const outputBuffer = await sharp(buf)
     .composite([{ input: grain, blend: 'over' }])

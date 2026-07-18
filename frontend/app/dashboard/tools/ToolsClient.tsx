@@ -12,6 +12,12 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
 
+function resolveUrl(p: string | null | undefined): string {
+    if (!p) return '';
+    if (p.startsWith('http') || p.startsWith('blob:') || p.startsWith('data:')) return p;
+    return `${API_BASE}/${p.replace(/^\//, '')}`;
+}
+
 type Tab = 'remove-bg' | 'upscale' | 'vector';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
@@ -147,7 +153,7 @@ function RemoveBgPanel({ preloadUrl }: { preloadUrl?: string }) {
         setCards(prev => prev.map(c => c.id === id ? { ...c, status: 'processing' } : c));
         try {
             const result = await apiTools.removeBg(card.sourceUrl, model);
-            setCards(prev => prev.map(c => c.id === id ? { ...c, resultUrl: result.url, status: 'done' } : c));
+            setCards(prev => prev.map(c => c.id === id ? { ...c, resultUrl: resolveUrl(result.url), status: 'done' } : c));
             toast.success(result.savedImageId ? 'Galeriye kaydedildi!' : `BG kaldırıldı — ${result.model}`);
         } catch (err: unknown) {
             setCards(prev => prev.map(c => c.id === id ? { ...c, status: 'error' } : c));

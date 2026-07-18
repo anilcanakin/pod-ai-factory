@@ -2086,9 +2086,14 @@ function DesignPickerModal({ onClose, onSelect }: {
     onClose: () => void;
     onSelect: (img: GalleryImage) => void;
 }) {
+    const [mode, setMode] = useState<'gallery' | 'upload'>('gallery');
     const [images, setImages] = useState<GalleryImage[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [dragOver, setDragOver] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [uploadError, setUploadError] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         apiGallery.getRecent()
@@ -2101,6 +2106,30 @@ function DesignPickerModal({ onClose, onSelect }: {
         ? images.filter(i => i.id.toLowerCase().includes(search.toLowerCase()))
         : images;
 
+    const handleUpload = async (file: File) => {
+        if (!file.type.startsWith('image/')) { setUploadError('Lütfen bir görsel dosyası seçin'); return; }
+        setUploading(true);
+        setUploadError(null);
+        try {
+            const result = await apiGallery.uploadExternal(file);
+            onSelect({
+                id: result.id,
+                imageUrl: result.imageUrl,
+                placeholderUrl: null,
+                status: 'COMPLETED',
+                isApproved: true,
+                engine: 'external_upload',
+                seed: null,
+                cost: 0,
+                createdAt: new Date().toISOString(),
+            });
+        } catch (err: unknown) {
+            setUploadError(err instanceof Error ? err.message : 'Yükleme başarısız');
+        } finally {
+            setUploading(false);
+        }
+    };
+
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
             <div className="bg-[#1a2332] border border-slate-700 rounded-2xl w-full max-w-4xl p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
@@ -2108,49 +2137,118 @@ function DesignPickerModal({ onClose, onSelect }: {
                     <h3 className="text-lg font-semibold text-white">Select a Design</h3>
                     <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
                 </div>
-                <input
-                    type="text"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder="Search by ID..."
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500"
-                    autoFocus
-                />
-                <div className="flex-1 overflow-y-auto">
-                    {loading ? (
-                        <div className="flex items-center justify-center py-12">
-                            <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
-                        </div>
-                    ) : filtered.length === 0 ? (
-                        <div className="text-center py-12 text-slate-500">No designs found</div>
-                    ) : (
-                        <div className="grid grid-cols-4 gap-3">
-                            {filtered.map(img => {
-                                const url = img.imageUrl.startsWith('http') ? img.imageUrl : `${API_BASE}/${img.imageUrl}`;
-                                return (
-                                    <button
-                                        key={img.id}
-                                        onClick={() => onSelect(img)}
-                                        className="group relative aspect-square bg-slate-900/60 rounded-xl overflow-hidden border-2 border-transparent hover:border-blue-500 transition-all"
-                                    >
-                                        <img src={url} alt="Design" className="w-full h-full object-contain p-2"
-                                            onError={e => { e.currentTarget.style.display = 'none'; }} />
-                                        <div className="absolute inset-0 bg-blue-600/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <span className="px-3 py-1 bg-blue-600 text-white text-xs rounded-full font-medium">Select</span>
-                                        </div>
-                                        <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/80 to-transparent">
-                                            <span className="text-[9px] text-white/70 font-mono uppercase mb-1">
-                                                {img.engine === 'bg_remove' ? '✂ BG Removed' : 
-                                                 img.engine === 'upscale' ? '⬆ Upscaled' : 
-                                                 img.engine === 'mockup' ? '🖼 Mockup' : '✨ Generated'}
-                                            </span>
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
+
+                <div className="flex gap-1 p-1 bg-slate-800 rounded-xl border border-slate-700 w-fit">
+                    <button
+                        onClick={() => setMode('gallery')}
+                        className={cn(
+                            'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                            mode === 'gallery' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                        )}
+                    >
+                        <ImageIcon className="w-3.5 h-3.5" /> Galeriden Seç
+                    </button>
+                    <button
+                        onClick={() => setMode('upload')}
+                        className={cn(
+                            'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                            mode === 'upload' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                        )}
+                    >
+                        <Upload className="w-3.5 h-3.5" /> Bilgisayardan Yükle
+                    </button>
                 </div>
+
+                {mode === 'gallery' ? (
+                    <>
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            placeholder="Search by ID..."
+                            className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500"
+                            autoFocus
+                        />
+                        <div className="flex-1 overflow-y-auto">
+                            {loading ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+                                </div>
+                            ) : filtered.length === 0 ? (
+                                <div className="text-center py-12 text-slate-500">No designs found</div>
+                            ) : (
+                                <div className="grid grid-cols-4 gap-3">
+                                    {filtered.map(img => {
+                                        const url = img.imageUrl.startsWith('http') ? img.imageUrl : `${API_BASE}/${img.imageUrl}`;
+                                        return (
+                                            <button
+                                                key={img.id}
+                                                onClick={() => onSelect(img)}
+                                                className="group relative aspect-square bg-slate-900/60 rounded-xl overflow-hidden border-2 border-transparent hover:border-blue-500 transition-all"
+                                            >
+                                                <img src={url} alt="Design" className="w-full h-full object-contain p-2"
+                                                    onError={e => { e.currentTarget.style.display = 'none'; }} />
+                                                <div className="absolute inset-0 bg-blue-600/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <span className="px-3 py-1 bg-blue-600 text-white text-xs rounded-full font-medium">Select</span>
+                                                </div>
+                                                <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/80 to-transparent">
+                                                    <span className="text-[9px] text-white/70 font-mono uppercase mb-1">
+                                                        {img.engine === 'bg_remove' ? '✂ BG Removed' :
+                                                         img.engine === 'upscale' ? '⬆ Upscaled' :
+                                                         img.engine === 'mockup' ? '🖼 Mockup' : '✨ Generated'}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex-1 overflow-y-auto space-y-3">
+                        <div
+                            className={cn(
+                                'flex flex-col items-center justify-center gap-3 py-16 rounded-xl border-2 border-dashed cursor-pointer transition-all',
+                                dragOver ? 'border-blue-500 bg-blue-500/10' : 'border-slate-600 bg-slate-800/60 hover:border-slate-500'
+                            )}
+                            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                            onDragLeave={() => setDragOver(false)}
+                            onDrop={e => {
+                                e.preventDefault();
+                                setDragOver(false);
+                                const f = e.dataTransfer.files?.[0];
+                                if (f) handleUpload(f);
+                            }}
+                            onClick={() => !uploading && fileInputRef.current?.click()}
+                        >
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
+                            />
+                            {uploading ? (
+                                <>
+                                    <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+                                    <p className="text-sm text-slate-300">Yükleniyor…</p>
+                                </>
+                            ) : (
+                                <>
+                                    <Upload className="w-10 h-10 text-slate-500" />
+                                    <p className="text-sm font-medium text-slate-200">Sürükle bırak veya <span className="text-blue-400">seç</span></p>
+                                    <p className="text-xs text-slate-500">JPG, PNG, WEBP</p>
+                                </>
+                            )}
+                        </div>
+                        {uploadError && (
+                            <div className="px-4 py-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
+                                {uploadError}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

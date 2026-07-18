@@ -174,6 +174,17 @@ export const apiGallery = {
         method: 'POST',
         body: JSON.stringify({ imageUrl, designImageId }),
     }),
+    uploadExternal: (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return fetch(`${BASE}/gallery/upload-external`, { method: 'POST', credentials: 'include', body: formData }).then(async (res) => {
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `HTTP ${res.status}`);
+            }
+            return res.json() as Promise<{ id: string; imageUrl: string }>;
+        });
+    },
 };
 
 // ─── Pipeline ─────────────────────────────────────────────────

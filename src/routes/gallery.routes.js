@@ -1,6 +1,21 @@
 const express = require('express');
+const multer  = require('multer');
+const fs      = require('fs');
+const path    = require('path');
 const router = express.Router();
 const prisma = require('../lib/prisma');
+const { uploadToStorage } = require('../services/storage.service');
+
+const upload = multer({
+    dest: 'uploads/temp/',
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+            return cb(new Error('Only image files allowed'));
+        }
+        cb(null, true);
+    },
+});
 
 // Placeholder image for PENDING/FAILED (inline SVG as data URI)
 const PLACEHOLDER_URL = 'data:image/svg+xml;base64,' + Buffer.from(
@@ -65,6 +80,52 @@ router.post('/save-mockup', async (req, res) => {
         });
     } catch (err) {
         console.error('[Gallery save-mockup]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/gallery/upload-external — upload a local file directly into the gallery
+router.post('/upload-external', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.workspaceId) return res.status(401).json({ error: 'Authentication required' });
+        if (!req.file) return res.status(400).json({ error: 'file is required' });
+
+        const ext = path.extname(req.file.originalname) || '.png';
+        const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+        const imageUrl = await uploadToStorage(req.file.path, `external/${filename}`);
+        try { fs.unlinkSync(req.file.path); } catch (_) {}
+
+        let job = await prisma.designJob.findFirst({
+            where: { workspaceId: req.workspaceId, mode: 'external_upload' }
+        });
+        if (!job) {
+            job = await prisma.designJob.create({
+                data: {
+                    workspaceId: req.workspaceId,
+                    originalImage: 'external_upload',
+                    mode: 'external_upload',
+                    status: 'COMPLETED',
+                    basePrompt: 'External Upload',
+                }
+            });
+        }
+
+        const image = await prisma.image.create({
+            data: {
+                jobId: job.id,
+                variantType: 'external',
+                promptUsed: 'Uploaded from computer',
+                engine: 'external_upload',
+                imageUrl,
+                status: 'COMPLETED',
+                isApproved: true,
+                cost: 0,
+            }
+        });
+
+        res.json({ id: image.id, imageUrl: image.imageUrl });
+    } catch (err) {
+        console.error('[Gallery upload-external]', err);
         res.status(500).json({ error: err.message });
     }
 });

@@ -353,12 +353,20 @@ router.patch('/:id', async (req, res) => {
         if (req.body.configJson) {
             const prev = existing.configJson || {};
             const patch = req.body.configJson;
+            let normalizedPrintArea = patch.printArea ? { ...prev.printArea, ...patch.printArea } : prev.printArea;
+            let normalizedPrintAreas = Array.isArray(patch.printAreas) ? patch.printAreas
+                : (Array.isArray(prev.printAreas) ? prev.printAreas : undefined);
+            // Tek elemanlı printAreas'ı printArea'ya normalize et, çift-render'ı önle
+            if (Array.isArray(normalizedPrintAreas) && normalizedPrintAreas.length === 1) {
+                const only = normalizedPrintAreas[0];
+                normalizedPrintArea = { x: only.x, y: only.y, width: only.width, height: only.height };
+                normalizedPrintAreas = undefined;
+            } else if (Array.isArray(normalizedPrintAreas) && normalizedPrintAreas.length === 0) {
+                normalizedPrintAreas = undefined;
+            }
             data.configJson = {
-                printArea: patch.printArea ? { ...prev.printArea, ...patch.printArea } : prev.printArea,
-                // printAreas: array of {id, label, x, y, width, height} for multi-person/group mockups
-                // If patch sends an explicit empty array, honour it; if omitted, keep existing
-                printAreas: Array.isArray(patch.printAreas) ? patch.printAreas
-                    : (Array.isArray(prev.printAreas) ? prev.printAreas : undefined),
+                printArea: normalizedPrintArea,
+                printAreas: normalizedPrintAreas,
                 transform: patch.transform ? { ...prev.transform, ...patch.transform } : prev.transform,
                 render: patch.render ? { ...prev.render, ...patch.render } : prev.render,
                 meta: patch.meta ? { ...prev.meta, ...patch.meta } : prev.meta,

@@ -386,8 +386,12 @@ model PhotoTemplate {
   workspace      Workspace @relation(fields: [workspaceId], references: [id])
   name           String
   occasion       String
-  baseArtworkUrl String
-  photoSlot      Json
+  // "frame" (default, mevcut şablonlar): baseArtworkUrl + tekil photoSlot + textLayers
+  // "multi_photo_generative": sabit taban görsel yok, photoSlots (çoğul) — AI pipeline sahneyi baştan üretir
+  templateType   String   @default("frame")
+  baseArtworkUrl String?
+  photoSlot      Json?
+  photoSlots     Json?
   textLayers     Json
   printWidthPx   Int
   printHeightPx  Int
@@ -402,21 +406,23 @@ model PhotoTemplate {
 }
 
 model PersonalizationOrder {
-  id               String                @id @default(uuid())
-  workspaceId      String
-  workspace        Workspace             @relation(fields: [workspaceId], references: [id])
-  etsyOrderRef     String?
-  templateId       String
-  template         PhotoTemplate         @relation(fields: [templateId], references: [id])
-  customerPhotoUrl String
-  variables        Json
-  status           PersonalizationStatus @default(PENDING)
-  printFileUrl     String?
-  mockupUrl        String?
-  warnings         Json?
-  rejectionReason  String?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  id                String                @id @default(uuid())
+  workspaceId       String
+  workspace         Workspace             @relation(fields: [workspaceId], references: [id])
+  etsyOrderRef      String?
+  templateId        String
+  template          PhotoTemplate         @relation(fields: [templateId], references: [id])
+  customerPhotoUrl  String?
+  customerPhotoUrls Json?
+  previewImageId    String?
+  variables         Json
+  status            PersonalizationStatus @default(PENDING)
+  printFileUrl      String?
+  mockupUrl         String?
+  warnings          Json?
+  rejectionReason   String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   @@index([workspaceId, status])
 }

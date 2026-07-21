@@ -8,8 +8,20 @@ const router  = express.Router();
 const prisma  = require('../lib/prisma');
 const { uploadToStorage }        = require('../services/storage.service');
 const { generateFuryTourPoster } = require('../services/photo-composite.service');
+const { generatePetPortrait }    = require('../services/pet-portrait-composite.service');
 
 const upload = multer({
+  dest: 'uploads/temp/',
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image files allowed'));
+    }
+    cb(null, true);
+  },
+});
+
+const petPortraitUpload = multer({
   dest: 'uploads/temp/',
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
@@ -344,6 +356,173 @@ router.post('/orders/:id/reject', async (req, res) => {
     });
     res.json({ success: true, order: updated });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Custom Owner & Pet Portrait ("multi_photo_generative") ──────────────────
+// bkz. görev notu: sabit baseArtworkUrl yok, 2 fotoğraf (person + pet) AI ile
+// tek sahneye birleştirilip stilize edilir — mevcut frame/photoSlot akışından ayrı.
+
+async function findOrCreatePetPortraitJob(workspaceId) {
+  let job = await prisma.designJob.findFirst({
+    where: { workspaceId, mode: 'pet_portrait_preview' },
+  });
+  if (!job) {
+    job = await prisma.designJob.create({
+      data: {
+        workspaceId,
+        originalImage: 'pet_portrait_preview',
+        mode:          'pet_portrait_preview',
+        status:        'COMPLETED',
+        basePrompt:    'Custom Owner & Pet Portrait',
+      },
+    });
+  }
+  return job;
+}
+
+// POST /api/personalization/pet-portrait/preview — 2 fotoğraf (person + pet) alır,
+// 4 adımlı pipeline'ı senkron çalıştırır, base64 PNG + previewId (Image kaydı,
+// status: PENDING_APPROVAL) döner. Sipariş onaylanmadan önce bu önizleme ZORUNLU.
+router.post(
+  '/pet-portrait/preview',
+  petPortraitUpload.fields([{ name: 'personPhoto', maxCount: 1 }, { name: 'petPhoto', maxCount: 1 }]),
+  async (req, res) => {
+    const tempFiles = [];
+    try {
+      if (!req.workspaceId) return res.status(401).json({ error: 'Authentication required' });
+
+      const { templateId } = req.body;
+      const personFile = req.files?.personPhoto?.[0];
+      const petFile     = req.files?.petPhoto?.[0];
+      if (!templateId)  return res.status(400).json({ error: 'templateId required' });
+      if (!personFile)  return res.status(400).json({ error: 'personPhoto file required' });
+      if (!petFile)      return res.status(400).json({ error: 'petPhoto file required' });
+      tempFiles.push(personFile.path, petFile.path);
+
+      let variables = {};
+      if (req.body.variables) {
+        try { variables = JSON.parse(req.body.variables); } catch (_) {
+          return res.status(400).json({ error: 'variables must be a valid JSON string' });
+        }
+      }
+
+      const template = await prisma.photoTemplate.findFirst({
+        where: { id: templateId, workspaceId: req.workspaceId, active: true },
+      });
+      if (!template) return res.status(404).json({ error: 'PhotoTemplate not found' });
+      if (template.templateType !== 'multi_photo_generative') {
+        return res.status(400).json({ error: `Template type must be "multi_photo_generative", got "${template.templateType}"` });
+      }
+
+      const { buffer } = await generatePetPortrait({
+        personPhotoPath: personFile.path,
+        petPhotoPath:    petFile.path,
+        template,
+        variables,
+        workspaceId: req.workspaceId,
+      });
+
+      // Orijinal 2 fotoğrafı da kalıcı depoya taşı — onaylanan sipariş oluşturulurken
+      // (POST /pet-portrait/orders) previewId üzerinden bu URL'lere geri dönülür.
+      const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const personPhotoUrl = await uploadToStorage(personFile.path, `personalization/pet-portrait/inputs/${stamp}_person${path.extname(personFile.originalname) || '.jpg'}`);
+      const petPhotoUrl    = await uploadToStorage(petFile.path, `personalization/pet-portrait/inputs/${stamp}_pet${path.extname(petFile.originalname) || '.jpg'}`);
+
+      const tmpPreview = path.join('uploads/temp', `${stamp}_preview.png`);
+      fs.writeFileSync(tmpPreview, buffer);
+      let previewUrl;
+      try {
+        previewUrl = await uploadToStorage(tmpPreview, `personalization/pet-portrait/previews/${stamp}.png`);
+      } finally {
+        try { fs.unlinkSync(tmpPreview); } catch (_) {}
+      }
+
+      const job = await findOrCreatePetPortraitJob(req.workspaceId);
+      const previewImage = await prisma.image.create({
+        data: {
+          jobId:       job.id,
+          variantType: 'pet_portrait_preview',
+          promptUsed:  'Custom Owner & Pet Portrait preview',
+          engine:      'pet_portrait_preview',
+          imageUrl:    previewUrl,
+          status:      'PENDING_APPROVAL',
+          isApproved:  false,
+          cost:        0,
+          // Onaylanan sipariş oluşturulurken ihtiyaç duyulan bağlam (orijinal fotoğraf
+          // URL'leri + templateId + variables) — ayrı bir kolon eklemek yerine mevcut
+          // rawResponse (Text) alanına JSON olarak gömülüyor.
+          rawResponse: JSON.stringify({ templateId, personPhotoUrl, petPhotoUrl, variables }),
+        },
+      });
+
+      res.json({
+        success:    true,
+        previewId:  previewImage.id,
+        previewUrl: `data:image/png;base64,${buffer.toString('base64')}`,
+        storedUrl:  previewUrl,
+      });
+    } catch (err) {
+      console.error('[Personalization POST /pet-portrait/preview]', err.message);
+      res.status(500).json({ error: err.message });
+    } finally {
+      for (const p of tempFiles) { try { fs.unlinkSync(p); } catch (_) {} }
+    }
+  }
+);
+
+// POST /api/personalization/pet-portrait/orders — onaylanmış bir preview'den
+// (previewId) gerçek PersonalizationOrder oluşturur. Kompozisyon zaten preview
+// adımında tamamlandığı için burada yeniden AI çağrısı yapılmaz.
+router.post('/pet-portrait/orders', async (req, res) => {
+  try {
+    if (!req.workspaceId) return res.status(401).json({ error: 'Authentication required' });
+
+    const { previewId, etsyOrderRef } = req.body;
+    if (!previewId) return res.status(400).json({ error: 'previewId required' });
+
+    const preview = await prisma.image.findFirst({
+      where: { id: previewId, engine: 'pet_portrait_preview' },
+      include: { job: true },
+    });
+    if (!preview) return res.status(404).json({ error: 'Preview not found' });
+    if (preview.job.workspaceId !== req.workspaceId) return res.status(403).json({ error: 'Forbidden' });
+    if (preview.status !== 'PENDING_APPROVAL') {
+      return res.status(400).json({ error: `Preview already consumed or invalid (status: ${preview.status})` });
+    }
+
+    let context = {};
+    try { context = JSON.parse(preview.rawResponse || '{}'); } catch (_) { context = {}; }
+    const { templateId, personPhotoUrl, petPhotoUrl, variables } = context;
+    if (!templateId) return res.status(500).json({ error: 'Preview context corrupted — templateId missing' });
+
+    const template = await prisma.photoTemplate.findFirst({
+      where: { id: templateId, workspaceId: req.workspaceId },
+    });
+    if (!template) return res.status(404).json({ error: 'PhotoTemplate not found' });
+
+    const order = await prisma.personalizationOrder.create({
+      data: {
+        workspaceId:       req.workspaceId,
+        templateId,
+        customerPhotoUrls: [personPhotoUrl, petPhotoUrl],
+        previewImageId:    preview.id,
+        variables:         variables || {},
+        etsyOrderRef:      etsyOrderRef || null,
+        status:            'COMPOSITED',
+        printFileUrl:       preview.imageUrl,
+      },
+    });
+
+    await prisma.image.update({
+      where: { id: preview.id },
+      data:  { status: 'APPROVED', isApproved: true },
+    });
+
+    res.status(201).json({ success: true, order });
+  } catch (err) {
+    console.error('[Personalization POST /pet-portrait/orders]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

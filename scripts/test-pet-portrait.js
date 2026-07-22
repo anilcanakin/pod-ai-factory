@@ -7,7 +7,7 @@ const { generatePetPortrait } = require('../src/services/pet-portrait-composite.
 
 const PERSON_PHOTO = 'C:\\Users\\Anılcan\\Desktop\\test-fotograflar\\vicky-hladynets-C8Ta0gwPbQg-unsplash.jpg';
 const PET_PHOTO    = 'C:\\Users\\Anılcan\\Desktop\\test-fotograflar\\victor-g-N04FIfHhv_k-unsplash.jpg';
-const OUTPUT_PATH  = 'uploads/temp/pet-portrait-test-output.png';
+const OUTPUT_PATH  = 'uploads/temp/pet-portrait-test-output.jpg';
 
 // "multi_photo_generative" tipi bir PhotoTemplate satırının minimal duruşu — DB'ye
 // dokunmadan pipeline'ı izole test etmek için elle kurulmuş.

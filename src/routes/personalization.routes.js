@@ -430,11 +430,11 @@ router.post(
       const personPhotoUrl = await uploadToStorage(personFile.path, `personalization/pet-portrait/inputs/${stamp}_person${path.extname(personFile.originalname) || '.jpg'}`);
       const petPhotoUrl    = await uploadToStorage(petFile.path, `personalization/pet-portrait/inputs/${stamp}_pet${path.extname(petFile.originalname) || '.jpg'}`);
 
-      const tmpPreview = path.join('uploads/temp', `${stamp}_preview.png`);
+      const tmpPreview = path.join('uploads/temp', `${stamp}_preview.jpg`);
       fs.writeFileSync(tmpPreview, buffer);
       let previewUrl;
       try {
-        previewUrl = await uploadToStorage(tmpPreview, `personalization/pet-portrait/previews/${stamp}.png`);
+        previewUrl = await uploadToStorage(tmpPreview, `personalization/pet-portrait/previews/${stamp}.jpg`);
       } finally {
         try { fs.unlinkSync(tmpPreview); } catch (_) {}
       }
@@ -460,7 +460,7 @@ router.post(
       res.json({
         success:    true,
         previewId:  previewImage.id,
-        previewUrl: `data:image/png;base64,${buffer.toString('base64')}`,
+        previewUrl: `data:image/jpeg;base64,${buffer.toString('base64')}`,
         storedUrl:  previewUrl,
       });
     } catch (err) {

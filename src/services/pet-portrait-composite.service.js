@@ -244,7 +244,14 @@ async function composeOntoTemplate(transparentPortraitBuffer, template, variable
   //  - Grup fotoğrafı validasyonu hiç test edilmedi
   //  - Şapka/güneş gözlüğü/yüzü kapatan objeler test edilmedi
 
-  return chain.png().toBuffer();
+  // Gravür/halftone stilizasyon yüksek-frekanslı doku üretiyor — PNG lossless bunu
+  // neredeyse hiç sıkıştıramıyor (43MB+ çıktı). Şeffaflık sadece aspect-fit letterbox
+  // kenarlarında var (offsetX/offsetY boşlukları); beyazla flatten edip JPEG'e
+  // dönüştürmek görsel kaybı ihmal edilebilir düzeyde tutarken boyutu drastik düşürüyor.
+  return chain
+    .flatten({ background: { r: 255, g: 255, b: 255 } })
+    .jpeg({ quality: 90 })
+    .toBuffer();
 }
 
 /**

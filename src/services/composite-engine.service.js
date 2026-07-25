@@ -117,6 +117,39 @@ function loadOpentypeFont(fontPath) {
   return font;
 }
 
+// opentype.js Path#toPathData() üretir bazı glyph'lerde (örn. Montserrat-Bold 'm')
+// literal "NaN" token'ı — muhtemelen smooth-curve (T) kısaltma reflection matematiğinde
+// bir bug. librsvg NaN'a çarpınca TÜM path 'd' string'inin geri kalanını sessizce
+// render etmeyi bırakıyor (metin ortasından kırpılmış görünüyor). Bunun yerine path
+// komutlarını (path.commands — ham veri, bu bug'dan etkilenmiyor) kendimiz, her zaman
+// açık Q/C komutlarıyla (T/S kısaltması kullanmadan) serialize ediyoruz.
+function pathCommandsToD(path, decimals) {
+  const f = n => n.toFixed(decimals);
+  let d = '';
+  for (const c of path.commands) {
+    if (c.type === 'M') d += `M${f(c.x)} ${f(c.y)} `;
+    else if (c.type === 'L') d += `L${f(c.x)} ${f(c.y)} `;
+    else if (c.type === 'Q') d += `Q${f(c.x1)} ${f(c.y1)} ${f(c.x)} ${f(c.y)} `;
+    else if (c.type === 'C') d += `C${f(c.x1)} ${f(c.y1)} ${f(c.x2)} ${f(c.y2)} ${f(c.x)} ${f(c.y)} `;
+    else if (c.type === 'Z') d += 'Z ';
+  }
+  return d.trim();
+}
+
+// Glyph glyph elle path inşa eder (kerning yok — bu ölçekte gözle fark edilmiyor,
+// ve font.getPath(text,...)'in kendisi de yukarıdaki NaN bug'ına aynı şekilde maruz).
+function buildGlyphByGlyphD(font, text, x, y, fontSize) {
+  const scale = fontSize / font.unitsPerEm;
+  let curX = x;
+  const parts = [];
+  for (const ch of text) {
+    const glyph = font.charToGlyph(ch);
+    parts.push(pathCommandsToD(glyph.getPath(curX, y, fontSize), 2));
+    curX += glyph.advanceWidth * scale;
+  }
+  return parts.join(' ');
+}
+
 /**
  * buildTextSvg'nin <text>+@font-face alternatifi — librsvg'nin embedded font desteği
  * tutarsız (bazı ortamlarda sessizce sistem fallback fontuna düşüyor). Bunun yerine
@@ -135,15 +168,15 @@ function buildTextPathSvg({ canvasW, canvasH, layer, text, fontPath }) {
   const font = loadOpentypeFont(fontPath);
   let fontSize = layer.size;
 
-  let otPath = font.getPath(text, 0, 0, fontSize);
-  let bbox = otPath.getBoundingBox();
+  // Genişlik/shrink hesabı için getBoundingBox() güvenli (NaN bug'ı sadece toPathData'da) —
+  // bunu kullanmaya devam ediyoruz, sadece nihai 'd' string'i glyph-by-glyph üretiyoruz.
+  let bbox = font.getPath(text, 0, 0, fontSize).getBoundingBox();
   let width = bbox.x2 - bbox.x1;
 
   // maxWidth aşılıyorsa, taşan/kırpılan metin yerine font boyutunu orantılı küçült
   if (layer.maxWidth && width > layer.maxWidth) {
     fontSize = fontSize * (layer.maxWidth / width);
-    otPath = font.getPath(text, 0, 0, fontSize);
-    bbox = otPath.getBoundingBox();
+    bbox = font.getPath(text, 0, 0, fontSize).getBoundingBox();
     width = bbox.x2 - bbox.x1;
   }
 
@@ -151,10 +184,10 @@ function buildTextPathSvg({ canvasW, canvasH, layer, text, fontPath }) {
                 : layer.align === 'right'  ? layer.x - width - bbox.x1
                 : layer.x - bbox.x1;
   // opentype.js baseline'ı y=0'da tutar; layer.y görsel baseline konumu olarak kullanılıyor.
-  const finalPath = font.getPath(text, originX, layer.y, fontSize);
+  const d = buildGlyphByGlyphD(font, text, originX, layer.y, fontSize);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW}" height="${canvasH}">
-  <path d="${finalPath.toPathData(2)}" fill="${layer.color}"></path>
+  <path d="${d}" fill="${layer.color}"></path>
 </svg>`;
 }
 

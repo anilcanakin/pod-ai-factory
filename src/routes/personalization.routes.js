@@ -6,9 +6,10 @@ const path    = require('path');
 const fs      = require('fs');
 const router  = express.Router();
 const prisma  = require('../lib/prisma');
-const { uploadToStorage }        = require('../services/storage.service');
-const { generateFuryTourPoster } = require('../services/photo-composite.service');
-const { generatePetPortrait }    = require('../services/pet-portrait-composite.service');
+const { uploadToStorage }         = require('../services/storage.service');
+const { generateFuryTourPoster }  = require('../services/photo-composite.service');
+const { generatePetPortrait }     = require('../services/pet-portrait-composite.service');
+const { composeTextOnlyDesign }   = require('../services/composite-engine.service');
 
 const upload = multer({
   dest: 'uploads/temp/',
@@ -360,6 +361,102 @@ router.post('/orders/:id/reject', async (req, res) => {
   }
 });
 
+// ─── Fotoğrafsız apparel personalizasyonu ("text_only") ──────────────────────
+// Grade Team, Custom Name Nurse, Family Vacation, Faith Over Fear gibi tasarımlar:
+// AI'a her siparişte yeniden gitmiyor. Master tasarım (isim/tarih yeri boş) bir kez
+// üretilmiş, DB'de PhotoTemplate.baseArtworkUrl olarak duruyor. Her sipariş sadece
+// composeTextOnlyDesign ile kod-render metin basar — hızlı, ücretsiz, deterministik.
+
+// POST /api/personalization/text-orders
+router.post('/text-orders', async (req, res) => {
+  let order = null;
+  try {
+    const { templateId, variables: variablesRaw, etsyOrderRef } = req.body;
+    if (!templateId) return res.status(400).json({ error: 'templateId required' });
+
+    let variables = {};
+    if (variablesRaw) {
+      try { variables = JSON.parse(variablesRaw); } catch (_) {
+        return res.status(400).json({ error: 'variables must be a valid JSON string' });
+      }
+    }
+
+    const template = await prisma.photoTemplate.findFirst({
+      where: { id: templateId, workspaceId: req.workspaceId, active: true },
+    });
+    if (!template) return res.status(404).json({ error: 'PhotoTemplate not found' });
+    if (template.templateType !== 'text_only') {
+      return res.status(400).json({ error: `Template type must be "text_only", got "${template.templateType}"` });
+    }
+
+    order = await prisma.personalizationOrder.create({
+      data: {
+        workspaceId:  req.workspaceId,
+        templateId,
+        variables,
+        etsyOrderRef: etsyOrderRef || null,
+        status:       'COMPOSITING',
+      },
+    });
+
+    const buffer = await composeTextOnlyDesign(template.baseArtworkUrl, template, variables);
+
+    const tmpPrint = path.join('uploads/temp', `${order.id}_print.png`);
+    fs.writeFileSync(tmpPrint, buffer);
+    let printFileUrl;
+    try {
+      printFileUrl = await uploadToStorage(tmpPrint, `personalization/print-files/${order.id}_print.png`);
+    } finally {
+      try { fs.unlinkSync(tmpPrint); } catch (_) {}
+    }
+
+    order = await prisma.personalizationOrder.update({
+      where: { id: order.id },
+      data:  { status: 'COMPOSITED', printFileUrl },
+    });
+
+    res.status(201).json({ success: true, order });
+  } catch (err) {
+    console.error('[Personalization POST /text-orders]', err.message);
+    if (order) {
+      await prisma.personalizationOrder.update({
+        where: { id: order.id },
+        data:  { status: 'FAILED', rejectionReason: err.message },
+      }).catch(() => {});
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/personalization/text-orders/preview — DB kaydı yok, hızlı görsel test
+router.post('/text-orders/preview', async (req, res) => {
+  try {
+    const { templateId, variables: variablesRaw } = req.body;
+    if (!templateId) return res.status(400).json({ error: 'templateId required' });
+
+    let variables = {};
+    if (variablesRaw) {
+      try { variables = JSON.parse(variablesRaw); } catch (_) {
+        return res.status(400).json({ error: 'variables must be a valid JSON string' });
+      }
+    }
+
+    const template = await prisma.photoTemplate.findFirst({
+      where: { id: templateId, workspaceId: req.workspaceId, active: true },
+    });
+    if (!template) return res.status(404).json({ error: 'PhotoTemplate not found' });
+    if (template.templateType !== 'text_only') {
+      return res.status(400).json({ error: `Template type must be "text_only", got "${template.templateType}"` });
+    }
+
+    const buffer = await composeTextOnlyDesign(template.baseArtworkUrl, template, variables);
+    res.json({ success: true, previewUrl: `data:image/png;base64,${buffer.toString('base64')}` });
+  } catch (err) {
+    console.error('[Personalization POST /text-orders/preview]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Custom Owner & Pet Portrait ("multi_photo_generative") ──────────────────
 // bkz. görev notu: sabit baseArtworkUrl yok, 2 fotoğraf (person + pet) AI ile
 // tek sahneye birleştirilip stilize edilir — mevcut frame/photoSlot akışından ayrı.
@@ -401,12 +498,7 @@ router.post(
       if (!petFile)      return res.status(400).json({ error: 'petPhoto file required' });
       tempFiles.push(personFile.path, petFile.path);
 
-      let variables = {};
-      if (req.body.variables) {
-        try { variables = JSON.parse(req.body.variables); } catch (_) {
-          return res.status(400).json({ error: 'variables must be a valid JSON string' });
-        }
-      }
+      const names = typeof req.body.names === 'string' ? req.body.names.trim() : '';
 
       const template = await prisma.photoTemplate.findFirst({
         where: { id: templateId, workspaceId: req.workspaceId, active: true },
@@ -420,7 +512,7 @@ router.post(
         personPhotoPath: personFile.path,
         petPhotoPath:    petFile.path,
         template,
-        variables,
+        names,
         workspaceId: req.workspaceId,
       });
 
@@ -451,9 +543,9 @@ router.post(
           isApproved:  false,
           cost:        0,
           // Onaylanan sipariş oluşturulurken ihtiyaç duyulan bağlam (orijinal fotoğraf
-          // URL'leri + templateId + variables) — ayrı bir kolon eklemek yerine mevcut
+          // URL'leri + templateId + names) — ayrı bir kolon eklemek yerine mevcut
           // rawResponse (Text) alanına JSON olarak gömülüyor.
-          rawResponse: JSON.stringify({ templateId, personPhotoUrl, petPhotoUrl, variables }),
+          rawResponse: JSON.stringify({ templateId, personPhotoUrl, petPhotoUrl, names }),
         },
       });
 
@@ -494,7 +586,7 @@ router.post('/pet-portrait/orders', async (req, res) => {
 
     let context = {};
     try { context = JSON.parse(preview.rawResponse || '{}'); } catch (_) { context = {}; }
-    const { templateId, personPhotoUrl, petPhotoUrl, variables } = context;
+    const { templateId, personPhotoUrl, petPhotoUrl, names } = context;
     if (!templateId) return res.status(500).json({ error: 'Preview context corrupted — templateId missing' });
 
     const template = await prisma.photoTemplate.findFirst({
@@ -508,7 +600,7 @@ router.post('/pet-portrait/orders', async (req, res) => {
         templateId,
         customerPhotoUrls: [personPhotoUrl, petPhotoUrl],
         previewImageId:    preview.id,
-        variables:         variables || {},
+        variables:         { names: names || '' },
         etsyOrderRef:      etsyOrderRef || null,
         status:            'COMPOSITED',
         printFileUrl:       preview.imageUrl,

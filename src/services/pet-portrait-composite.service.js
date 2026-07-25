@@ -5,7 +5,7 @@ const path   = require('path');
 const fs     = require('fs');
 const fetch  = require('node-fetch');
 const secretsService = require('./secrets.service');
-const { loadFontB64, buildTextSvg, FONT_REGISTRY } = require('./composite-engine.service');
+const { buildTextPathSvg, FONT_REGISTRY } = require('./composite-engine.service');
 
 const REPO_ROOT = path.join(__dirname, '../../');
 
@@ -28,6 +28,11 @@ const STYLIZE_PROMPT = 'Transform this photo into a vintage sepia engraving-styl
 
 const RMBG_MODEL          = 'fal-ai/birefnet/v2';
 const RMBG_FALLBACK_MODEL = 'fal-ai/bria/background/remove';
+
+// Sabit slogan — her siparişte aynı, template'e gömülü, hiçbir zaman değişmez.
+const SLOGAN_TEXT   = 'BEST FRIENDS FOREVER';
+const OVERLAY_FONT  = 'MetalMania-Regular'; // gravür/sepia temasına uygun
+const OVERLAY_COLOR = '#2b1c12'; // koyu sepia-kahve, gravür portrede okunaklı
 
 function resolvePath(p) {
   if (Buffer.isBuffer(p)) return p;
@@ -184,13 +189,13 @@ async function removeBackgroundPortrait(styledImageUrl, workspaceId = null) {
 
 /**
  * Adım 4 — Kompozisyon (AI DEĞİL, Sharp): şeffaf portreyi şablon tuvaline yerleştirir,
- * kontrast normalizasyonu uygular, varsa isim/tarih metnini SVG ile basar.
+ * kontrast normalizasyonu uygular, sabit slogan + değişken isimleri SVG ile basar.
  * @param {Buffer} transparentPortraitBuffer - Adım 3 çıktısı (indirilmiş, şeffaf PNG)
- * @param {object} template - PhotoTemplate satırı (printWidthPx, printHeightPx, textLayers)
- * @param {object} [variables] - textLayers.key'lerine karşılık gelen değerler (örn. { name, date })
+ * @param {object} template - PhotoTemplate satırı (printWidthPx, printHeightPx)
+ * @param {string} [names] - Müşteriden gelen isim metni (örn. "SARAH & MAX")
  * @returns {Promise<Buffer>}
  */
-async function composeOntoTemplate(transparentPortraitBuffer, template, variables = {}) {
+async function composeOntoTemplate(transparentPortraitBuffer, template, names = '') {
   const canvasW = template.printWidthPx;
   const canvasH = template.printHeightPx;
 
@@ -217,27 +222,28 @@ async function composeOntoTemplate(transparentPortraitBuffer, template, variable
     create: { width: canvasW, height: canvasH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
   }).composite([{ input: fitted, left: offsetX, top: offsetY }]);
 
-  // İsim/tarih overlay — AI'ya yazdırılmıyor, template.textLayers tanımlıysa Sharp/SVG
-  // ile düz metin basılıyor (composite-engine.service.js'deki buildTextSvg pattern'i).
-  const layers = Array.isArray(template.textLayers) ? template.textLayers : [];
-  for (const layer of layers) {
-    const rawValue = variables[layer.key];
-    if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+  // İki ayrı metin katmanı — AI'ya yazdırılmıyor, Sharp/SVG ile basılıyor:
+  //  1. Sabit slogan (SLOGAN_TEXT) — üstte, küçük, her siparişte aynı
+  //  2. Değişken isimler (names) — altta, büyük, sadece içerik değişir, stil sabit
+  const overlayFontPath = FONT_REGISTRY[OVERLAY_FONT];
 
-    let text = String(rawValue);
-    if (layer.transform === 'uppercase') text = text.toUpperCase();
-    if (layer.transform === 'lowercase') text = text.toLowerCase();
+  const sloganLayer = {
+    x: canvasW / 2, y: Math.round(canvasH * 0.08),
+    font: OVERLAY_FONT, size: Math.round(canvasW * 0.028), color: OVERLAY_COLOR, align: 'center',
+  };
+  const sloganSvg = buildTextPathSvg({ canvasW, canvasH, layer: sloganLayer, text: SLOGAN_TEXT, fontPath: overlayFontPath });
+  let overlayBuf = await chain.png().toBuffer();
+  chain = sharp(overlayBuf).composite([{ input: Buffer.from(sloganSvg), blend: 'over' }]);
 
-    const fontPath = FONT_REGISTRY[layer.font];
-    if (!fontPath) {
-      console.warn(`[PetPortrait] Bilinmeyen font "${layer.font}" — katman atlandı`);
-      continue;
-    }
-    const fontB64 = loadFontB64(fontPath);
-    const svg = buildTextSvg({ canvasW, canvasH, layer, text, fontB64 });
-
-    const buf = await chain.png().toBuffer();
-    chain = sharp(buf).composite([{ input: Buffer.from(svg), blend: 'over' }]);
+  if (names && String(names).trim()) {
+    const namesLayer = {
+      x: canvasW / 2, y: Math.round(canvasH * 0.94),
+      font: OVERLAY_FONT, size: Math.round(canvasW * 0.05), color: OVERLAY_COLOR, align: 'center',
+      maxWidth: Math.round(canvasW * 0.85),
+    };
+    const namesSvg = buildTextPathSvg({ canvasW, canvasH, layer: namesLayer, text: String(names).trim(), fontPath: overlayFontPath });
+    overlayBuf = await chain.png().toBuffer();
+    chain = sharp(overlayBuf).composite([{ input: Buffer.from(namesSvg), blend: 'over' }]);
   }
 
   // TODO (v1 kapsamı dışı — kod yazılmadı, bilgi notu):
@@ -260,13 +266,13 @@ async function composeOntoTemplate(transparentPortraitBuffer, template, variable
  * @param {string|Buffer} opts.personPhotoPath
  * @param {string|Buffer} opts.petPhotoPath
  * @param {object}         opts.template        - PhotoTemplate satırı
- * @param {object}         [opts.variables]      - textLayers overlay değerleri
+ * @param {string}         [opts.names]          - Müşteri isim metni (örn. "SARAH & MAX")
  * @param {string|null}    [opts.workspaceId]
- * @param {string|null}    [opts.outputPath]     - verilirse PNG diske de yazılır
+ * @param {string|null}    [opts.outputPath]     - verilirse çıktı diske de yazılır
  * @returns {Promise<{ buffer: Buffer, outputPath: string|null, width: number, height: number, steps: object }>}
  */
 async function generatePetPortrait({
-  personPhotoPath, petPhotoPath, template, variables = {},
+  personPhotoPath, petPhotoPath, template, names = '',
   workspaceId = null, outputPath = null,
 }) {
   if (!personPhotoPath) throw new Error('personPhotoPath required');
@@ -281,7 +287,7 @@ async function generatePetPortrait({
   if (!transparentRes.ok) throw new Error(`Adım 3 çıktısı indirilemedi: HTTP ${transparentRes.status}`);
   const transparentBuffer = Buffer.from(await transparentRes.arrayBuffer());
 
-  const finalBuffer = await composeOntoTemplate(transparentBuffer, template, variables);
+  const finalBuffer = await composeOntoTemplate(transparentBuffer, template, names);
 
   if (outputPath) {
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });

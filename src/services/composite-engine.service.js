@@ -275,11 +275,10 @@ async function compositePhoto({ orderId, template, mockupTemplate, customerPhoto
     if (layer.transform === 'lowercase') text = text.toLowerCase();
 
     const fontPath = FONT_REGISTRY[layer.font];
-    const fontB64  = loadFontB64(fontPath);
-    const svg      = buildTextSvg({
+    const svg      = buildTextPathSvg({
       canvasW: template.printWidthPx,
       canvasH: template.printHeightPx,
-      layer, text, fontB64,
+      layer, text, fontPath,
     });
 
     const currentBuf = await compositeChain.toBuffer();

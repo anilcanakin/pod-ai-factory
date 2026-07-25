@@ -20,7 +20,10 @@ const SUPPORTED_MODELS = {
         speed: 'medium',
         strength: 'typography'
     },
-    'fal-ai/recraft-v3': {
+    // 'fal-ai/recraft-v3' (eski değer) aslında image→vector dönüşüm endpoint'i (bkz.
+    // tool.routes.js vectorize) — image_url olmadan text-to-image için 400 döner.
+    // Gerçek text-to-image endpoint'i budur (fal.ai/models/fal-ai/recraft-v3 doc'undan doğrulandı).
+    'fal-ai/recraft/v3/text-to-image': {
         name: 'Recraft V4',
         description: 'Vector-clean, perfect for screen print',
         speed: 'medium',
@@ -49,7 +52,7 @@ const MODEL_COSTS = {
     'fal-ai/flux/dev':     0.030,  // Flux Dev  — high quality, ~$0.03/img
     'fal-ai/flux/schnell': 0.003,  // Flux Schnell — fast & cheap, ~$0.003/img
     'fal-ai/ideogram/v3':  0.080,  // Ideogram 3.0 — typography specialist, ~$0.08/img
-    'fal-ai/recraft-v3':   0.040,  // Recraft V3 — vector/screen print, ~$0.04/img
+    'fal-ai/recraft/v3/text-to-image': 0.080,  // Recraft V3 vector style — FAL doc: $0.08/img (vector_illustration style tier)
     'nano-banana':                  0.000,  // Google GenAI — pricing TBD / free tier
     'fal-ai/gpt-image-2':           0.040,  // GPT-Image-2 — OpenAI via FAL.ai, ~$0.04/img
 };
@@ -63,7 +66,7 @@ const MODEL_TIER_MAP = {
     'fast':         'fal-ai/flux/schnell',  // hızlı & ucuz: $0.003/görsel
     'quality':      'fal-ai/flux/dev',      // kaliteli & detaylı: $0.030/görsel (default)
     'text':         'fal-ai/ideogram/v3',   // metin/tipografi uzmanı: $0.080/görsel
-    'vector':       'fal-ai/recraft-v3',    // vektör & screen-print: $0.040/görsel
+    'vector':       'fal-ai/recraft/v3/text-to-image', // vektör & screen-print: $0.080/görsel (vector_illustration style)
     'nano-banana':  'nano-banana',          // Google GenAI — nano-banana-2 (image-router tarafından çözülür)
 };
 
@@ -169,11 +172,11 @@ function buildModelInput(modelId, prompt, imageSize, negativePrompt = '') {
     }
     
     if (modelId.includes('recraft')) {
+        // Recraft text-to-image param adı 'size' (image_size değil), negative_prompt desteklenmiyor.
         return {
             ...base,
-            image_size: imageSize,
+            size: imageSize || 'square_hd',
             style: 'vector_illustration',
-            negative_prompt: negativePrompt || ''
         };
     }
     

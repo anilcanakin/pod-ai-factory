@@ -1,9 +1,10 @@
 'use strict';
 
-const sharp  = require('sharp');
-const path   = require('path');
-const fs     = require('fs');
-const os     = require('os');
+const sharp     = require('sharp');
+const path      = require('path');
+const fs        = require('fs');
+const os        = require('os');
+const opentype  = require('opentype.js');
 
 const ASSETS_ROOT = path.join(__dirname, '../../assets');
 const REPO_ROOT   = path.join(__dirname, '../../');
@@ -25,6 +26,7 @@ function getRenderMockup() {
 const FONT_REGISTRY = {
   'Montserrat-Bold':    path.join(ASSETS_ROOT, 'fonts/Montserrat-Bold.ttf'),
   'Montserrat-Regular': path.join(ASSETS_ROOT, 'fonts/Montserrat-Regular.ttf'),
+  'MetalMania-Regular': path.join(ASSETS_ROOT, 'fonts/MetalMania-Regular.ttf'),
 };
 
 // Module-level font cache (path → base64 string)
@@ -101,6 +103,91 @@ function buildTextSvg({ canvasW, canvasH, layer, text, fontB64 }) {
     text-anchor="${anchor}"
     ${textLengthAttr}
   >${escapeXml(text)}</text>
+</svg>`;
+}
+
+// Module-level opentype.js font cache (path → parsed Font)
+const _otFontCache = new Map();
+
+function loadOpentypeFont(fontPath) {
+  if (_otFontCache.has(fontPath)) return _otFontCache.get(fontPath);
+  const buf = fs.readFileSync(fontPath);
+  const font = opentype.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  _otFontCache.set(fontPath, font);
+  return font;
+}
+
+// opentype.js Path#toPathData() üretir bazı glyph'lerde (örn. Montserrat-Bold 'm')
+// literal "NaN" token'ı — muhtemelen smooth-curve (T) kısaltma reflection matematiğinde
+// bir bug. librsvg NaN'a çarpınca TÜM path 'd' string'inin geri kalanını sessizce
+// render etmeyi bırakıyor (metin ortasından kırpılmış görünüyor). Bunun yerine path
+// komutlarını (path.commands — ham veri, bu bug'dan etkilenmiyor) kendimiz, her zaman
+// açık Q/C komutlarıyla (T/S kısaltması kullanmadan) serialize ediyoruz.
+function pathCommandsToD(path, decimals) {
+  const f = n => n.toFixed(decimals);
+  let d = '';
+  for (const c of path.commands) {
+    if (c.type === 'M') d += `M${f(c.x)} ${f(c.y)} `;
+    else if (c.type === 'L') d += `L${f(c.x)} ${f(c.y)} `;
+    else if (c.type === 'Q') d += `Q${f(c.x1)} ${f(c.y1)} ${f(c.x)} ${f(c.y)} `;
+    else if (c.type === 'C') d += `C${f(c.x1)} ${f(c.y1)} ${f(c.x2)} ${f(c.y2)} ${f(c.x)} ${f(c.y)} `;
+    else if (c.type === 'Z') d += 'Z ';
+  }
+  return d.trim();
+}
+
+// Glyph glyph elle path inşa eder (kerning yok — bu ölçekte gözle fark edilmiyor,
+// ve font.getPath(text,...)'in kendisi de yukarıdaki NaN bug'ına aynı şekilde maruz).
+function buildGlyphByGlyphD(font, text, x, y, fontSize) {
+  const scale = fontSize / font.unitsPerEm;
+  let curX = x;
+  const parts = [];
+  for (const ch of text) {
+    const glyph = font.charToGlyph(ch);
+    parts.push(pathCommandsToD(glyph.getPath(curX, y, fontSize), 2));
+    curX += glyph.advanceWidth * scale;
+  }
+  return parts.join(' ');
+}
+
+/**
+ * buildTextSvg'nin <text>+@font-face alternatifi — librsvg'nin embedded font desteği
+ * tutarsız (bazı ortamlarda sessizce sistem fallback fontuna düşüyor). Bunun yerine
+ * metni opentype.js ile doğrudan vektör path'e çevirir; hangi ortamda çalışırsa
+ * çalışsın seçilen font HER ZAMAN birebir uygulanır — sipariş bazlı personalizasyon
+ * için (isim vb.) bu garanti önemli.
+ * @param {object} opts
+ * @param {number} opts.canvasW
+ * @param {number} opts.canvasH
+ * @param {object} opts.layer    - { x, y, size, color, align, maxWidth?, font }
+ * @param {string} opts.text
+ * @param {string} opts.fontPath - FONT_REGISTRY[layer.font] (.ttf dosya yolu)
+ * @returns {string} SVG markup
+ */
+function buildTextPathSvg({ canvasW, canvasH, layer, text, fontPath }) {
+  const font = loadOpentypeFont(fontPath);
+  let fontSize = layer.size;
+
+  // Genişlik/shrink hesabı için getBoundingBox() güvenli (NaN bug'ı sadece toPathData'da) —
+  // bunu kullanmaya devam ediyoruz, sadece nihai 'd' string'i glyph-by-glyph üretiyoruz.
+  let bbox = font.getPath(text, 0, 0, fontSize).getBoundingBox();
+  let width = bbox.x2 - bbox.x1;
+
+  // maxWidth aşılıyorsa, taşan/kırpılan metin yerine font boyutunu orantılı küçült
+  if (layer.maxWidth && width > layer.maxWidth) {
+    fontSize = fontSize * (layer.maxWidth / width);
+    bbox = font.getPath(text, 0, 0, fontSize).getBoundingBox();
+    width = bbox.x2 - bbox.x1;
+  }
+
+  const originX = layer.align === 'center' ? layer.x - width / 2 - bbox.x1
+                : layer.align === 'right'  ? layer.x - width - bbox.x1
+                : layer.x - bbox.x1;
+  // opentype.js baseline'ı y=0'da tutar; layer.y görsel baseline konumu olarak kullanılıyor.
+  const d = buildGlyphByGlyphD(font, text, originX, layer.y, fontSize);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW}" height="${canvasH}">
+  <path d="${d}" fill="${layer.color}"></path>
 </svg>`;
 }
 
@@ -188,11 +275,10 @@ async function compositePhoto({ orderId, template, mockupTemplate, customerPhoto
     if (layer.transform === 'lowercase') text = text.toLowerCase();
 
     const fontPath = FONT_REGISTRY[layer.font];
-    const fontB64  = loadFontB64(fontPath);
-    const svg      = buildTextSvg({
+    const svg      = buildTextPathSvg({
       canvasW: template.printWidthPx,
       canvasH: template.printHeightPx,
-      layer, text, fontB64,
+      layer, text, fontPath,
     });
 
     const currentBuf = await compositeChain.toBuffer();
@@ -242,6 +328,50 @@ async function compositePhoto({ orderId, template, mockupTemplate, customerPhoto
   return { printFileUrl, mockupUrl, warnings };
 }
 
+/**
+ * Fotoğrafsız apparel personalizasyonu: sabit taban tasarımın (isim/tarih yeri boş
+ * üretilmiş) üstüne kod-render metin basar. AI her sipariş için yeniden çağrılmaz —
+ * taban görsel bir kez üretilir, her sipariş aynı font/boyut/pozisyonla üzerine basılır.
+ * @param {Buffer|string} baseArtworkInput - taban görsel (Buffer, path, veya http(s) URL)
+ * @param {object}        template          - { textLayers, printWidthPx, printHeightPx }
+ * @param {object}        variables         - textLayers[].key -> değer (örn. { nurse_name: 'John' })
+ * @returns {Promise<Buffer>} şeffaflık korunmuş PNG
+ */
+async function composeTextOnlyDesign(baseArtworkInput, template, variables = {}) {
+  let basePath;
+  if (Buffer.isBuffer(baseArtworkInput)) {
+    basePath = baseArtworkInput;
+  } else {
+    const src = String(baseArtworkInput);
+    basePath = src.startsWith('http')
+      ? await _downloadToTemp(src)
+      : (path.isAbsolute(src) ? src : path.join(REPO_ROOT, src));
+  }
+
+  let chain = sharp(basePath);
+  const layers = Array.isArray(template.textLayers) ? template.textLayers : [];
+
+  for (const layer of layers) {
+    const rawValue = variables[layer.key];
+    if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+
+    let text = String(rawValue);
+    if (layer.transform === 'uppercase') text = text.toUpperCase();
+    if (layer.transform === 'lowercase') text = text.toLowerCase();
+
+    const fontPath = FONT_REGISTRY[layer.font];
+    if (!fontPath) throw new Error(`Unknown font: "${layer.font}" — add it to FONT_REGISTRY`);
+    const svg = buildTextPathSvg({
+      canvasW: template.printWidthPx, canvasH: template.printHeightPx, layer, text, fontPath,
+    });
+
+    const currentBuf = await chain.png().toBuffer();
+    chain = sharp(currentBuf).composite([{ input: Buffer.from(svg), blend: 'over' }]);
+  }
+
+  return chain.png().toBuffer();
+}
+
 async function _downloadToTemp(url) {
   const fetch = require('node-fetch');
   const res   = await fetch(url);
@@ -259,7 +389,9 @@ module.exports = {
   estimateTextWidth,
   buildCircleMaskSvg,
   buildTextSvg,
+  buildTextPathSvg,
   mapAlign,
   loadFontB64,
   compositePhoto,
+  composeTextOnlyDesign,
 };

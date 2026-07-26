@@ -328,9 +328,22 @@ class GenerationService {
                     try {
                         console.log(`[Generation] Upscale başlatılıyor (4x)...`);
                         const upscaleResult = await falProvider.upscaleImage(finalImageUrl, 4, job.workspaceId);
-                        finalImageUrl = upscaleResult.image_url;
-                        upscaledCost  = upscaleResult.cost || 0;
-                        console.log(`[Generation] Upscale ✓ → ${finalImageUrl.substring(0, 70)}...`);
+                        const upscaledUrl = upscaleResult.image_url;
+                        upscaledCost = upscaleResult.cost || 0;
+                        console.log(`[Generation] Upscale ✓ → ${upscaledUrl.substring(0, 70)}...`);
+
+                        // fal-ai/aura-sr RGB-only — şeffaflığı düşürür (hasAlpha:false çıkar).
+                        // Upscale sonrası RMBG'yi tekrar çalıştırıp alfa kanalını geri kazandırıyoruz.
+                        // Onarım başarısız olursa finalImageUrl bir önceki (düşük çözünürlük ama
+                        // gerçekten şeffaf) RMBG çıktısında kalır — asla opak görsel yayınlanmaz.
+                        try {
+                            const repairResult = await falProvider.removeBackground(upscaledUrl, job.workspaceId);
+                            finalImageUrl = repairResult.image_url;
+                            upscaledCost += repairResult.cost || 0;
+                            console.log(`[Generation] Upscale-sonrası alfa onarımı ✓ → ${finalImageUrl.substring(0, 70)}...`);
+                        } catch (alphaRepairErr) {
+                            console.warn(`[Generation] Alfa onarımı başarısız, düşük çözünürlüklü ama şeffaf görselle devam ediliyor: ${alphaRepairErr.message}`);
+                        }
                     } catch (upscaleErr) {
                         console.warn(`[Generation] Upscale başarısız (RMBG görseli ile devam ediliyor): ${upscaleErr.message}`);
                     }

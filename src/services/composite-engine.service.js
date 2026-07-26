@@ -24,9 +24,13 @@ function getRenderMockup() {
 
 // ─── Font Registry ────────────────────────────────────────────────────────────
 const FONT_REGISTRY = {
-  'Montserrat-Bold':    path.join(ASSETS_ROOT, 'fonts/Montserrat-Bold.ttf'),
-  'Montserrat-Regular': path.join(ASSETS_ROOT, 'fonts/Montserrat-Regular.ttf'),
-  'MetalMania-Regular': path.join(ASSETS_ROOT, 'fonts/MetalMania-Regular.ttf'),
+  'Montserrat-Bold':        path.join(ASSETS_ROOT, 'fonts/Montserrat-Bold.ttf'),
+  'Montserrat-Regular':     path.join(ASSETS_ROOT, 'fonts/Montserrat-Regular.ttf'),
+  'MetalMania-Regular':     path.join(ASSETS_ROOT, 'fonts/MetalMania-Regular.ttf'),
+  'EBGaramond-Bold':        path.join(ASSETS_ROOT, 'fonts/EBGaramond-Bold.ttf'),
+  'EBGaramond-Regular':     path.join(ASSETS_ROOT, 'fonts/EBGaramond-Regular.ttf'),
+  'PlayfairDisplay-Bold':   path.join(ASSETS_ROOT, 'fonts/PlayfairDisplay-Bold.ttf'),
+  'PlayfairDisplay-Regular': path.join(ASSETS_ROOT, 'fonts/PlayfairDisplay-Regular.ttf'),
 };
 
 // Module-level font cache (path → base64 string)

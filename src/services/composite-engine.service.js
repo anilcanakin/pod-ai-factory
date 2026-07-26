@@ -24,9 +24,13 @@ function getRenderMockup() {
 
 // ─── Font Registry ────────────────────────────────────────────────────────────
 const FONT_REGISTRY = {
-  'Montserrat-Bold':    path.join(ASSETS_ROOT, 'fonts/Montserrat-Bold.ttf'),
-  'Montserrat-Regular': path.join(ASSETS_ROOT, 'fonts/Montserrat-Regular.ttf'),
-  'MetalMania-Regular': path.join(ASSETS_ROOT, 'fonts/MetalMania-Regular.ttf'),
+  'Montserrat-Bold':        path.join(ASSETS_ROOT, 'fonts/Montserrat-Bold.ttf'),
+  'Montserrat-Regular':     path.join(ASSETS_ROOT, 'fonts/Montserrat-Regular.ttf'),
+  'MetalMania-Regular':     path.join(ASSETS_ROOT, 'fonts/MetalMania-Regular.ttf'),
+  'EBGaramond-Bold':        path.join(ASSETS_ROOT, 'fonts/EBGaramond-Bold.ttf'),
+  'EBGaramond-Regular':     path.join(ASSETS_ROOT, 'fonts/EBGaramond-Regular.ttf'),
+  'PlayfairDisplay-Bold':   path.join(ASSETS_ROOT, 'fonts/PlayfairDisplay-Bold.ttf'),
+  'PlayfairDisplay-Regular': path.join(ASSETS_ROOT, 'fonts/PlayfairDisplay-Regular.ttf'),
 };
 
 // Module-level font cache (path → base64 string)
@@ -136,16 +140,27 @@ function pathCommandsToD(path, decimals) {
   return d.trim();
 }
 
+// text'in toplam genişliğini (letterSpacing dahil) ölçer — glyph advance'leri toplar,
+// font.getPath(text,...)'in NaN bug'ına hiç uğramaz.
+function measureTextWidth(font, text, fontSize, letterSpacing = 0) {
+  if (!text) return 0;
+  const scale = fontSize / font.unitsPerEm;
+  let advance = 0;
+  for (const ch of text) advance += font.charToGlyph(ch).advanceWidth * scale + letterSpacing;
+  return advance - letterSpacing; // son karakterden sonra fazladan boşluk sayılmaz
+}
+
 // Glyph glyph elle path inşa eder (kerning yok — bu ölçekte gözle fark edilmiyor,
 // ve font.getPath(text,...)'in kendisi de yukarıdaki NaN bug'ına aynı şekilde maruz).
-function buildGlyphByGlyphD(font, text, x, y, fontSize) {
+// letterSpacing: her karakter arasına eklenen sabit boşluk (px) — tracking/harf aralığı için.
+function buildGlyphByGlyphD(font, text, x, y, fontSize, letterSpacing = 0) {
   const scale = fontSize / font.unitsPerEm;
   let curX = x;
   const parts = [];
   for (const ch of text) {
     const glyph = font.charToGlyph(ch);
     parts.push(pathCommandsToD(glyph.getPath(curX, y, fontSize), 2));
-    curX += glyph.advanceWidth * scale;
+    curX += glyph.advanceWidth * scale + letterSpacing;
   }
   return parts.join(' ');
 }
@@ -167,24 +182,23 @@ function buildGlyphByGlyphD(font, text, x, y, fontSize) {
 function buildTextPathSvg({ canvasW, canvasH, layer, text, fontPath }) {
   const font = loadOpentypeFont(fontPath);
   let fontSize = layer.size;
+  const letterSpacing = layer.letterSpacing || 0;
 
-  // Genişlik/shrink hesabı için getBoundingBox() güvenli (NaN bug'ı sadece toPathData'da) —
-  // bunu kullanmaya devam ediyoruz, sadece nihai 'd' string'i glyph-by-glyph üretiyoruz.
-  let bbox = font.getPath(text, 0, 0, fontSize).getBoundingBox();
-  let width = bbox.x2 - bbox.x1;
+  let width = measureTextWidth(font, text, fontSize, letterSpacing);
 
   // maxWidth aşılıyorsa, taşan/kırpılan metin yerine font boyutunu orantılı küçült
+  // (letterSpacing px cinsinden sabit kalır — fontSize ile birlikte küçültmüyoruz, kısa
+  // etiketlerde (örn. "RN") görsel tracking oranı bozulmasın diye kabul edilebilir yaklaşım).
   if (layer.maxWidth && width > layer.maxWidth) {
     fontSize = fontSize * (layer.maxWidth / width);
-    bbox = font.getPath(text, 0, 0, fontSize).getBoundingBox();
-    width = bbox.x2 - bbox.x1;
+    width = measureTextWidth(font, text, fontSize, letterSpacing);
   }
 
-  const originX = layer.align === 'center' ? layer.x - width / 2 - bbox.x1
-                : layer.align === 'right'  ? layer.x - width - bbox.x1
-                : layer.x - bbox.x1;
+  const originX = layer.align === 'center' ? layer.x - width / 2
+                : layer.align === 'right'  ? layer.x - width
+                : layer.x;
   // opentype.js baseline'ı y=0'da tutar; layer.y görsel baseline konumu olarak kullanılıyor.
-  const d = buildGlyphByGlyphD(font, text, originX, layer.y, fontSize);
+  const d = buildGlyphByGlyphD(font, text, originX, layer.y, fontSize, letterSpacing);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW}" height="${canvasH}">
   <path d="${d}" fill="${layer.color}"></path>

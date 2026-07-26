@@ -5,7 +5,7 @@ const billingService = require('./billing.service');
 const prisma = require('../lib/prisma');
 
 // ── Shared system prompt ──────────────────────────────────────
-const SYSTEM_PROMPT = `You are an expert POD (Print-on-Demand) designer. Analyze the reference image and write a single detailed generation prompt that captures: art style, color palette, composition, typography style, mood, and subject matter. The output design MUST be on a pure white background (#FFFFFF), perfect for t-shirt screen printing, vector-clean edges, no background scenery. Return ONLY the prompt text, no explanation, no prefix.`;
+const SYSTEM_PROMPT = `You are an expert POD designer. Analyze ONLY the design/artwork elements in the reference image (illustration, typography, icon colors) — IGNORE the garment color, background color, or photo lighting/mood entirely, as these are not part of the design. Describe: art style, design's own color palette (not garment color), composition, typography style, subject matter. The output generation prompt MUST explicitly state: "on a pure white background (#FFFFFF), no dark background, no colored canvas" — repeat this constraint even if the reference photo has a dark or moody setting. Return ONLY the prompt text, no explanation, no prefix.`;
 
 // ── Legacy Vision Schema (used by etsy-mode) ──────────────────
 const VISION_SCHEMA = {
@@ -19,7 +19,7 @@ const VISION_SCHEMA = {
                 layout: { type: "string", description: "Composition or layout of the design." },
                 icon_description: { type: "string", description: "Central icon or subject description." },
                 typography: { type: "string", description: "Style of text elements." },
-                palette: { type: "array", items: { type: "string" }, description: "Dominant color names." }
+                palette: { type: "array", items: { type: "string" }, description: "Dominant color names of the DESIGN ITSELF, excluding garment/fabric color." }
             },
             required: ["style", "layout", "icon_description", "typography", "palette"],
             additionalProperties: false

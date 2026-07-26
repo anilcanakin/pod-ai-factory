@@ -1492,6 +1492,7 @@ export interface PhotoTemplate {
     id: string;
     name: string;
     occasion: string;
+    templateType: 'frame' | 'multi_photo_generative' | 'text_only';
     baseArtworkUrl: string;
     photoSlot: PhotoSlot;
     textLayers: PhotoTextLayer[];
@@ -1518,7 +1519,7 @@ export interface PersonalizationOrder {
     id: string;
     templateId: string;
     template?: { name: string; occasion: string };
-    customerPhotoUrl: string;
+    customerPhotoUrl: string | null;
     variables: Record<string, string>;
     status: PersonalizationStatus;
     printFileUrl: string | null;
@@ -1541,5 +1542,15 @@ export const apiPersonalization = {
                 throw new Error(body.error || `HTTP ${res.status}`);
             }
             return res.json() as Promise<{ success: boolean; order: PersonalizationOrder }>;
+        }),
+    // 'text_only' şablonlar için — foto yok, sadece kod-render metin (bkz. composeTextOnlyDesign)
+    createTextOrder: (data: { templateId: string; variables: Record<string, string>; etsyOrderRef?: string }) =>
+        request<{ success: boolean; order: PersonalizationOrder }>('/personalization/text-orders', {
+            method: 'POST',
+            body: JSON.stringify({
+                templateId: data.templateId,
+                variables: JSON.stringify(data.variables),
+                etsyOrderRef: data.etsyOrderRef,
+            }),
         }),
 };

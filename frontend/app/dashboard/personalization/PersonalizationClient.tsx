@@ -84,17 +84,23 @@ export function PersonalizationClient() {
         setPhotoPreview(URL.createObjectURL(file));
     };
 
+    const photoRequired = selectedTemplate?.templateType !== 'text_only';
+
     const handleSubmit = async () => {
         if (!selectedTemplate) { toast.error('Önce bir şablon seç'); return; }
-        if (!photoFile) { toast.error('Müşteri fotoğrafı yükle'); return; }
+        if (photoRequired && !photoFile) { toast.error('Müşteri fotoğrafı yükle'); return; }
 
         setSubmitting(true);
         try {
-            const fd = new FormData();
-            fd.append('templateId', selectedTemplate.id);
-            fd.append('customerPhoto', photoFile);
-            fd.append('variables', JSON.stringify(variables));
-            await apiPersonalization.createOrder(fd);
+            if (photoRequired) {
+                const fd = new FormData();
+                fd.append('templateId', selectedTemplate.id);
+                if (photoFile) fd.append('customerPhoto', photoFile);
+                fd.append('variables', JSON.stringify(variables));
+                await apiPersonalization.createOrder(fd);
+            } else {
+                await apiPersonalization.createTextOrder({ templateId: selectedTemplate.id, variables });
+            }
             toast.success('Sipariş oluşturuldu, kompozisyon kuyruğa alındı');
             setPhotoFile(null);
             setPhotoPreview(null);
@@ -214,24 +220,26 @@ export function PersonalizationClient() {
                                     </div>
                                 </div>
 
-                                {/* Photo upload */}
-                                <div>
-                                    <label className="text-[11px] text-text-tertiary mb-1.5 block">Müşteri Fotoğrafı</label>
-                                    {photoPreview ? (
-                                        <div className="relative w-full h-28 rounded-xl overflow-hidden border border-border-subtle">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img src={photoPreview} alt="Müşteri fotoğrafı" className="w-full h-full object-cover" />
-                                            <button
-                                                onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
-                                                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80"
-                                            >
-                                                <X className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <FileDropzone onFile={handlePhotoFile} accept="image/*" label="Fotoğrafı buraya bırak veya seç" />
-                                    )}
-                                </div>
+                                {/* Photo upload — 'text_only' şablonlar foto istemiyor */}
+                                {photoRequired && (
+                                    <div>
+                                        <label className="text-[11px] text-text-tertiary mb-1.5 block">Müşteri Fotoğrafı</label>
+                                        {photoPreview ? (
+                                            <div className="relative w-full h-28 rounded-xl overflow-hidden border border-border-subtle">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img src={photoPreview} alt="Müşteri fotoğrafı" className="w-full h-full object-cover" />
+                                                <button
+                                                    onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
+                                                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80"
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <FileDropzone onFile={handlePhotoFile} accept="image/*" label="Fotoğrafı buraya bırak veya seç" />
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Variables */}
                                 {selectedTemplate.textLayers?.length > 0 && (
@@ -252,7 +260,7 @@ export function PersonalizationClient() {
 
                                 <button
                                     onClick={handleSubmit}
-                                    disabled={submitting || !photoFile}
+                                    disabled={submitting || (photoRequired && !photoFile)}
                                     className="w-full h-10 rounded-lg bg-accent text-white text-xs font-bold flex items-center justify-center gap-2 hover:scale-[1.02] transition-all disabled:opacity-50 disabled:hover:scale-100"
                                 >
                                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
@@ -292,8 +300,14 @@ export function PersonalizationClient() {
                             ) : orders.map(o => (
                                 <tr key={o.id} className="text-sm hover:bg-white/5 transition-colors">
                                     <td className="px-6 py-3">
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img src={resolveUrl(o.customerPhotoUrl)} alt="" className="w-10 h-10 rounded-lg object-cover border border-border-subtle" />
+                                        {o.customerPhotoUrl ? (
+                                            /* eslint-disable-next-line @next/next/no-img-element */
+                                            <img src={resolveUrl(o.customerPhotoUrl)} alt="" className="w-10 h-10 rounded-lg object-cover border border-border-subtle" />
+                                        ) : (
+                                            <div className="w-10 h-10 rounded-lg border border-border-subtle bg-bg-base flex items-center justify-center text-text-tertiary text-[9px]">
+                                                Metin
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-6 py-3">
                                         <span className="text-text-secondary text-xs">{o.template?.name ?? '—'}</span>

@@ -364,6 +364,233 @@ Click "Place Design & Render", confirm the request succeeds and the rendered out
 
 ---
 
+## Post-Task-4 finding: live preview was already dead before this feature
+
+Manual verification (Task 4) found that `designImgRef.current` — the ref the primary
+design-drawing block in `draw()` reads, and the ref Tasks 1-3's handle/hit-test also
+read — is **never assigned anywhere in the component**. It is permanently `null`. This
+predates this feature: the "Apply Design" flow was migrated at some point to a
+per-print-area system (`areaDesigns` state + `activeAreaId`, image objects cached in
+`areaDesignImgsRef.current[areaId]`), and the old `designImgRef`-based preview path
+was left behind, unreachable.
+
+**Verified this is preview-only, not a functional bug:** calling
+`mockup-render.service.js`'s `renderMockup()` directly with `placement.rotation: 90`
+produced a visibly rotated output (confirmed by rendering rotation=0 and rotation=90
+and comparing the PNGs). The backend already receives and correctly applies
+`designRotation` via `handleRender`'s `renderPayload.rotation` — Tasks 1-3's handle
+and the pre-existing slider both already produce a correct **final render**. The gap
+is purely: the on-canvas live preview never reflects any of it (design placement,
+scale, offset, or rotation) before you click render.
+
+### Task 5: Wire the live preview to the real design (`areaDesignImgsRef`/`activeAreaId`)
+
+**Files:**
+- Modify: `frontend/app/dashboard/mockups/MockupsClient.tsx`
+
+- [ ] **Step 1: Draw the active area's design instead of the dead `designImgRef`**
+
+Find (in `draw()`, right after the `paX/paY/paW/paH` computation):
+
+```ts
+        // Design
+        if (designImgRef.current) {
+            ctx.save();
+            ctx.globalAlpha = opacity;
+            if (blendMode === 'multiply') ctx.globalCompositeOperation = 'multiply';
+
+            const designImg = designImgRef.current;
+            
+            // Scale design to fit print area, then apply user scale
+            const baseScale = Math.min(paW / designImg.width, paH / designImg.height);
+            const finalScale = baseScale * designScale;
+            const designW = designImg.width * finalScale;
+            const designH = designImg.height * finalScale;
+```
+
+Replace with:
+
+```ts
+        // Design — the currently active print area's assigned design (live preview)
+        const activeDesignImg = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (activeDesignImg && activeDesignImg.complete && activeDesignImg.naturalWidth) {
+            ctx.save();
+            ctx.globalAlpha = opacity;
+            if (blendMode === 'multiply') ctx.globalCompositeOperation = 'multiply';
+
+            const designImg = activeDesignImg;
+            
+            // Scale design to fit print area, then apply user scale
+            const baseScale = Math.min(paW / designImg.naturalWidth, paH / designImg.naturalHeight);
+            const finalScale = baseScale * designScale;
+            const designW = designImg.naturalWidth * finalScale;
+            const designH = designImg.naturalHeight * finalScale;
+```
+
+(The rest of this block — center/offset calc, `ctx.translate`/`ctx.rotate`/`ctx.drawImage`,
+the rotate-handle drawing from Task 2, `ctx.restore()` — is unchanged; it already reads
+`designImg`, which now refers to the real image.)
+
+- [ ] **Step 2: Fix the `!designImgRef.current` check in the "Print Area" label**
+
+Find (a few lines below, in the `if (printAreas.length === 0)` border-drawing block):
+
+```ts
+            if (!designImgRef.current) {
+                ctx.fillText('Print Area', labelCx, labelCy);
+            }
+```
+
+Replace with:
+
+```ts
+            if (!activeDesignImg) {
+                ctx.fillText('Print Area', labelCx, labelCy);
+            }
+```
+
+- [ ] **Step 3: Skip the active area in the per-area static preview loop (avoid double-draw)**
+
+Find (in the `if (printAreas.length > 0)` block, the "Draw per-area design previews" loop):
+
+```ts
+            // Draw per-area design previews first (below borders)
+            printAreas.forEach(area => {
+                const img = areaDesignImgsRef.current[area.id];
+                if (!img || !img.complete || !img.naturalWidth) return;
+```
+
+Replace with:
+
+```ts
+            // Draw per-area design previews first (below borders)
+            printAreas.forEach(area => {
+                if (area.id === activeAreaId) return; // drawn above with scale/offset/rotation applied
+                const img = areaDesignImgsRef.current[area.id];
+                if (!img || !img.complete || !img.naturalWidth) return;
+```
+
+(Without this, the active area's design would be drawn twice: once plain/centered by
+this loop, once transformed by Step 1's block.)
+
+- [ ] **Step 4: Point the rotate-handle hit-test (onMouseDown) at the real image**
+
+Find:
+
+```ts
+        // Rotate handle (only when a design is placed in the primary print area)
+        const canvasForHandle = canvasRef.current;
+        if (canvasForHandle && designImgRef.current) {
+            const pxX = x * canvasForHandle.width, pxY = y * canvasForHandle.height;
+            const handlePos = getRotateHandleWorldPos(
+                canvasForHandle, printArea, designImgRef.current, designScale, designOffsetX, designOffsetY, designRotation
+            );
+```
+
+Replace with:
+
+```ts
+        // Rotate handle (only when a design is placed in the primary print area)
+        const canvasForHandle = canvasRef.current;
+        const activeDesignImgForHandle = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (canvasForHandle && activeDesignImgForHandle) {
+            const pxX = x * canvasForHandle.width, pxY = y * canvasForHandle.height;
+            const handlePos = getRotateHandleWorldPos(
+                canvasForHandle, printArea, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation
+            );
+```
+
+- [ ] **Step 5: Point the rotate-drag angle math (onMouseMove) at the real image**
+
+Find:
+
+```ts
+        // Rotating the placed design via the handle
+        if (rotatingDesign) {
+            const canvas = canvasRef.current;
+            if (canvas && designImgRef.current) {
+                const pxX = x * canvas.width, pxY = y * canvas.height;
+                const { centerX, centerY } = getDesignBounds(canvas, printArea, designImgRef.current, designScale, designOffsetX, designOffsetY);
+```
+
+Replace with:
+
+```ts
+        // Rotating the placed design via the handle
+        if (rotatingDesign) {
+            const canvas = canvasRef.current;
+            const activeDesignImgForRotate = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+            if (canvas && activeDesignImgForRotate) {
+                const pxX = x * canvas.width, pxY = y * canvas.height;
+                const { centerX, centerY } = getDesignBounds(canvas, printArea, activeDesignImgForRotate, designScale, designOffsetX, designOffsetY);
+```
+
+- [ ] **Step 6: Point the cursor-hint check (onMouseMove) at the real image**
+
+Find:
+
+```ts
+        if (designImgRef.current) {
+            const pxX = x * canvas.width, pxY = y * canvas.height;
+            const handlePos = getRotateHandleWorldPos(
+                canvas, printArea, designImgRef.current, designScale, designOffsetX, designOffsetY, designRotation
+            );
+```
+
+Replace with:
+
+```ts
+        const activeDesignImgForCursor = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (activeDesignImgForCursor) {
+            const pxX = x * canvas.width, pxY = y * canvas.height;
+            const handlePos = getRotateHandleWorldPos(
+                canvas, printArea, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation
+            );
+```
+
+- [ ] **Step 7: Remove the now-fully-dead `designImgRef`**
+
+Run: `grep -n "designImgRef" frontend/app/dashboard/mockups/MockupsClient.tsx`
+Expected: exactly one remaining match — its declaration. Find and delete that line:
+
+```ts
+    const designImgRef = useRef<HTMLImageElement | null>(null);
+```
+
+Re-run the grep: expected zero matches.
+
+- [ ] **Step 8: Type-check**
+
+Run: `cd frontend && npx tsc --noEmit --pretty false 2>&1 | grep -i MockupsClient`
+Expected: no output.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add frontend/app/dashboard/mockups/MockupsClient.tsx
+git commit -m "fix: wire mockup editor live preview to the real per-area design"
+```
+
+- [ ] **Step 10: Manual verification**
+
+Per [[feedback_asset_testing_endpoint]] this needs real assets — either use
+`http://100.96.119.102:3000`, or (as done for Task 4) temporarily seed a
+`MockupTemplate` row pointing at a base image that already exists locally, pick
+a design under "Apply Design", then:
+- Confirm the design now renders in the canvas (previously it did not).
+- Drag the rotate handle: confirm the design visibly rotates in real time.
+- Drag the Size/Horizontal/Vertical sliders: confirm the design visibly
+  scales/moves in real time (these were equally dead before this fix).
+- Switch `activeAreaId` (click a different print area pill, if the template has
+  more than one) and confirm the preview switches to that area's design without
+  double-drawing or stale artifacts.
+- Click "Place Design & Render": confirm the rendered output still matches the
+  live preview (it already worked before this fix — this just confirms the fix
+  didn't regress the render path).
+- Clean up any temporary `MockupTemplate` row / render output created for this test.
+
+---
+
 ## Self-Review Notes
 
 - **Spec coverage:** handle draws in the design's rotated frame (Task 2) ✓, hit-test + drag angle math (Task 3) ✓, shared `getDesignBounds`/`getRotateHandleWorldPos` helpers used by draw + both mouse handlers (Tasks 1-3) ✓, no schema/backend change (confirmed — only client state touched) ✓, `printAreas[]` multi-area preview untouched (no edits made to that code path) ✓, print-area box itself not rotatable (no changes to its drag/resize logic) ✓.

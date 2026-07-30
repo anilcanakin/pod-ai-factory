@@ -862,6 +862,52 @@ function FileDropZone({ label, accept, file, preview, onChange }: {
     );
 }
 
+// Computes the placed design's on-canvas pixel bounds (center + size), matching
+// the exact math used in draw()'s design block. Shared by draw() and the mouse
+// handlers so hit-testing/rotation math never drifts from what's rendered.
+function getDesignBounds(
+    canvas: HTMLCanvasElement,
+    printArea: { x: number; y: number; width: number; height: number },
+    designImg: HTMLImageElement,
+    designScale: number,
+    designOffsetX: number,
+    designOffsetY: number
+) {
+    const paX = printArea.x * canvas.width;
+    const paY = printArea.y * canvas.height;
+    const paW = printArea.width * canvas.width;
+    const paH = printArea.height * canvas.height;
+    const baseScale = Math.min(paW / designImg.width, paH / designImg.height);
+    const finalScale = baseScale * designScale;
+    const designW = designImg.width * finalScale;
+    const designH = designImg.height * finalScale;
+    const designX = paX + (paW - designW) / 2 + (designOffsetX / 100 * paW);
+    const designY = paY + (paH - designH) / 2 + (designOffsetY / 100 * paH);
+    return { centerX: designX + designW / 2, centerY: designY + designH / 2, designW, designH };
+}
+
+// World-space (canvas pixel) position of the rotate handle — the local point
+// (0, -designH/2 - handleOffset), rotated by designRotation around the design center.
+function getRotateHandleWorldPos(
+    canvas: HTMLCanvasElement,
+    printArea: { x: number; y: number; width: number; height: number },
+    designImg: HTMLImageElement,
+    designScale: number,
+    designOffsetX: number,
+    designOffsetY: number,
+    designRotation: number
+) {
+    const { centerX, centerY, designH } = getDesignBounds(canvas, printArea, designImg, designScale, designOffsetX, designOffsetY);
+    const handleOffset = Math.max(24, canvas.width * 0.03);
+    const localX = 0;
+    const localY = -designH / 2 - handleOffset;
+    const rad = (designRotation * Math.PI) / 180;
+    return {
+        x: centerX + localX * Math.cos(rad) - localY * Math.sin(rad),
+        y: centerY + localX * Math.sin(rad) + localY * Math.cos(rad),
+    };
+}
+
 // ─── Template Editor with Konva Canvas ───────────────────────────────────────
 function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, designImageId, productColor, onColorChange }: {
     template: MockupTemplate;
@@ -996,6 +1042,9 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
     const [draggingAreaId, setDraggingAreaId] = useState<string | null>(null);
     const [resizingAreaId, setResizingAreaId] = useState<string | null>(null);
     const dragAreaStart = useRef({ mx: 0, my: 0, ax: 0, ay: 0, aw: 0, ah: 0 });
+
+    // Drag state (rotate handle on the placed design)
+    const [rotatingDesign, setRotatingDesign] = useState(false);
 
     // Load base image (switches when dark/light toggled)
     const activePath = useDark && template.darkImagePath ? template.darkImagePath : template.baseImagePath;

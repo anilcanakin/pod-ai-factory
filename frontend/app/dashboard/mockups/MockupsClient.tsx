@@ -1296,6 +1296,21 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         const { x, y } = getCoords(e);
         const hs = 0.02;
 
+        // Rotate handle (only when a design is placed in the primary print area)
+        const canvasForHandle = canvasRef.current;
+        if (canvasForHandle && designImgRef.current) {
+            const pxX = x * canvasForHandle.width, pxY = y * canvasForHandle.height;
+            const handlePos = getRotateHandleWorldPos(
+                canvasForHandle, printArea, designImgRef.current, designScale, designOffsetX, designOffsetY, designRotation
+            );
+            const hitR = Math.max(12, canvasForHandle.width * 0.015);
+            if (Math.hypot(pxX - handlePos.x, pxY - handlePos.y) <= hitR) {
+                setRotatingDesign(true);
+                e.preventDefault();
+                return;
+            }
+        }
+
         // Check additional print areas first (topmost = last in array)
         if (printAreas.length > 0) {
             for (let i = printAreas.length - 1; i >= 0; i--) {
@@ -1336,6 +1351,18 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
 
     const onMouseMove = (e: React.MouseEvent) => {
         const { x, y } = getCoords(e);
+
+        // Rotating the placed design via the handle
+        if (rotatingDesign) {
+            const canvas = canvasRef.current;
+            if (canvas && designImgRef.current) {
+                const pxX = x * canvas.width, pxY = y * canvas.height;
+                const { centerX, centerY } = getDesignBounds(canvas, printArea, designImgRef.current, designScale, designOffsetX, designOffsetY);
+                const angleDeg = Math.atan2(pxX - centerX, -(pxY - centerY)) * 180 / Math.PI;
+                setDesignRotation(Math.round(angleDeg));
+            }
+            return;
+        }
 
         // Drag/resize additional print areas
         if (draggingAreaId) {
@@ -1383,6 +1410,19 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         // Cursor hint
         const canvas = canvasRef.current;
         if (!canvas) return;
+
+        if (designImgRef.current) {
+            const pxX = x * canvas.width, pxY = y * canvas.height;
+            const handlePos = getRotateHandleWorldPos(
+                canvas, printArea, designImgRef.current, designScale, designOffsetX, designOffsetY, designRotation
+            );
+            const hitR = Math.max(12, canvas.width * 0.015);
+            if (Math.hypot(pxX - handlePos.x, pxY - handlePos.y) <= hitR) {
+                canvas.style.cursor = 'grab';
+                return;
+            }
+        }
+
         const hs = 0.02;
         for (let i = printAreas.length - 1; i >= 0; i--) {
             const area = printAreas[i];
@@ -1410,6 +1450,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         setDragging(null);
         setDraggingAreaId(null);
         setResizingAreaId(null);
+        setRotatingDesign(false);
     };
 
     // Actions

@@ -371,7 +371,7 @@ router.post('/orders/:id/reject', async (req, res) => {
 router.post('/text-orders', async (req, res) => {
   let order = null;
   try {
-    const { templateId, variables: variablesRaw, etsyOrderRef } = req.body;
+    const { templateId, variables: variablesRaw, etsyOrderRef, garmentColor } = req.body;
     if (!templateId) return res.status(400).json({ error: 'templateId required' });
 
     let variables = {};
@@ -399,7 +399,7 @@ router.post('/text-orders', async (req, res) => {
       },
     });
 
-    const buffer = await composeTextOnlyDesign(template.baseArtworkUrl, template, variables);
+    const buffer = await composeTextOnlyDesign(template.baseArtworkUrl, template, variables, { garmentColor });
 
     const tmpPrint = path.join('uploads/temp', `${order.id}_print.png`);
     fs.writeFileSync(tmpPrint, buffer);
@@ -431,7 +431,7 @@ router.post('/text-orders', async (req, res) => {
 // POST /api/personalization/text-orders/preview — DB kaydı yok, hızlı görsel test
 router.post('/text-orders/preview', async (req, res) => {
   try {
-    const { templateId, variables: variablesRaw } = req.body;
+    const { templateId, variables: variablesRaw, garmentColor } = req.body;
     if (!templateId) return res.status(400).json({ error: 'templateId required' });
 
     let variables = {};
@@ -449,7 +449,7 @@ router.post('/text-orders/preview', async (req, res) => {
       return res.status(400).json({ error: `Template type must be "text_only", got "${template.templateType}"` });
     }
 
-    const buffer = await composeTextOnlyDesign(template.baseArtworkUrl, template, variables);
+    const buffer = await composeTextOnlyDesign(template.baseArtworkUrl, template, variables, { garmentColor });
     res.json({ success: true, previewUrl: `data:image/png;base64,${buffer.toString('base64')}` });
   } catch (err) {
     console.error('[Personalization POST /text-orders/preview]', err.message);

@@ -1025,7 +1025,6 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
 
     // Dark/Light variant toggle
     const [useDark, setUseDark] = useState(false);
-    const designImgRef = useRef<HTMLImageElement | null>(null); // Kept for legacy block if needed, but we'll try to unify
 
     // Canvas state
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1146,19 +1145,20 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         const paW = printArea.width * canvas.width;
         const paH = printArea.height * canvas.height;
 
-        // Design
-        if (designImgRef.current) {
+        // Design — the currently active print area's assigned design (live preview)
+        const activeDesignImg = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (activeDesignImg && activeDesignImg.complete && activeDesignImg.naturalWidth) {
             ctx.save();
             ctx.globalAlpha = opacity;
             if (blendMode === 'multiply') ctx.globalCompositeOperation = 'multiply';
 
-            const designImg = designImgRef.current;
-            
+            const designImg = activeDesignImg;
+
             // Scale design to fit print area, then apply user scale
-            const baseScale = Math.min(paW / designImg.width, paH / designImg.height);
+            const baseScale = Math.min(paW / designImg.naturalWidth, paH / designImg.naturalHeight);
             const finalScale = baseScale * designScale;
-            const designW = designImg.width * finalScale;
-            const designH = designImg.height * finalScale;
+            const designW = designImg.naturalWidth * finalScale;
+            const designH = designImg.naturalHeight * finalScale;
 
             // Center within print area + apply offsets
             const designX = paX + (paW - designW) / 2 + (designOffsetX / 100 * paW);
@@ -1204,7 +1204,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             ctx.fillStyle = 'rgba(59, 130, 246, 0.5)';
             ctx.font = `${Math.max(12, canvas.width * 0.015)}px sans-serif`;
             ctx.textAlign = 'center';
-            if (!designImgRef.current) {
+            if (!activeDesignImg) {
                 ctx.fillText('Print Area', labelCx, labelCy);
             }
         }
@@ -1216,6 +1216,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
 
             // Draw per-area design previews first (below borders)
             printAreas.forEach(area => {
+                if (area.id === activeAreaId) return; // drawn above with scale/offset/rotation applied
                 const img = areaDesignImgsRef.current[area.id];
                 if (!img || !img.complete || !img.naturalWidth) return;
                 const paX = area.x * canvasW;
@@ -1298,10 +1299,11 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
 
         // Rotate handle (only when a design is placed in the primary print area)
         const canvasForHandle = canvasRef.current;
-        if (canvasForHandle && designImgRef.current) {
+        const activeDesignImgForHandle = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (canvasForHandle && activeDesignImgForHandle) {
             const pxX = x * canvasForHandle.width, pxY = y * canvasForHandle.height;
             const handlePos = getRotateHandleWorldPos(
-                canvasForHandle, printArea, designImgRef.current, designScale, designOffsetX, designOffsetY, designRotation
+                canvasForHandle, printArea, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation
             );
             const hitR = Math.max(12, canvasForHandle.width * 0.015);
             if (Math.hypot(pxX - handlePos.x, pxY - handlePos.y) <= hitR) {
@@ -1355,9 +1357,10 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         // Rotating the placed design via the handle
         if (rotatingDesign) {
             const canvas = canvasRef.current;
-            if (canvas && designImgRef.current) {
+            const activeDesignImgForRotate = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+            if (canvas && activeDesignImgForRotate) {
                 const pxX = x * canvas.width, pxY = y * canvas.height;
-                const { centerX, centerY } = getDesignBounds(canvas, printArea, designImgRef.current, designScale, designOffsetX, designOffsetY);
+                const { centerX, centerY } = getDesignBounds(canvas, printArea, activeDesignImgForRotate, designScale, designOffsetX, designOffsetY);
                 const angleDeg = Math.atan2(pxX - centerX, -(pxY - centerY)) * 180 / Math.PI;
                 setDesignRotation(Math.round(angleDeg));
             }
@@ -1411,10 +1414,11 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        if (designImgRef.current) {
+        const activeDesignImgForCursor = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (activeDesignImgForCursor) {
             const pxX = x * canvas.width, pxY = y * canvas.height;
             const handlePos = getRotateHandleWorldPos(
-                canvas, printArea, designImgRef.current, designScale, designOffsetX, designOffsetY, designRotation
+                canvas, printArea, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation
             );
             const hitR = Math.max(12, canvas.width * 0.015);
             if (Math.hypot(pxX - handlePos.x, pxY - handlePos.y) <= hitR) {

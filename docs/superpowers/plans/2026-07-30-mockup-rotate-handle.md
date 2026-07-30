@@ -591,6 +591,235 @@ a design under "Apply Design", then:
 
 ---
 
+## Post-Task-5 finding: wrong box for multi-area templates + handle visibility
+
+Final branch review (after Task 5) found two issues:
+
+**Critical:** the primary design block computes its box from the singular
+`printArea` state, but `printArea` is never synced when `activeAreaId` changes
+among multiple entries in `printAreas[]` (confirmed: `setActiveAreaId` is called
+in 6+ places, none of them also call `setPrintArea`). For a template with 2+
+print areas, the live preview draws/rotates the active area's design using the
+WRONG box (the singular `printArea`'s position, e.g. the legacy default), while
+the actual backend render (`mockup-render.service.js`) correctly uses each
+area's own x/y/width/height from `printAreas`. Since `printAreas` is always
+populated after the template-load normalization (even single-area templates
+get a synthesized `{id:'main', ...}` entry), the fix is to always resolve the
+box via `printAreas.find(a => a.id === activeAreaId) ?? printArea` (the `??`
+fallback only matters before normalization runs, or for `printAreas.length === 0`
+edge cases) — everywhere the design's box is computed.
+
+**Important:** the rotate handle is drawn inside the same `ctx.save()/restore()`
+that applies the design's `opacity`/`multiply` blend mode, so lowering opacity
+or using multiply blend (both normal user actions) fades or effectively hides
+the handle. Fix: draw the handle in its own save/restore with a fresh
+translate+rotate (same values), separate from the design's opacity/blend scope.
+
+### Task 6: Fix multi-area box resolution and handle visibility
+
+**Files:**
+- Modify: `frontend/app/dashboard/mockups/MockupsClient.tsx`
+
+- [ ] **Step 1: Resolve the correct box in `draw()`**
+
+Find (the shared geometry computation near the top of `draw()`, used by both
+the design block and the `printAreas.length === 0` border block):
+
+```ts
+        const paX = printArea.x * canvas.width;
+        const paY = printArea.y * canvas.height;
+        const paW = printArea.width * canvas.width;
+        const paH = printArea.height * canvas.height;
+```
+
+Replace with:
+
+```ts
+        const activeAreaBox = printAreas.find(a => a.id === activeAreaId) ?? printArea;
+        const paX = activeAreaBox.x * canvas.width;
+        const paY = activeAreaBox.y * canvas.height;
+        const paW = activeAreaBox.width * canvas.width;
+        const paH = activeAreaBox.height * canvas.height;
+```
+
+- [ ] **Step 2: Isolate the rotate handle from the design's opacity/blend mode**
+
+Find (the design draw + handle draw, all inside one `ctx.save()`/`ctx.restore()` pair):
+
+```ts
+            // Draw with rotation
+            ctx.translate(designX + designW / 2, designY + designH / 2);
+            ctx.rotate((designRotation * Math.PI) / 180);
+            ctx.drawImage(designImg, -designW / 2, -designH / 2, designW, designH);
+
+            // Rotate handle — drawn in the same translated/rotated space so it orbits with the design
+            const handleOffset = Math.max(24, canvas.width * 0.03);
+            const handleRadius = Math.max(7, canvas.width * 0.009);
+            ctx.beginPath();
+            ctx.moveTo(0, -designH / 2);
+            ctx.lineTo(0, -designH / 2 - handleOffset);
+            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+            ctx.lineWidth = Math.max(1.5, canvas.width * 0.002);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, -designH / 2 - handleOffset, handleRadius, 0, Math.PI * 2);
+            ctx.fillStyle = rotatingDesign ? '#3b82f6' : '#ffffff';
+            ctx.fill();
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+```
+
+Replace with:
+
+```ts
+            // Draw with rotation
+            ctx.translate(designX + designW / 2, designY + designH / 2);
+            ctx.rotate((designRotation * Math.PI) / 180);
+            ctx.drawImage(designImg, -designW / 2, -designH / 2, designW, designH);
+            ctx.restore();
+
+            // Rotate handle — own transform/opacity scope so low design opacity or
+            // multiply blend mode never hides the handle itself
+            ctx.save();
+            ctx.translate(designX + designW / 2, designY + designH / 2);
+            ctx.rotate((designRotation * Math.PI) / 180);
+            const handleOffset = Math.max(24, canvas.width * 0.03);
+            const handleRadius = Math.max(7, canvas.width * 0.009);
+            ctx.beginPath();
+            ctx.moveTo(0, -designH / 2);
+            ctx.lineTo(0, -designH / 2 - handleOffset);
+            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+            ctx.lineWidth = Math.max(1.5, canvas.width * 0.002);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, -designH / 2 - handleOffset, handleRadius, 0, Math.PI * 2);
+            ctx.fillStyle = rotatingDesign ? '#3b82f6' : '#ffffff';
+            ctx.fill();
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+        }
+```
+
+- [ ] **Step 3: Resolve the correct box in `onMouseDown`'s handle hit-test**
+
+Find:
+
+```ts
+        // Rotate handle (only when a design is placed in the primary print area)
+        const canvasForHandle = canvasRef.current;
+        const activeDesignImgForHandle = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (canvasForHandle && activeDesignImgForHandle) {
+            const pxX = x * canvasForHandle.width, pxY = y * canvasForHandle.height;
+            const handlePos = getRotateHandleWorldPos(
+                canvasForHandle, printArea, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation
+            );
+```
+
+Replace with:
+
+```ts
+        // Rotate handle (only when a design is placed in the primary print area)
+        const canvasForHandle = canvasRef.current;
+        const activeDesignImgForHandle = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (canvasForHandle && activeDesignImgForHandle) {
+            const pxX = x * canvasForHandle.width, pxY = y * canvasForHandle.height;
+            const activeAreaBoxForHandle = printAreas.find(a => a.id === activeAreaId) ?? printArea;
+            const handlePos = getRotateHandleWorldPos(
+                canvasForHandle, activeAreaBoxForHandle, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation
+            );
+```
+
+- [ ] **Step 4: Resolve the correct box in `onMouseMove`'s rotate-drag branch**
+
+Find:
+
+```ts
+        if (rotatingDesign) {
+            const canvas = canvasRef.current;
+            const activeDesignImgForRotate = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+            if (canvas && activeDesignImgForRotate) {
+                const pxX = x * canvas.width, pxY = y * canvas.height;
+                const { centerX, centerY } = getDesignBounds(canvas, printArea, activeDesignImgForRotate, designScale, designOffsetX, designOffsetY);
+```
+
+Replace with:
+
+```ts
+        if (rotatingDesign) {
+            const canvas = canvasRef.current;
+            const activeDesignImgForRotate = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+            if (canvas && activeDesignImgForRotate) {
+                const pxX = x * canvas.width, pxY = y * canvas.height;
+                const activeAreaBoxForRotate = printAreas.find(a => a.id === activeAreaId) ?? printArea;
+                const { centerX, centerY } = getDesignBounds(canvas, activeAreaBoxForRotate, activeDesignImgForRotate, designScale, designOffsetX, designOffsetY);
+```
+
+- [ ] **Step 5: Resolve the correct box in `onMouseMove`'s cursor-hint branch**
+
+Find:
+
+```ts
+        const activeDesignImgForCursor = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (activeDesignImgForCursor) {
+            const pxX = x * canvas.width, pxY = y * canvas.height;
+            const handlePos = getRotateHandleWorldPos(
+                canvas, printArea, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation
+            );
+```
+
+Replace with:
+
+```ts
+        const activeDesignImgForCursor = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (activeDesignImgForCursor) {
+            const pxX = x * canvas.width, pxY = y * canvas.height;
+            const activeAreaBoxForCursor = printAreas.find(a => a.id === activeAreaId) ?? printArea;
+            const handlePos = getRotateHandleWorldPos(
+                canvas, activeAreaBoxForCursor, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation
+            );
+```
+
+- [ ] **Step 6: Type-check**
+
+Run: `cd frontend && npx tsc --noEmit --pretty false 2>&1 | grep -i MockupsClient`
+Expected: no output.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add frontend/app/dashboard/mockups/MockupsClient.tsx
+git commit -m "fix: resolve design box per active print area, isolate handle from opacity/blend"
+```
+
+- [ ] **Step 8: Manual verification**
+
+Per [[feedback_asset_testing_endpoint]], use real assets (`http://100.96.119.102:3000`
+or a temporary seeded `MockupTemplate` pointing at a locally-present base image).
+
+- Open a template, click "+ Add Area" at least once so `printAreas.length >= 2`.
+- Assign a design to the SECOND area (not the first/default one), select it as active.
+- Confirm the live preview now draws that design inside the second area's actual
+  box (not centered in the template's default/legacy box).
+- Drag the rotate handle: confirm it rotates around the second area's box, not
+  the wrong one.
+- Set design opacity to ~30% and/or blend mode to "Multiply": confirm the
+  rotate handle stays fully visible (white/blue, not faded).
+- Click "Place Design & Render": confirm the rendered output places the design
+  in the second area, matching the (now-correct) live preview.
+- Re-verify the single-area case still works too (repeat Task 5's Step 10
+  checks) — this fix must not regress the already-verified single-area path.
+- Clean up any temporary `MockupTemplate` row created for this test. Do NOT use
+  a wildcard/glob delete on any shared `assets/` path — delete only the specific
+  file(s) you created, by exact name.
+
+---
+
 ## Self-Review Notes
 
 - **Spec coverage:** handle draws in the design's rotated frame (Task 2) ✓, hit-test + drag angle math (Task 3) ✓, shared `getDesignBounds`/`getRotateHandleWorldPos` helpers used by draw + both mouse handlers (Tasks 1-3) ✓, no schema/backend change (confirmed — only client state touched) ✓, `printAreas[]` multi-area preview untouched (no edits made to that code path) ✓, print-area box itself not rotatable (no changes to its drag/resize logic) ✓.

@@ -31,6 +31,11 @@ const FONT_REGISTRY = {
   'EBGaramond-Regular':     path.join(ASSETS_ROOT, 'fonts/EBGaramond-Regular.ttf'),
   'PlayfairDisplay-Bold':   path.join(ASSETS_ROOT, 'fonts/PlayfairDisplay-Bold.ttf'),
   'PlayfairDisplay-Regular': path.join(ASSETS_ROOT, 'fonts/PlayfairDisplay-Regular.ttf'),
+  'Buttercup-Regular':      path.join(ASSETS_ROOT, 'fonts/Buttercup Regular.ttf'),
+  'GingerbreadRegular':     path.join(ASSETS_ROOT, 'fonts/Gingerbread.otf'),
+  // BaseballClubSolid.otf henüz sunucuda yok — Creative Fabrica dosyası eklenene kadar
+  // bu fontu kullanan textLayer render'da ENOENT ile patlar.
+  'BaseballClubSolid':      path.join(ASSETS_ROOT, 'fonts/BaseballClubSolid.otf'),
 };
 
 // Module-level font cache (path → base64 string)
@@ -174,7 +179,7 @@ function buildGlyphByGlyphD(font, text, x, y, fontSize, letterSpacing = 0) {
  * @param {object} opts
  * @param {number} opts.canvasW
  * @param {number} opts.canvasH
- * @param {object} opts.layer    - { x, y, size, color, align, maxWidth?, font }
+ * @param {object} opts.layer    - { x, y, size, color, align, maxWidth?, font, scaleX? }
  * @param {string} opts.text
  * @param {string} opts.fontPath - FONT_REGISTRY[layer.font] (.ttf dosya yolu)
  * @returns {string} SVG markup
@@ -183,25 +188,45 @@ function buildTextPathSvg({ canvasW, canvasH, layer, text, fontPath }) {
   const font = loadOpentypeFont(fontPath);
   let fontSize = layer.size;
   const letterSpacing = layer.letterSpacing || 0;
+  const scaleX = layer.scaleX || 1;
 
   let width = measureTextWidth(font, text, fontSize, letterSpacing);
 
   // maxWidth aşılıyorsa, taşan/kırpılan metin yerine font boyutunu orantılı küçült
   // (letterSpacing px cinsinden sabit kalır — fontSize ile birlikte küçültmüyoruz, kısa
   // etiketlerde (örn. "RN") görsel tracking oranı bozulmasın diye kabul edilebilir yaklaşım).
-  if (layer.maxWidth && width > layer.maxWidth) {
-    fontSize = fontSize * (layer.maxWidth / width);
+  // scaleX varsa ekrandaki GERÇEK genişlik width*scaleX'tir — maxWidth kıyası ona göre yapılır.
+  if (layer.maxWidth && width * scaleX > layer.maxWidth) {
+    fontSize = fontSize * (layer.maxWidth / (width * scaleX));
     width = measureTextWidth(font, text, fontSize, letterSpacing);
   }
 
-  const originX = layer.align === 'center' ? layer.x - width / 2
-                : layer.align === 'right'  ? layer.x - width
-                : layer.x;
+  const originXScreen = layer.align === 'center' ? layer.x - (width * scaleX) / 2
+                       : layer.align === 'right'  ? layer.x - width * scaleX
+                       : layer.x;
+  // scaleX bir <g transform="scale(scaleX,1)"> ile (0,0) etrafında uygulanacak — bu yüzden
+  // path'i "unscaled" koordinat uzayında inşa ediyoruz (ekran konumu / scaleX).
+  const originX = originXScreen / scaleX;
   // opentype.js baseline'ı y=0'da tutar; layer.y görsel baseline konumu olarak kullanılıyor.
+  // Not: scale(scaleX,1) y'yi etkilemediği için layer.y burada olduğu gibi kullanılır.
   const d = buildGlyphByGlyphD(font, text, originX, layer.y, fontSize, letterSpacing);
 
+  // strokeWidth verilirse glyph dolgu yerine kontur (hollow/outline) çizilir —
+  // iç içe geçen iki metin katmanı aynı renkte olsa bile kesişimde ayrışabilsin diye
+  // (monogram/interlock kompozisyonlar için, örn. RN + script isim üst üste).
+  // fillOpacity (0-1) verilirse kontura ek olarak hafif "tint" dolgu eklenir — mesafeden
+  // okunabilirliği artırır, stroke üstte kaldığı için kesişimdeki ayrışma bozulmaz.
+  const fillAttr = layer.strokeWidth
+    ? `fill="${layer.color}" fill-opacity="${layer.fillOpacity || 0}" stroke="${layer.color}" stroke-width="${layer.strokeWidth}" stroke-linejoin="round"`
+    : `fill="${layer.color}"`;
+
+  const pathEl = `<path d="${d}" ${fillAttr}></path>`;
+  const content = scaleX !== 1
+    ? `<g transform="scale(${scaleX} 1)">${pathEl}</g>`
+    : pathEl;
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW}" height="${canvasH}">
-  <path d="${d}" fill="${layer.color}"></path>
+  ${content}
 </svg>`;
 }
 
@@ -342,16 +367,54 @@ async function compositePhoto({ orderId, template, mockupTemplate, customerPhoto
   return { printFileUrl, mockupUrl, warnings };
 }
 
+const DEFAULT_INK  = '#1d1d1b'; // açık zeminler için (mevcut text_only şablonların varsayılanı)
+const CONTRAST_INK = '#FFFFFF'; // koyu zeminler için
+
+function hexToRgb(hex) {
+  const clean = String(hex).replace('#', '');
+  const full  = clean.length === 3 ? clean.split('').map(c => c + c).join('') : clean;
+  const num   = parseInt(full, 16);
+  return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+}
+
+// Işık/koyu tişört zeminine göre kontrastlı ink rengi seçer — basit luma eşiği.
+function resolveInkColor(garmentColor) {
+  if (!garmentColor) return DEFAULT_INK;
+  const { r, g, b } = hexToRgb(garmentColor);
+  const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+  return luma > 140 ? DEFAULT_INK : CONTRAST_INK;
+}
+
+// Tek renkli (flat ink) çizgi sanatını hedef renge boyar — kaynağın gerçek renk/gölge
+// bilgisini DEĞİL, sadece alfa/antialiasing maskesini korur (dest-in composite).
+// sharp .tint() burada uygun değil: LAB lightness'i koruyor, siyah/beyaz gibi kromasız
+// hedeflerde kaynağın gri tonunu neredeyse değiştirmeden bırakıyor.
+async function recolorArtworkByAlpha(input, hexColor) {
+  const iconBuf  = Buffer.isBuffer(input) ? input : fs.readFileSync(input);
+  const alphaSrc = await sharp(iconBuf).ensureAlpha().png().toBuffer();
+  const meta     = await sharp(alphaSrc).metadata();
+  const { r, g, b } = hexToRgb(hexColor);
+  return sharp({
+    create: { width: meta.width, height: meta.height, channels: 4, background: { r, g, b, alpha: 1 } },
+  })
+    .composite([{ input: alphaSrc, blend: 'dest-in' }])
+    .png()
+    .toBuffer();
+}
+
 /**
  * Fotoğrafsız apparel personalizasyonu: sabit taban tasarımın (isim/tarih yeri boş
  * üretilmiş) üstüne kod-render metin basar. AI her sipariş için yeniden çağrılmaz —
  * taban görsel bir kez üretilir, her sipariş aynı font/boyut/pozisyonla üzerine basılır.
  * @param {Buffer|string} baseArtworkInput - taban görsel (Buffer, path, veya http(s) URL)
- * @param {object}        template          - { textLayers, printWidthPx, printHeightPx }
+ * @param {object}        template          - { textLayers, printWidthPx, printHeightPx, mockupConfig? }
  * @param {object}        variables         - textLayers[].key -> değer (örn. { nurse_name: 'John' })
+ * @param {object}        [renderOptions]
+ * @param {string}        [renderOptions.garmentColor] - hex — template.mockupConfig.inkTintable
+ *   true olan şablonlarda ink rengini garment zeminine göre otomatik kontrastlı seçer
  * @returns {Promise<Buffer>} şeffaflık korunmuş PNG
  */
-async function composeTextOnlyDesign(baseArtworkInput, template, variables = {}) {
+async function composeTextOnlyDesign(baseArtworkInput, template, variables = {}, renderOptions = {}) {
   let basePath;
   if (Buffer.isBuffer(baseArtworkInput)) {
     basePath = baseArtworkInput;
@@ -362,7 +425,12 @@ async function composeTextOnlyDesign(baseArtworkInput, template, variables = {})
       : (path.isAbsolute(src) ? src : path.join(REPO_ROOT, src));
   }
 
-  let chain = sharp(basePath);
+  const tintable = template.mockupConfig?.inkTintable === true;
+  const inkColor = tintable ? resolveInkColor(renderOptions.garmentColor) : null;
+
+  let chain = tintable
+    ? sharp(await recolorArtworkByAlpha(basePath, inkColor))
+    : sharp(basePath);
   const layers = Array.isArray(template.textLayers) ? template.textLayers : [];
 
   for (const layer of layers) {
@@ -375,8 +443,9 @@ async function composeTextOnlyDesign(baseArtworkInput, template, variables = {})
 
     const fontPath = FONT_REGISTRY[layer.font];
     if (!fontPath) throw new Error(`Unknown font: "${layer.font}" — add it to FONT_REGISTRY`);
+    const effectiveLayer = tintable ? { ...layer, color: inkColor } : layer;
     const svg = buildTextPathSvg({
-      canvasW: template.printWidthPx, canvasH: template.printHeightPx, layer, text, fontPath,
+      canvasW: template.printWidthPx, canvasH: template.printHeightPx, layer: effectiveLayer, text, fontPath,
     });
 
     const currentBuf = await chain.png().toBuffer();

@@ -1168,7 +1168,24 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             ctx.translate(designX + designW / 2, designY + designH / 2);
             ctx.rotate((designRotation * Math.PI) / 180);
             ctx.drawImage(designImg, -designW / 2, -designH / 2, designW, designH);
-            
+
+            // Rotate handle — drawn in the same translated/rotated space so it orbits with the design
+            const handleOffset = Math.max(24, canvas.width * 0.03);
+            const handleRadius = Math.max(7, canvas.width * 0.009);
+            ctx.beginPath();
+            ctx.moveTo(0, -designH / 2);
+            ctx.lineTo(0, -designH / 2 - handleOffset);
+            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+            ctx.lineWidth = Math.max(1.5, canvas.width * 0.002);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, -designH / 2 - handleOffset, handleRadius, 0, Math.PI * 2);
+            ctx.fillStyle = rotatingDesign ? '#3b82f6' : '#ffffff';
+            ctx.fill();
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
             ctx.restore();
         }
 
@@ -1237,7 +1254,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         }
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [printArea, printAreas, activeAreaId, areaDesigns, opacity, blendMode, rotation, baseLoaded, canvasSize, designScale, designOffsetX, designOffsetY, designRotation]);
+    }, [printArea, printAreas, activeAreaId, areaDesigns, opacity, blendMode, rotation, baseLoaded, canvasSize, designScale, designOffsetX, designOffsetY, designRotation, rotatingDesign]);
 
     useEffect(() => {
         let rafId: number;

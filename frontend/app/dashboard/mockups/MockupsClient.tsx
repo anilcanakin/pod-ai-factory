@@ -1140,10 +1140,11 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         ctx.drawImage(base, 0, 0, canvas.width, canvas.height);
 
         // Print area coordinates
-        const paX = printArea.x * canvas.width;
-        const paY = printArea.y * canvas.height;
-        const paW = printArea.width * canvas.width;
-        const paH = printArea.height * canvas.height;
+        const activeAreaBox = printAreas.find(a => a.id === activeAreaId) ?? printArea;
+        const paX = activeAreaBox.x * canvas.width;
+        const paY = activeAreaBox.y * canvas.height;
+        const paW = activeAreaBox.width * canvas.width;
+        const paH = activeAreaBox.height * canvas.height;
 
         // Design — the currently active print area's assigned design (live preview)
         const activeDesignImg = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
@@ -1168,8 +1169,13 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             ctx.translate(designX + designW / 2, designY + designH / 2);
             ctx.rotate((designRotation * Math.PI) / 180);
             ctx.drawImage(designImg, -designW / 2, -designH / 2, designW, designH);
+            ctx.restore();
 
-            // Rotate handle — drawn in the same translated/rotated space so it orbits with the design
+            // Rotate handle — own transform/opacity scope so low design opacity or
+            // multiply blend mode never hides the handle itself
+            ctx.save();
+            ctx.translate(designX + designW / 2, designY + designH / 2);
+            ctx.rotate((designRotation * Math.PI) / 180);
             const handleOffset = Math.max(24, canvas.width * 0.03);
             const handleRadius = Math.max(7, canvas.width * 0.009);
             ctx.beginPath();
@@ -1185,7 +1191,6 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             ctx.strokeStyle = '#3b82f6';
             ctx.lineWidth = 2;
             ctx.stroke();
-
             ctx.restore();
         }
 
@@ -1302,8 +1307,9 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         const activeDesignImgForHandle = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
         if (canvasForHandle && activeDesignImgForHandle) {
             const pxX = x * canvasForHandle.width, pxY = y * canvasForHandle.height;
+            const activeAreaBoxForHandle = printAreas.find(a => a.id === activeAreaId) ?? printArea;
             const handlePos = getRotateHandleWorldPos(
-                canvasForHandle, printArea, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation
+                canvasForHandle, activeAreaBoxForHandle, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation
             );
             const hitR = Math.max(12, canvasForHandle.width * 0.015);
             if (Math.hypot(pxX - handlePos.x, pxY - handlePos.y) <= hitR) {
@@ -1360,7 +1366,8 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             const activeDesignImgForRotate = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
             if (canvas && activeDesignImgForRotate) {
                 const pxX = x * canvas.width, pxY = y * canvas.height;
-                const { centerX, centerY } = getDesignBounds(canvas, printArea, activeDesignImgForRotate, designScale, designOffsetX, designOffsetY);
+                const activeAreaBoxForRotate = printAreas.find(a => a.id === activeAreaId) ?? printArea;
+                const { centerX, centerY } = getDesignBounds(canvas, activeAreaBoxForRotate, activeDesignImgForRotate, designScale, designOffsetX, designOffsetY);
                 const angleDeg = Math.atan2(pxX - centerX, -(pxY - centerY)) * 180 / Math.PI;
                 setDesignRotation(Math.round(angleDeg));
             }
@@ -1417,8 +1424,9 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         const activeDesignImgForCursor = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
         if (activeDesignImgForCursor) {
             const pxX = x * canvas.width, pxY = y * canvas.height;
+            const activeAreaBoxForCursor = printAreas.find(a => a.id === activeAreaId) ?? printArea;
             const handlePos = getRotateHandleWorldPos(
-                canvas, printArea, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation
+                canvas, activeAreaBoxForCursor, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation
             );
             const hitR = Math.max(12, canvas.width * 0.015);
             if (Math.hypot(pxX - handlePos.x, pxY - handlePos.y) <= hitR) {

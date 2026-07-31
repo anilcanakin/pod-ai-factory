@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGallery, apiPipeline, apiExport, apiJobs, apiTools, apiSeo, apiEtsy, type GalleryImage } from '@/lib/api';
 import { toast } from 'sonner';
-import { cn, truncateId } from '@/lib/utils';
+import { cn, truncateId, toThumbUrl } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ConfirmModal } from '@/components/shared/ConfirmModal';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
@@ -652,7 +652,16 @@ function GalleryInner() {
                                     <div className="grid grid-cols-3 gap-2">
                                         {viewImg.mockups.map(m => (
                                             /* eslint-disable-next-line @next/next/no-img-element */
-                                            <img key={m.id} src={resolveUrl(m.mockupUrl)} alt="Mockup" className="w-full aspect-square object-cover rounded-lg border border-border-default" />
+                                            <img
+                                                key={m.id}
+                                                src={toThumbUrl(resolveUrl(m.mockupUrl))}
+                                                alt="Mockup"
+                                                className="w-full aspect-square object-cover rounded-lg border border-border-default"
+                                                onError={e => {
+                                                    const original = resolveUrl(m.mockupUrl);
+                                                    if (e.currentTarget.src !== original) e.currentTarget.src = original;
+                                                }}
+                                            />
                                         ))}
                                     </div>
                                 )}
@@ -807,7 +816,16 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                 <div className="relative">
                     {isUsableUrl(img.imageUrl) ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={resolveUrl(img.imageUrl)} alt="Rejected design" className="w-full aspect-square object-cover block opacity-40 grayscale" onClick={onView} />
+                        <img
+                            src={toThumbUrl(resolveUrl(img.imageUrl))}
+                            alt="Rejected design"
+                            className="w-full aspect-square object-cover block opacity-40 grayscale"
+                            onClick={onView}
+                            onError={e => {
+                                const original = resolveUrl(img.imageUrl);
+                                if (e.currentTarget.src !== original) e.currentTarget.src = original;
+                            }}
+                        />
                     ) : (
                         <div className="h-48 flex flex-col items-center justify-center min-h-[160px] bg-bg-elevated gap-1 px-3">
                             <ImageIcon className="w-6 h-6 text-text-tertiary opacity-40" />
@@ -822,7 +840,16 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                 </div>
             ) : isUsableUrl(img.imageUrl) ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={resolveUrl(img.imageUrl)} alt="Generated design" className="w-full aspect-square object-cover block" onClick={onView} />
+                <img
+                    src={toThumbUrl(resolveUrl(img.imageUrl))}
+                    alt="Generated design"
+                    className="w-full aspect-square object-cover block"
+                    onClick={onView}
+                    onError={e => {
+                        const original = resolveUrl(img.imageUrl);
+                        if (e.currentTarget.src !== original) e.currentTarget.src = original;
+                    }}
+                />
             ) : (
                 <div className="h-48 flex flex-col items-center justify-center min-h-[160px] bg-bg-elevated gap-1 px-3">
                     <ImageIcon className="w-6 h-6 text-text-tertiary opacity-40" />
@@ -903,10 +930,15 @@ function ListingCard({ img }: { img: GalleryImage }) {
             <div className="aspect-square overflow-hidden bg-bg-base shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                    src={resolveUrl(displayUrl)}
+                    src={toThumbUrl(resolveUrl(displayUrl))}
                     alt="Listing"
                     className="w-full h-full object-cover"
-                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    onError={e => {
+                        const original = resolveUrl(displayUrl);
+                        const img = e.currentTarget as HTMLImageElement;
+                        if (img.src !== original) { img.src = original; }
+                        else { img.style.display = 'none'; }
+                    }}
                 />
             </div>
             <div className="p-3 space-y-2 flex-1 flex flex-col">

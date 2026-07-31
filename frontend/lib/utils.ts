@@ -48,3 +48,10 @@ export function getStatusColor(status: string): string {
 export function truncateId(id: string, length = 8): string {
     return id?.substring(0, length) ?? "—";
 }
+
+// Backend'in storage.service.js'teki thumbnail konvansiyonuyla birebir eşleşir:
+// aynı dizin, uzantı "-thumb.webp" ile değişir.
+export function toThumbUrl(url: string): string {
+    if (!url) return url;
+    return url.replace(/\.[^/.]+$/, "-thumb.webp");
+}

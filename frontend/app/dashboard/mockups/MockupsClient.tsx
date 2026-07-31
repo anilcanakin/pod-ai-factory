@@ -918,27 +918,58 @@ function getRotateHandleWorldPos(
     };
 }
 
-// World-space (canvas pixel) position of the design's own bottom-right resize
-// handle — the local point (designW/2, designH/2), rotated by designRotation
-// around the design center. Separate from the print-area's own resize handle:
-// dragging this changes designScale, never printArea/printAreas[].
-function getDesignResizeHandleWorldPos(
+// Wilcom-tarzı 4 köşe resize handle — hepsi aynı işareti taşır: sürükleme
+// merkeze-uzaklık/yarı-köşegen oranından tek bir designScale üretir (aspect
+// ratio korunur), hangi köşeden tutulduğu farketmez. Sadece dört ayrı
+// tıklanabilir nokta sağlar.
+const DESIGN_CORNER_SIGNS: Array<[1 | -1, 1 | -1]> = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+
+// World-space (canvas pixel) position of one of the design's own resize-handle
+// corners — local point (signX*designW/2, signY*designH/2), rotated by
+// designRotation around the design center. Separate from the print-area's own
+// resize handle: dragging any of these four changes designScale, never
+// printArea/printAreas[].
+function getDesignCornerWorldPos(
     canvas: HTMLCanvasElement,
     printArea: { x: number; y: number; width: number; height: number },
     designImg: HTMLImageElement,
     designScale: number,
     designOffsetX: number,
     designOffsetY: number,
-    designRotation: number
+    designRotation: number,
+    signX: 1 | -1,
+    signY: 1 | -1
 ) {
     const { centerX, centerY, designW, designH } = getDesignBounds(canvas, printArea, designImg, designScale, designOffsetX, designOffsetY);
-    const localX = designW / 2;
-    const localY = designH / 2;
+    const localX = signX * designW / 2;
+    const localY = signY * designH / 2;
     const rad = (designRotation * Math.PI) / 180;
     return {
         x: centerX + localX * Math.cos(rad) - localY * Math.sin(rad),
         y: centerY + localX * Math.sin(rad) + localY * Math.cos(rad),
     };
+}
+
+// True if world-space point (pxX, pxY) falls inside the design's own rotated
+// bounding box — used for the independent "drag the design to move it" hit-test,
+// completely separate from the print-area's own (now-hidden, per-mode-gating) move logic.
+function isPointInsideDesign(
+    canvas: HTMLCanvasElement,
+    printArea: { x: number; y: number; width: number; height: number },
+    designImg: HTMLImageElement,
+    designScale: number,
+    designOffsetX: number,
+    designOffsetY: number,
+    designRotation: number,
+    pxX: number,
+    pxY: number
+) {
+    const { centerX, centerY, designW, designH } = getDesignBounds(canvas, printArea, designImg, designScale, designOffsetX, designOffsetY);
+    const rad = (-designRotation * Math.PI) / 180; // inverse rotation — world → design-local
+    const dx = pxX - centerX, dy = pxY - centerY;
+    const localX = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const localY = dx * Math.sin(rad) + dy * Math.cos(rad);
+    return Math.abs(localX) <= designW / 2 && Math.abs(localY) <= designH / 2;
 }
 
 // ─── Template Editor with Konva Canvas ───────────────────────────────────────
@@ -1079,6 +1110,10 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
     const [rotatingDesign, setRotatingDesign] = useState(false);
     // Drag state (resize handle on the placed design — separate from print-area resize)
     const [resizingDesign, setResizingDesign] = useState(false);
+    // Drag state (dragging inside the design's own bounds to move it — separate
+    // from the print-area's own move logic, which no longer applies once a design is placed)
+    const [movingDesign, setMovingDesign] = useState(false);
+    const designMoveStart = useRef({ mx: 0, my: 0, offsetX: 0, offsetY: 0 });
 
     // Placeit-style "Crop/Onayla" lock — per area. Locked area: handles hidden,
     // canvas drag/resize/rotate disabled, Design Position sliders replaced by "Düzenle".
@@ -1286,15 +1321,19 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
-                // Design resize handle — bottom-right corner of the design's own bounding
-                // box, square (vs. the rotate handle's circle) so the two read as distinct.
-                // Separate from the print-area's own bottom-right resize handle.
+                // Design resize handles — Wilcom-tarzı 4 köşe (square, vs. the rotate
+                // handle's circle, so the two read as distinct). Separate from the
+                // print-area's own resize handle.
                 const resizeHandleSize = Math.max(12, canvas.width * 0.016);
                 ctx.fillStyle = resizingDesign ? '#3b82f6' : '#ffffff';
-                ctx.fillRect(designW / 2 - resizeHandleSize / 2, designH / 2 - resizeHandleSize / 2, resizeHandleSize, resizeHandleSize);
                 ctx.strokeStyle = '#3b82f6';
                 ctx.lineWidth = 2;
-                ctx.strokeRect(designW / 2 - resizeHandleSize / 2, designH / 2 - resizeHandleSize / 2, resizeHandleSize, resizeHandleSize);
+                for (const [signX, signY] of DESIGN_CORNER_SIGNS) {
+                    const hx = signX * designW / 2 - resizeHandleSize / 2;
+                    const hy = signY * designH / 2 - resizeHandleSize / 2;
+                    ctx.fillRect(hx, hy, resizeHandleSize, resizeHandleSize);
+                    ctx.strokeRect(hx, hy, resizeHandleSize, resizeHandleSize);
+                }
                 ctx.restore();
             }
         }
@@ -1427,13 +1466,26 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 return;
             }
 
-            // Design resize handle (bottom-right corner of the design's own box)
-            const resizeHandlePos = getDesignResizeHandleWorldPos(
-                canvasForHandle, activeAreaBoxForHandle, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation
-            );
+            // Design resize handles — 4 köşe, herhangi biri tutulursa aynı orantılı resize
             const resizeHitR = Math.max(12, canvasForHandle.width * 0.015);
-            if (Math.hypot(pxX - resizeHandlePos.x, pxY - resizeHandlePos.y) <= resizeHitR) {
-                setResizingDesign(true);
+            for (const [signX, signY] of DESIGN_CORNER_SIGNS) {
+                const cornerPos = getDesignCornerWorldPos(
+                    canvasForHandle, activeAreaBoxForHandle, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation, signX, signY
+                );
+                if (Math.hypot(pxX - cornerPos.x, pxY - cornerPos.y) <= resizeHitR) {
+                    setResizingDesign(true);
+                    e.preventDefault();
+                    return;
+                }
+            }
+
+            // Tasarımın kendi sınırları içine tıklayıp sürükleme — designOffsetX/Y'yi
+            // günceller, printArea'ya hiç dokunmaz (eski printArea move mantığından tamamen ayrı).
+            if (isPointInsideDesign(
+                canvasForHandle, activeAreaBoxForHandle, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation, pxX, pxY
+            )) {
+                setMovingDesign(true);
+                designMoveStart.current = { mx: x, my: y, offsetX: designOffsetX, offsetY: designOffsetY };
                 e.preventDefault();
                 return;
             }
@@ -1515,6 +1567,18 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             return;
         }
 
+        // Moving the placed design by dragging inside its own bounds (never touches printArea)
+        if (movingDesign) {
+            const activeAreaBoxForMove = printAreas.find(a => a.id === activeAreaId) ?? printArea;
+            const dx = x - designMoveStart.current.mx;
+            const dy = y - designMoveStart.current.my;
+            const dPctX = (dx / activeAreaBoxForMove.width) * 100;
+            const dPctY = (dy / activeAreaBoxForMove.height) * 100;
+            setDesignOffsetX(Math.max(-50, Math.min(50, designMoveStart.current.offsetX + dPctX)));
+            setDesignOffsetY(Math.max(-50, Math.min(50, designMoveStart.current.offsetY + dPctY)));
+            return;
+        }
+
         // Drag/resize additional print areas
         if (draggingAreaId) {
             const dx = x - dragAreaStart.current.mx;
@@ -1576,12 +1640,21 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 return;
             }
 
-            const resizeHandlePos = getDesignResizeHandleWorldPos(
-                canvas, activeAreaBoxForCursor, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation
-            );
             const resizeHitR = Math.max(12, canvas.width * 0.015);
-            if (Math.hypot(pxX - resizeHandlePos.x, pxY - resizeHandlePos.y) <= resizeHitR) {
-                canvas.style.cursor = 'nwse-resize';
+            for (const [signX, signY] of DESIGN_CORNER_SIGNS) {
+                const cornerPos = getDesignCornerWorldPos(
+                    canvas, activeAreaBoxForCursor, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation, signX, signY
+                );
+                if (Math.hypot(pxX - cornerPos.x, pxY - cornerPos.y) <= resizeHitR) {
+                    canvas.style.cursor = 'nwse-resize';
+                    return;
+                }
+            }
+
+            if (isPointInsideDesign(
+                canvas, activeAreaBoxForCursor, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation, pxX, pxY
+            )) {
+                canvas.style.cursor = 'move';
                 return;
             }
         }
@@ -1620,6 +1693,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         setResizingAreaId(null);
         setRotatingDesign(false);
         setResizingDesign(false);
+        setMovingDesign(false);
     };
 
     // Actions
@@ -2493,8 +2567,15 @@ function DesignPickerModal({ onClose, onSelect }: {
                                                 onClick={() => onSelect(img)}
                                                 className="group relative aspect-square bg-slate-900/60 rounded-xl overflow-hidden border-2 border-transparent hover:border-blue-500 transition-all"
                                             >
-                                                <img src={url} alt="Design" className="w-full h-full object-contain p-2"
-                                                    onError={e => { e.currentTarget.style.display = 'none'; }} />
+                                                <img
+                                                    src={toThumbUrl(url)}
+                                                    alt="Design"
+                                                    className="w-full h-full object-contain p-2"
+                                                    onError={e => {
+                                                        if (e.currentTarget.src !== url) { e.currentTarget.src = url; }
+                                                        else { e.currentTarget.style.display = 'none'; }
+                                                    }}
+                                                />
                                                 <div className="absolute inset-0 bg-blue-600/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                     <span className="px-3 py-1 bg-blue-600 text-white text-xs rounded-full font-medium">Select</span>
                                                 </div>

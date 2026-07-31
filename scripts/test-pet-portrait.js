@@ -5,8 +5,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const { generatePetPortrait } = require('../src/services/pet-portrait-composite.service');
 
-const PERSON_PHOTO = 'C:\\Users\\Anılcan\\Desktop\\test-fotograflar\\vicky-hladynets-C8Ta0gwPbQg-unsplash.jpg';
-const PET_PHOTO    = 'C:\\Users\\Anılcan\\Desktop\\test-fotograflar\\victor-g-N04FIfHhv_k-unsplash.jpg';
+const PERSON_PHOTO = 'C:\\Users\\Anılcan\\Desktop\\test-fotograflar\\insan 1.jpg';
+const PET_PHOTO    = 'C:\\Users\\Anılcan\\Desktop\\test-fotograflar\\hayvan 1.jpg';
 const OUTPUT_PATH  = 'uploads/temp/pet-portrait-test-output.jpg';
 
 // "multi_photo_generative" tipi bir PhotoTemplate satırının minimal duruşu — DB'ye
@@ -32,7 +32,7 @@ async function main() {
     personPhotoPath: PERSON_PHOTO,
     petPhotoPath:    PET_PHOTO,
     template:        FAKE_TEMPLATE,
-    variables:       {},
+    names:           'SARAH & MAX',
     workspaceId:     null, // env FAL_API_KEY fallback (secrets.service.js)
     outputPath:      OUTPUT_PATH,
   });

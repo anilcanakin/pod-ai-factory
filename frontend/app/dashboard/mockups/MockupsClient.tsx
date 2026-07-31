@@ -9,7 +9,7 @@ import {
     Eye, Download, Search, Loader2, Save, Grid3x3, CheckCircle2,
     AlertCircle, Package, ChevronDown, ChevronRight, Upload, PackageOpen, Wand2
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, toThumbUrl } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import { TemplateUploader } from './TemplateUploader';
 
@@ -475,10 +475,16 @@ export function MockupsClient() {
                                                 const resolvedUrl = resolveUrl(r.url);
                                                 return (
                                                     <img
-                                                        src={resolvedUrl}
+                                                        src={toThumbUrl(resolvedUrl)}
                                                         alt={r.templateName}
                                                         className="w-full aspect-square object-contain"
-                                                        onError={(e) => { console.error('Bulk render img failed:', r.url); }}
+                                                        onError={(e) => {
+                                                            if (e.currentTarget.src !== resolvedUrl) {
+                                                                e.currentTarget.src = resolvedUrl;
+                                                            } else {
+                                                                console.error('Bulk render img failed:', r.url);
+                                                            }
+                                                        }}
                                                     />
                                                 );
                                             })()}
@@ -644,10 +650,14 @@ function TemplateCard({ template, onSelect, onToggleSelect, onDelete, onGenerate
         )}>
             <div className="aspect-square bg-slate-900/50 relative cursor-pointer" onClick={onSelect}>
                 <img
-                    src={resolveUrl(template.baseImagePath)}
+                    src={toThumbUrl(resolveUrl(template.baseImagePath))}
                     alt={template.name}
                     className="w-full h-full object-contain p-2"
-                    onError={e => { e.currentTarget.style.display = 'none'; }}
+                    onError={e => {
+                        const original = resolveUrl(template.baseImagePath);
+                        if (e.currentTarget.src !== original) { e.currentTarget.src = original; }
+                        else { e.currentTarget.style.display = 'none'; }
+                    }}
                 />
                 {bulkMode && (
                     <>
@@ -2588,10 +2598,13 @@ function RenderedMockupsSection({ renderedMockups, refetchMockups, addToast }: {
                                                 onClick={() => toggleSelect(img.id)}
                                             >
                                                 <img
-                                                    src={url}
+                                                    src={toThumbUrl(url)}
                                                     alt="Mockup"
                                                     className="w-full h-full object-cover"
-                                                    onError={e => { e.currentTarget.style.display = 'none'; }}
+                                                    onError={e => {
+                                                        if (e.currentTarget.src !== url) { e.currentTarget.src = url; }
+                                                        else { e.currentTarget.style.display = 'none'; }
+                                                    }}
                                                 />
                                                 {/* Checkbox top-left */}
                                                 <div className={cn(

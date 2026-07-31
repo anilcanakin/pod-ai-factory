@@ -14,6 +14,30 @@ function ensureDir(dir) {
 }
 
 // storagePath örneği: "generated/abc123_1234567890.png"
+// Thumb path örneği:  "generated/abc123_1234567890-thumb.webp"
+function toThumbStoragePath(storagePath) {
+    return storagePath.replace(/\.[^/.]+$/, '-thumb.webp');
+}
+
+/**
+ * input: Buffer veya yerel dosya yolu (Sharp ikisini de kabul eder).
+ * Hata thumbnail'i asla ana upload'ı kırmaz — sadece loglanır.
+ */
+async function generateThumbnail(input, storagePath) {
+    try {
+        const sharp = require('sharp');
+        const thumbDest = path.join(UPLOADS_ROOT, toThumbStoragePath(storagePath));
+        ensureDir(path.dirname(thumbDest));
+        await sharp(input)
+            .resize(400, null, { withoutEnlargement: true })
+            .webp({ quality: 72 })
+            .toFile(thumbDest);
+    } catch (err) {
+        console.warn('[Storage] Thumbnail üretilemedi:', err.message);
+    }
+}
+
+// storagePath örneği: "generated/abc123_1234567890.png"
 // Dönen URL    örneği: "assets/uploads/generated/abc123_1234567890.png"
 // Frontend'deki resolveUrl() bu değerin önüne API_BASE ekler.
 function toPublicUrl(storagePath) {
@@ -29,6 +53,7 @@ async function uploadToStorage(localFilePath, storagePath) {
     ensureDir(path.dirname(dest));
     fs.copyFileSync(localFilePath, dest);
     console.log('[Storage] Dosya kopyalandı:', dest);
+    await generateThumbnail(dest, storagePath);
     return toPublicUrl(storagePath);
 }
 
@@ -47,6 +72,7 @@ async function uploadUrlToStorage(imageUrl, storagePath) {
     ensureDir(path.dirname(dest));
     fs.writeFileSync(dest, buffer);
     console.log('[Storage] URL kaydedildi:', dest);
+    await generateThumbnail(buffer, storagePath);
     return toPublicUrl(storagePath);
 }
 
@@ -85,6 +111,7 @@ async function uploadBufferToStorage(buffer, storagePath, contentType = 'image/p
     ensureDir(path.dirname(dest));
     fs.writeFileSync(dest, buffer);
     console.log('[Storage] Buffer kaydedildi:', dest);
+    await generateThumbnail(buffer, storagePath);
     return toPublicUrl(storagePath);
 }
 
@@ -93,4 +120,5 @@ module.exports = {
     uploadUrlToStorage,
     uploadRejectedToStorage,
     uploadBufferToStorage,
+    generateThumbnail,
 };

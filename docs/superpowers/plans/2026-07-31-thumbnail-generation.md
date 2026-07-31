@@ -189,14 +189,14 @@ Create `scripts/test-thumbnail-generation.js` (repo convention: ad-hoc
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
+const sharp = require('sharp');
 const { uploadBufferToStorage } = require('../src/services/storage.service');
 
 async function main() {
-    // 1x1 kırmızı piksel PNG (minimal fixture, harici dosyaya bağımlı değil)
-    const pngBuffer = Buffer.from(
-        '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a4944415478da6360000002000155a2415500000000049454e44ae426082',
-        'hex'
-    );
+    // 1x1 kırmızı piksel PNG (Sharp ile üretildi — harici dosyaya bağımlı değil)
+    const pngBuffer = await sharp({
+        create: { width: 1, height: 1, channels: 3, background: { r: 255, g: 0, b: 0 } }
+    }).png().toBuffer();
 
     const storagePath = `test/thumb-check-${Date.now()}.png`;
     const publicUrl = await uploadBufferToStorage(pngBuffer, storagePath);

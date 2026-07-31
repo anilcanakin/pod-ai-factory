@@ -114,7 +114,7 @@ router.post('/remove-bg', async (req, res) => {
         });
 
     } catch (err) {
-        console.error('[Remove BG]', err);
+        console.error('[Remove BG]', JSON.stringify(err.body, null, 2));
         res.status(500).json({ error: err.message });
     }
 });

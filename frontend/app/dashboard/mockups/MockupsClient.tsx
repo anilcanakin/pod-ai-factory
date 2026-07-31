@@ -1352,6 +1352,17 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 e.preventDefault();
                 return;
             }
+
+            // Design resize handle (bottom-right corner of the design's own box)
+            const resizeHandlePos = getDesignResizeHandleWorldPos(
+                canvasForHandle, activeAreaBoxForHandle, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation
+            );
+            const resizeHitR = Math.max(12, canvasForHandle.width * 0.015);
+            if (Math.hypot(pxX - resizeHandlePos.x, pxY - resizeHandlePos.y) <= resizeHitR) {
+                setResizingDesign(true);
+                e.preventDefault();
+                return;
+            }
         }
 
         // Check additional print areas first (topmost = last in array)
@@ -1405,6 +1416,22 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 const { centerX, centerY } = getDesignBounds(canvas, activeAreaBoxForRotate, activeDesignImgForRotate, designScale, designOffsetX, designOffsetY);
                 const angleDeg = Math.atan2(pxX - centerX, -(pxY - centerY)) * 180 / Math.PI;
                 setDesignRotation(Math.round(angleDeg));
+            }
+            return;
+        }
+
+        // Resizing the placed design via its own corner handle (never touches printArea)
+        if (resizingDesign) {
+            const canvas = canvasRef.current;
+            const activeDesignImgForResize = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+            if (canvas && activeDesignImgForResize) {
+                const pxX = x * canvas.width, pxY = y * canvas.height;
+                const activeAreaBoxForResize = printAreas.find(a => a.id === activeAreaId) ?? printArea;
+                const { centerX, centerY, designW, designH } = getDesignBounds(canvas, activeAreaBoxForResize, activeDesignImgForResize, designScale, designOffsetX, designOffsetY);
+                const distMouse = Math.hypot(pxX - centerX, pxY - centerY);
+                const unscaledHalfDiag = Math.hypot(designW / designScale, designH / designScale) / 2;
+                const newScale = distMouse / unscaledHalfDiag;
+                setDesignScale(Math.max(0.2, Math.min(1.5, newScale)));
             }
             return;
         }
@@ -1468,6 +1495,15 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 canvas.style.cursor = 'grab';
                 return;
             }
+
+            const resizeHandlePos = getDesignResizeHandleWorldPos(
+                canvas, activeAreaBoxForCursor, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation
+            );
+            const resizeHitR = Math.max(12, canvas.width * 0.015);
+            if (Math.hypot(pxX - resizeHandlePos.x, pxY - resizeHandlePos.y) <= resizeHitR) {
+                canvas.style.cursor = 'nwse-resize';
+                return;
+            }
         }
 
         const hs = 0.02;
@@ -1498,6 +1534,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         setDraggingAreaId(null);
         setResizingAreaId(null);
         setRotatingDesign(false);
+        setResizingDesign(false);
     };
 
     // Actions

@@ -908,6 +908,29 @@ function getRotateHandleWorldPos(
     };
 }
 
+// World-space (canvas pixel) position of the design's own bottom-right resize
+// handle — the local point (designW/2, designH/2), rotated by designRotation
+// around the design center. Separate from the print-area's own resize handle:
+// dragging this changes designScale, never printArea/printAreas[].
+function getDesignResizeHandleWorldPos(
+    canvas: HTMLCanvasElement,
+    printArea: { x: number; y: number; width: number; height: number },
+    designImg: HTMLImageElement,
+    designScale: number,
+    designOffsetX: number,
+    designOffsetY: number,
+    designRotation: number
+) {
+    const { centerX, centerY, designW, designH } = getDesignBounds(canvas, printArea, designImg, designScale, designOffsetX, designOffsetY);
+    const localX = designW / 2;
+    const localY = designH / 2;
+    const rad = (designRotation * Math.PI) / 180;
+    return {
+        x: centerX + localX * Math.cos(rad) - localY * Math.sin(rad),
+        y: centerY + localX * Math.sin(rad) + localY * Math.cos(rad),
+    };
+}
+
 // ─── Template Editor with Konva Canvas ───────────────────────────────────────
 function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, designImageId, productColor, onColorChange }: {
     template: MockupTemplate;
@@ -1044,6 +1067,8 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
 
     // Drag state (rotate handle on the placed design)
     const [rotatingDesign, setRotatingDesign] = useState(false);
+    // Drag state (resize handle on the placed design — separate from print-area resize)
+    const [resizingDesign, setResizingDesign] = useState(false);
 
     // Load base image (switches when dark/light toggled)
     const activePath = useDark && template.darkImagePath ? template.darkImagePath : template.baseImagePath;

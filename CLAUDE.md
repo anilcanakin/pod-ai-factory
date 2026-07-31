@@ -16,6 +16,7 @@ Son güncelleme: 15 Mayıs 2026
 
 - Kod yazarken, test çalıştırırken, commit atarken onay sorma — direkt yap.
 - Sadece destructive git işlemlerinde (force push, hard reset, branch silme) sor.
+- Her commit sonrası otomatik olarak push et, kullanıcıya ayrıca sormaya gerek yok — "Onaylıyor musun?" onayı zaten push dahil tüm işlemi kapsar. İstisna: kullanıcı açıkça "push etme, önce göreyim" derse bekle.
 
 ---
 

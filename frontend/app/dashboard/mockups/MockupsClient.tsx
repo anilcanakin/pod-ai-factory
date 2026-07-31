@@ -908,6 +908,29 @@ function getRotateHandleWorldPos(
     };
 }
 
+// World-space (canvas pixel) position of the design's own bottom-right resize
+// handle — the local point (designW/2, designH/2), rotated by designRotation
+// around the design center. Separate from the print-area's own resize handle:
+// dragging this changes designScale, never printArea/printAreas[].
+function getDesignResizeHandleWorldPos(
+    canvas: HTMLCanvasElement,
+    printArea: { x: number; y: number; width: number; height: number },
+    designImg: HTMLImageElement,
+    designScale: number,
+    designOffsetX: number,
+    designOffsetY: number,
+    designRotation: number
+) {
+    const { centerX, centerY, designW, designH } = getDesignBounds(canvas, printArea, designImg, designScale, designOffsetX, designOffsetY);
+    const localX = designW / 2;
+    const localY = designH / 2;
+    const rad = (designRotation * Math.PI) / 180;
+    return {
+        x: centerX + localX * Math.cos(rad) - localY * Math.sin(rad),
+        y: centerY + localX * Math.sin(rad) + localY * Math.cos(rad),
+    };
+}
+
 // ─── Template Editor with Konva Canvas ───────────────────────────────────────
 function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, designImageId, productColor, onColorChange }: {
     template: MockupTemplate;
@@ -1044,6 +1067,8 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
 
     // Drag state (rotate handle on the placed design)
     const [rotatingDesign, setRotatingDesign] = useState(false);
+    // Drag state (resize handle on the placed design — separate from print-area resize)
+    const [resizingDesign, setResizingDesign] = useState(false);
 
     // Load base image (switches when dark/light toggled)
     const activePath = useDark && template.darkImagePath ? template.darkImagePath : template.baseImagePath;
@@ -1191,6 +1216,16 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             ctx.strokeStyle = '#3b82f6';
             ctx.lineWidth = 2;
             ctx.stroke();
+
+            // Design resize handle — bottom-right corner of the design's own bounding
+            // box, square (vs. the rotate handle's circle) so the two read as distinct.
+            // Separate from the print-area's own bottom-right resize handle.
+            const resizeHandleSize = Math.max(12, canvas.width * 0.016);
+            ctx.fillStyle = resizingDesign ? '#3b82f6' : '#ffffff';
+            ctx.fillRect(designW / 2 - resizeHandleSize / 2, designH / 2 - resizeHandleSize / 2, resizeHandleSize, resizeHandleSize);
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(designW / 2 - resizeHandleSize / 2, designH / 2 - resizeHandleSize / 2, resizeHandleSize, resizeHandleSize);
             ctx.restore();
         }
 
@@ -1260,7 +1295,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         }
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [printArea, printAreas, activeAreaId, areaDesigns, opacity, blendMode, rotation, baseLoaded, canvasSize, designScale, designOffsetX, designOffsetY, designRotation, rotatingDesign]);
+    }, [printArea, printAreas, activeAreaId, areaDesigns, opacity, blendMode, rotation, baseLoaded, canvasSize, designScale, designOffsetX, designOffsetY, designRotation, rotatingDesign, resizingDesign]);
 
     useEffect(() => {
         let rafId: number;
@@ -1317,6 +1352,17 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 e.preventDefault();
                 return;
             }
+
+            // Design resize handle (bottom-right corner of the design's own box)
+            const resizeHandlePos = getDesignResizeHandleWorldPos(
+                canvasForHandle, activeAreaBoxForHandle, activeDesignImgForHandle, designScale, designOffsetX, designOffsetY, designRotation
+            );
+            const resizeHitR = Math.max(12, canvasForHandle.width * 0.015);
+            if (Math.hypot(pxX - resizeHandlePos.x, pxY - resizeHandlePos.y) <= resizeHitR) {
+                setResizingDesign(true);
+                e.preventDefault();
+                return;
+            }
         }
 
         // Check additional print areas first (topmost = last in array)
@@ -1370,6 +1416,22 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 const { centerX, centerY } = getDesignBounds(canvas, activeAreaBoxForRotate, activeDesignImgForRotate, designScale, designOffsetX, designOffsetY);
                 const angleDeg = Math.atan2(pxX - centerX, -(pxY - centerY)) * 180 / Math.PI;
                 setDesignRotation(Math.round(angleDeg));
+            }
+            return;
+        }
+
+        // Resizing the placed design via its own corner handle (never touches printArea)
+        if (resizingDesign) {
+            const canvas = canvasRef.current;
+            const activeDesignImgForResize = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+            if (canvas && activeDesignImgForResize) {
+                const pxX = x * canvas.width, pxY = y * canvas.height;
+                const activeAreaBoxForResize = printAreas.find(a => a.id === activeAreaId) ?? printArea;
+                const { centerX, centerY, designW, designH } = getDesignBounds(canvas, activeAreaBoxForResize, activeDesignImgForResize, designScale, designOffsetX, designOffsetY);
+                const distMouse = Math.hypot(pxX - centerX, pxY - centerY);
+                const unscaledHalfDiag = Math.hypot(designW / designScale, designH / designScale) / 2;
+                const newScale = distMouse / unscaledHalfDiag;
+                setDesignScale(Math.max(0.2, Math.min(1.5, newScale)));
             }
             return;
         }
@@ -1433,6 +1495,15 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 canvas.style.cursor = 'grab';
                 return;
             }
+
+            const resizeHandlePos = getDesignResizeHandleWorldPos(
+                canvas, activeAreaBoxForCursor, activeDesignImgForCursor, designScale, designOffsetX, designOffsetY, designRotation
+            );
+            const resizeHitR = Math.max(12, canvas.width * 0.015);
+            if (Math.hypot(pxX - resizeHandlePos.x, pxY - resizeHandlePos.y) <= resizeHitR) {
+                canvas.style.cursor = 'nwse-resize';
+                return;
+            }
         }
 
         const hs = 0.02;
@@ -1463,6 +1534,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         setDraggingAreaId(null);
         setResizingAreaId(null);
         setRotatingDesign(false);
+        setResizingDesign(false);
     };
 
     // Actions

@@ -61,6 +61,48 @@ function hexToRgb(hex) {
   return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
 }
 
+function mixRgb(c1, c2, t) {
+  return {
+    r: c1.r + (c2.r - c1.r) * t,
+    g: c1.g + (c2.g - c1.g) * t,
+    b: c1.b + (c2.b - c1.b) * t,
+  };
+}
+
+// BiRefNet'in gerçek alpha'sını koruyup RGB'yi tint renginin koyu/açık
+// varyasyonları arasında bir duotone gradyanına map eder — düz gri yerine
+// sıcak bej/altın ton. Gravür/pencil-sketch AI çıktısı zaten yeterli detay
+// ve kontrastta (bkz. output-ai-raw.png testi) — posterize/gamma EKLENMEZ,
+// 256 seviyelik luminance'ın tamamı korunarak düz lineer renk haritalanır.
+async function applyRealAlphaDuotone(grayBuffer, tintHex) {
+  const { data, info } = await sharp(grayBuffer)
+    .ensureAlpha()
+    .toColourspace('srgb')
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width, height, channels } = info;
+  const tint  = hexToRgb(tintHex);
+  const dark  = mixRgb(tint, { r: 0, g: 0, b: 0 }, 0.55);   // koyu bej
+  const light = mixRgb(tint, { r: 255, g: 255, b: 255 }, 0.55); // açık krem
+
+  const out = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    const o = i * channels;
+    const lum   = data[o]; // grayscale — R kanalı luminance'ı taşır
+    const alpha = data[o + 3];
+    const v = lum / 255; // ham luminance, posterize/gamma yok
+
+    const oo = i * 4;
+    out[oo]     = Math.round(dark.r + (light.r - dark.r) * v);
+    out[oo + 1] = Math.round(dark.g + (light.g - dark.g) * v);
+    out[oo + 2] = Math.round(dark.b + (light.b - dark.b) * v);
+    out[oo + 3] = alpha;
+  }
+
+  return sharp(out, { raw: { width, height, channels: 4 } }).png().toBuffer();
+}
+
 function resolvePath(p) {
   if (Buffer.isBuffer(p)) return p;
   return path.isAbsolute(p) ? p : path.join(REPO_ROOT, p);
@@ -172,6 +214,22 @@ async function buildGrainOverlay(width, height, opacity) {
     .toBuffer();
 }
 
+// Şablonun kendi photoSlot kutusu şablon SANATININ İÇİNDE düz/flat koyu bir
+// dikdörtgen olarak çizilmiş (pet-fury-shell.png'de luminance≈10), etraftaki
+// grunge dokusu ise gürültülü (luminance≈30-55) — kedi kutunun her noktasını
+// kaplamadığında (köşeler, boşluklar) bu düz-vs-dokulu fark "kutu kenarı" gibi
+// görünüyor. Kedi compositelenmeden ÖNCE kutu alanına, çevredeki grunge ile
+// aynı luminance aralığında gürültü basıp flat alanı dokuyla eşleştiriyoruz.
+async function buildBoxGrungeMatch(width, height) {
+  const buf = Buffer.alloc(width * height);
+  for (let i = 0; i < buf.length; i++) buf[i] = 20 + Math.floor(Math.random() * 35); // ~20-55, çevre grunge aralığı
+  return sharp(buf, { raw: { width, height, channels: 1 } })
+    .toColourspace('srgb')
+    .ensureAlpha(0.85)
+    .png()
+    .toBuffer();
+}
+
 // Fotoğrafın alt kenarı şeffaflığa (siyah zemine) fade eder — dest-in alpha mask
 function buildBottomFadeMaskSvg(width, height, fadeStart) {
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
@@ -203,11 +261,12 @@ function buildSideFadeMaskSvg(width, height, fadePercent) {
 
 // ── KATMAN 1: AI Fotoğraf Dönüşümü (fal-ai/gpt-image-2, image-to-image) ────────
 const AI_TRANSFORM_MODEL  = 'openai/gpt-image-2/edit'; // edit/i2i varyantı — image_urls'i gerçekten referans alır, düz 'fal-ai/gpt-image-2' text-to-image'dir ve girdi görselini yok sayar
-const AI_TRANSFORM_PROMPT = 'Transform this photo into a vintage 90s bootleg band tour '
-  + 't-shirt illustration style, distressed grunge texture, halftone print effect, faded '
-  + "single-color sepia/cream print look on black background, keep the subject's likeness "
-  + 'and pose recognizable, no text, no lettering, just the illustrated portrait, isolated '
-  + 'on plain black background';
+const AI_TRANSFORM_PROMPT = 'Transform this photo into a fine-line engraving portrait, '
+  + 'detailed pencil sketch style with cross-hatching technique, realistic tonal gradients '
+  + 'through line density (not dots), clean hand-drawn illustration look, black ink on '
+  + "transparent background, no halftone pattern, no color, keep the subject's likeness and "
+  + 'pose recognizable, high detail in fur/hair texture, no text, no lettering, isolated '
+  + 'portrait, no background elements';
 
 // customerPhoto → stilize illüstrasyon buffer. Hata durumunda çağıran taraf (generateFuryTourPoster)
 // Sharp-only fallback'e düşer — burada fırlatılan hata orada yakalanır.
@@ -371,10 +430,14 @@ async function generateFuryTourPoster({
     // Not: composite() ikinci kez çağrılırsa öncekini override eder (merge etmez) —
     // bu yüzden shell'i tuvale materialize edip TEK composite ile devam ediyoruz;
     // aksi halde birazdan eklenecek foto composite'i şablonu sessizce silerdi.
-    const shellResized = await sharp(shellPath).resize(containW, containH).toBuffer();
+    const shellResized  = await sharp(shellPath).resize(containW, containH).toBuffer();
+    const boxGrungeMatch = await buildBoxGrungeMatch(slotW, slotH);
     const canvasWithShell = await sharp({
       create: { width: OUTPUT_W, height: OUTPUT_H, channels: 3, background: { r: 0, g: 0, b: 0 } },
-    }).composite([{ input: shellResized, left: offsetX, top: offsetY }]).png().toBuffer();
+    }).composite([
+      { input: shellResized, left: offsetX, top: offsetY },
+      { input: boxGrungeMatch, left: slotX, top: slotY }, // kutunun flat rengini çevredeki grunge ile eşleştir — kedi üstüne binecek
+    ]).png().toBuffer();
     baseInput = sharp(canvasWithShell);
   } else {
     // Poster modu — mutlak px, varsayılanlar
@@ -443,7 +506,10 @@ async function generateFuryTourPoster({
   // ise "kumaşa gömülü" alpha efekti, değilse halftone + opak bej multiply blend ──
   let duotonePhoto;
   if (aiHasRealAlpha) {
-    duotonePhoto = fitted;
+    duotonePhoto = await applyRealAlphaDuotone(fitted, tint);
+    if (process.env.DEBUG_CAT_ALONE) {
+      try { fs.writeFileSync(process.env.DEBUG_CAT_ALONE, duotonePhoto); } catch (_) {}
+    }
   } else if (fabricBlend) {
     duotonePhoto = await applyFabricBlendEffect(fitted, { intensity: fabricIntensity });
   } else {
@@ -633,4 +699,5 @@ module.exports = {
   generateFuryTourPoster,
   composePhoto,
   applyFabricBlendEffect,
+  transformPhotoWithAI,
 };

@@ -22,7 +22,7 @@ async function main() {
     },
     useAI: true,
     fabricBlend: true,
-    outputPath: 'uploads/temp/output-test-realbg.png',
+    outputPath: 'uploads/temp/output-test-boxfix.png',
   });
   const outHash = crypto.createHash('sha256').update(result.buffer).digest('hex').slice(0, 12);
   console.log(`[TEST][${runId}] END t=${new Date().toISOString()} OK ${result.outputPath} ${result.width}x${result.height} outHash=${outHash} bytes=${result.buffer.length}`);

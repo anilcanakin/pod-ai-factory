@@ -40,6 +40,8 @@ export function PersonalizationClient() {
 
     const [orders, setOrders] = useState<PersonalizationOrder[]>([]);
     const [loadingOrders, setLoadingOrders] = useState(true);
+    const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+    const [brokenThumbIds, setBrokenThumbIds] = useState<Set<string>>(new Set());
 
     const loadTemplates = useCallback(async () => {
         setLoadingTemplates(true);
@@ -186,7 +188,7 @@ export function PersonalizationClient() {
                                     )}
                                 >
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={resolveUrl(t.baseArtworkUrl)} alt={t.name} className="w-full h-full object-cover" />
+                                    <img src={resolveUrl(t.baseArtworkUrl)} alt={t.name} className="w-full h-full object-cover bg-white" />
                                     <div className="absolute inset-x-0 bottom-0 bg-black/70 px-2 py-1.5">
                                         <p className="text-[10px] font-medium text-white truncate">{t.name}</p>
                                         <p className="text-[9px] text-white/60 capitalize">{t.occasion}</p>
@@ -213,7 +215,7 @@ export function PersonalizationClient() {
                             <>
                                 <div className="flex items-center gap-3 p-2 rounded-lg bg-bg-base border border-border-subtle">
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={resolveUrl(selectedTemplate.baseArtworkUrl)} alt={selectedTemplate.name} className="w-12 h-12 rounded-lg object-cover" />
+                                    <img src={resolveUrl(selectedTemplate.baseArtworkUrl)} alt={selectedTemplate.name} className="w-12 h-12 rounded-lg object-cover bg-white" />
                                     <div>
                                         <p className="text-xs font-medium text-text-primary">{selectedTemplate.name}</p>
                                         <p className="text-[10px] text-text-tertiary capitalize">{selectedTemplate.occasion}</p>
@@ -297,15 +299,29 @@ export function PersonalizationClient() {
                                 <tr>
                                     <td colSpan={5} className="px-6 py-10 text-center text-xs text-text-tertiary">Henüz sipariş yok.</td>
                                 </tr>
-                            ) : orders.map(o => (
+                            ) : orders.map(o => {
+                                const thumbUrl = o.customerPhotoUrl || o.printFileUrl;
+                                const thumbBroken = brokenThumbIds.has(o.id);
+                                return (
                                 <tr key={o.id} className="text-sm hover:bg-white/5 transition-colors">
                                     <td className="px-6 py-3">
-                                        {o.customerPhotoUrl ? (
-                                            /* eslint-disable-next-line @next/next/no-img-element */
-                                            <img src={resolveUrl(o.customerPhotoUrl)} alt="" className="w-10 h-10 rounded-lg object-cover border border-border-subtle" />
+                                        {thumbUrl && !thumbBroken ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setLightboxUrl(resolveUrl(thumbUrl))}
+                                                className="block w-10 h-10 rounded-lg overflow-hidden border border-border-subtle bg-white hover:border-accent transition-colors"
+                                            >
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img
+                                                    src={resolveUrl(thumbUrl)}
+                                                    alt=""
+                                                    className="w-full h-full object-cover"
+                                                    onError={() => setBrokenThumbIds(prev => new Set(prev).add(o.id))}
+                                                />
+                                            </button>
                                         ) : (
                                             <div className="w-10 h-10 rounded-lg border border-border-subtle bg-bg-base flex items-center justify-center text-text-tertiary text-[9px]">
-                                                Metin
+                                                {thumbBroken ? '—' : 'Metin'}
                                             </div>
                                         )}
                                     </td>
@@ -324,11 +340,32 @@ export function PersonalizationClient() {
                                         )}
                                     </td>
                                 </tr>
-                            ))}
+                            );})}
                         </tbody>
                     </table>
                 </div>
             </section>
+
+            {lightboxUrl && (
+                <div
+                    className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6"
+                    onClick={() => setLightboxUrl(null)}
+                >
+                    <button
+                        onClick={() => setLightboxUrl(null)}
+                        className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                        src={lightboxUrl}
+                        alt=""
+                        className="max-w-full max-h-full rounded-xl object-contain bg-white"
+                        onClick={e => e.stopPropagation()}
+                    />
+                </div>
+            )}
         </div>
     );
 }

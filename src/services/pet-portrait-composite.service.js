@@ -31,12 +31,38 @@ const RMBG_FALLBACK_MODEL = 'fal-ai/bria/background/remove';
 
 // Sabit slogan — her siparişte aynı, template'e gömülü, hiçbir zaman değişmez.
 const SLOGAN_TEXT   = 'BEST FRIENDS FOREVER';
-const OVERLAY_FONT  = 'MetalMania-Regular'; // gravür/sepia temasına uygun
+// MetalMania yerine EB Garamond — 3 font karşılaştırmasında en nötr/güvenli seçim
+// (gravür/sepia temasıyla çakışmıyor, okunaklılığı script fontlardan daha tutarlı).
+const OVERLAY_FONT  = 'EBGaramond-Regular';
 const OVERLAY_COLOR = '#2b1c12'; // koyu sepia-kahve, gravür portrede okunaklı
 
 function resolvePath(p) {
   if (Buffer.isBuffer(p)) return p;
   return path.isAbsolute(p) ? p : path.join(REPO_ROOT, p);
+}
+
+// Şeffaf portrenin gerçek konu (subject) sınırlarını alpha kanalından bulur —
+// aspect-fit letterbox boşlukları (offsetX/offsetY) subject'in NEREDE oturduğunu
+// yansıtmaz, bu yüzden metin yerleşimi sabit yüzde yerine buna göre hesaplanır.
+async function findSubjectAlphaBounds(buffer) {
+  const ALPHA_THRESHOLD = 10; // anti-alias/gürültü kenarlarını subject saymamak için
+  const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+
+  let top = null, bottom = null;
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * width * channels;
+    let rowHasSubject = false;
+    for (let x = 0; x < width; x++) {
+      if (data[rowStart + x * channels + 3] > ALPHA_THRESHOLD) { rowHasSubject = true; break; }
+    }
+    if (rowHasSubject) {
+      if (top === null) top = y;
+      bottom = y;
+    }
+  }
+  if (top === null) return { top: 0, bottom: height - 1 }; // tamamen şeffaf — fallback tüm yükseklik
+  return { top, bottom };
 }
 
 async function toJpegDataUrl(input, maxDim = 1600) {
@@ -225,20 +251,37 @@ async function composeOntoTemplate(transparentPortraitBuffer, template, names = 
   // İki ayrı metin katmanı — AI'ya yazdırılmıyor, Sharp/SVG ile basılıyor:
   //  1. Sabit slogan (SLOGAN_TEXT) — üstte, küçük, her siparişte aynı
   //  2. Değişken isimler (names) — altta, büyük, sadece içerik değişir, stil sabit
+  // Konumlandırma canvasH'e göre sabit yüzde DEĞİL — fitted içindeki gerçek subject
+  // (konu) alpha sınırına göre oransal: slogan subject'in üstünde, isim altında,
+  // aradaki boşluk fitted'ın letterbox boyutuna göre değişse de subject'e yakın kalır.
   const overlayFontPath = FONT_REGISTRY[OVERLAY_FONT];
+  const subjectBounds = await findSubjectAlphaBounds(fitted);
+  const subjectTop    = offsetY + subjectBounds.top;
+  const subjectBottom = offsetY + subjectBounds.bottom;
+  const margin = Math.round(canvasH * 0.025); // subject ile metin arası oransal boşluk
 
+  const sloganSize = Math.round(canvasW * 0.028);
+  // baseline subject'in hemen üstünde, ama tuval üst kenarından taşmasın diye clamp
+  const sloganY = Math.max(Math.round(canvasH * 0.05), subjectTop - margin);
   const sloganLayer = {
-    x: canvasW / 2, y: Math.round(canvasH * 0.08),
-    font: OVERLAY_FONT, size: Math.round(canvasW * 0.028), color: OVERLAY_COLOR, align: 'center',
+    x: canvasW / 2, y: sloganY,
+    font: OVERLAY_FONT, size: sloganSize, color: OVERLAY_COLOR, align: 'center',
   };
   const sloganSvg = buildTextPathSvg({ canvasW, canvasH, layer: sloganLayer, text: SLOGAN_TEXT, fontPath: overlayFontPath });
   let overlayBuf = await chain.png().toBuffer();
   chain = sharp(overlayBuf).composite([{ input: Buffer.from(sloganSvg), blend: 'over' }]);
 
   if (names && String(names).trim()) {
+    const namesSize = Math.round(canvasW * 0.05);
+    // baseline subject'in hemen altında (ascent payı ~0.75×fontSize), tuval alt
+    // kenarından taşmasın diye clamp
+    const namesY = Math.min(
+      Math.round(canvasH * 0.97),
+      subjectBottom + margin + Math.round(namesSize * 0.75)
+    );
     const namesLayer = {
-      x: canvasW / 2, y: Math.round(canvasH * 0.94),
-      font: OVERLAY_FONT, size: Math.round(canvasW * 0.05), color: OVERLAY_COLOR, align: 'center',
+      x: canvasW / 2, y: namesY,
+      font: OVERLAY_FONT, size: namesSize, color: OVERLAY_COLOR, align: 'center',
       maxWidth: Math.round(canvasW * 0.85),
     };
     const namesSvg = buildTextPathSvg({ canvasW, canvasH, layer: namesLayer, text: String(names).trim(), fontPath: overlayFontPath });

@@ -1080,6 +1080,61 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
     // Drag state (resize handle on the placed design — separate from print-area resize)
     const [resizingDesign, setResizingDesign] = useState(false);
 
+    // Placeit-style "Crop/Onayla" lock — per area. Locked area: handles hidden,
+    // canvas drag/resize/rotate disabled, Design Position sliders replaced by "Düzenle".
+    const [lockedAreaIds, setLockedAreaIds] = useState<Set<string>>(new Set());
+    // Locked area'ların designScale/Offset/Rotation anlık görüntüsü — designScale vb.
+    // tüm alanlar arasında PAYLAŞILAN tek state olduğundan (bilinen ön-koşul), başka bir
+    // alana geçilip geri dönüldüğünde kilitli alanın son onaylanmış haline döner.
+    const [areaTransforms, setAreaTransforms] = useState<Record<string, {
+        scale: number; offsetX: number; offsetY: number; rotation: number;
+    }>>({});
+
+    // Aktif alanı seçer; kilitliyse o alanın onaylanmış transform snapshot'ını geri yükler.
+    const selectArea = (id: string | null) => {
+        setActiveAreaId(id);
+        if (id && lockedAreaIds.has(id) && areaTransforms[id]) {
+            const t = areaTransforms[id];
+            setDesignScale(t.scale);
+            setDesignOffsetX(t.offsetX);
+            setDesignOffsetY(t.offsetY);
+            setDesignRotation(t.rotation);
+        }
+    };
+
+    const confirmActiveAreaPlacement = () => {
+        if (!activeAreaId) return;
+        setAreaTransforms(prev => ({
+            ...prev,
+            [activeAreaId]: { scale: designScale, offsetX: designOffsetX, offsetY: designOffsetY, rotation: designRotation },
+        }));
+        setLockedAreaIds(prev => new Set(prev).add(activeAreaId));
+    };
+
+    const editActiveAreaPlacement = () => {
+        if (!activeAreaId) return;
+        setLockedAreaIds(prev => {
+            const next = new Set(prev);
+            next.delete(activeAreaId);
+            return next;
+        });
+    };
+
+    const clearAreaLock = (areaId: string) => {
+        setLockedAreaIds(prev => {
+            if (!prev.has(areaId)) return prev;
+            const next = new Set(prev);
+            next.delete(areaId);
+            return next;
+        });
+        setAreaTransforms(prev => {
+            if (!(areaId in prev)) return prev;
+            const next = { ...prev };
+            delete next[areaId];
+            return next;
+        });
+    };
+
     // Load base image (switches when dark/light toggled)
     const activePath = useDark && template.darkImagePath ? template.darkImagePath : template.baseImagePath;
     useEffect(() => {
@@ -1183,6 +1238,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
 
         // Design — the currently active print area's assigned design (live preview)
         const activeDesignImg = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        const activeAreaLocked = activeAreaId ? lockedAreaIds.has(activeAreaId) : false;
         if (activeDesignImg && activeDesignImg.complete && activeDesignImg.naturalWidth) {
             ctx.save();
             ctx.globalAlpha = opacity;
@@ -1206,37 +1262,41 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             ctx.drawImage(designImg, -designW / 2, -designH / 2, designW, designH);
             ctx.restore();
 
-            // Rotate handle — own transform/opacity scope so low design opacity or
-            // multiply blend mode never hides the handle itself
-            ctx.save();
-            ctx.translate(designX + designW / 2, designY + designH / 2);
-            ctx.rotate((designRotation * Math.PI) / 180);
-            const handleOffset = Math.max(24, canvas.width * 0.03);
-            const handleRadius = Math.max(7, canvas.width * 0.009);
-            ctx.beginPath();
-            ctx.moveTo(0, -designH / 2);
-            ctx.lineTo(0, -designH / 2 - handleOffset);
-            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-            ctx.lineWidth = Math.max(1.5, canvas.width * 0.002);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.arc(0, -designH / 2 - handleOffset, handleRadius, 0, Math.PI * 2);
-            ctx.fillStyle = rotatingDesign ? '#3b82f6' : '#ffffff';
-            ctx.fill();
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 2;
-            ctx.stroke();
+            // Rotate/resize handle'lar — yerleşim onaylandıysa (Placeit "Crop" adımı)
+            // tamamen gizlenir; tasarımın kendisi her zaman render edilir.
+            if (!activeAreaLocked) {
+                // Own transform/opacity scope so low design opacity or
+                // multiply blend mode never hides the handle itself
+                ctx.save();
+                ctx.translate(designX + designW / 2, designY + designH / 2);
+                ctx.rotate((designRotation * Math.PI) / 180);
+                const handleOffset = Math.max(24, canvas.width * 0.03);
+                const handleRadius = Math.max(7, canvas.width * 0.009);
+                ctx.beginPath();
+                ctx.moveTo(0, -designH / 2);
+                ctx.lineTo(0, -designH / 2 - handleOffset);
+                ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+                ctx.lineWidth = Math.max(1.5, canvas.width * 0.002);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(0, -designH / 2 - handleOffset, handleRadius, 0, Math.PI * 2);
+                ctx.fillStyle = rotatingDesign ? '#3b82f6' : '#ffffff';
+                ctx.fill();
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 2;
+                ctx.stroke();
 
-            // Design resize handle — bottom-right corner of the design's own bounding
-            // box, square (vs. the rotate handle's circle) so the two read as distinct.
-            // Separate from the print-area's own bottom-right resize handle.
-            const resizeHandleSize = Math.max(12, canvas.width * 0.016);
-            ctx.fillStyle = resizingDesign ? '#3b82f6' : '#ffffff';
-            ctx.fillRect(designW / 2 - resizeHandleSize / 2, designH / 2 - resizeHandleSize / 2, resizeHandleSize, resizeHandleSize);
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(designW / 2 - resizeHandleSize / 2, designH / 2 - resizeHandleSize / 2, resizeHandleSize, resizeHandleSize);
-            ctx.restore();
+                // Design resize handle — bottom-right corner of the design's own bounding
+                // box, square (vs. the rotate handle's circle) so the two read as distinct.
+                // Separate from the print-area's own bottom-right resize handle.
+                const resizeHandleSize = Math.max(12, canvas.width * 0.016);
+                ctx.fillStyle = resizingDesign ? '#3b82f6' : '#ffffff';
+                ctx.fillRect(designW / 2 - resizeHandleSize / 2, designH / 2 - resizeHandleSize / 2, resizeHandleSize, resizeHandleSize);
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(designW / 2 - resizeHandleSize / 2, designH / 2 - resizeHandleSize / 2, resizeHandleSize, resizeHandleSize);
+                ctx.restore();
+            }
         }
 
         // Print region border — sadece printAreas boşsa VE alana henüz tasarım
@@ -1307,7 +1367,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         }
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [printArea, printAreas, activeAreaId, areaDesigns, opacity, blendMode, rotation, baseLoaded, canvasSize, designScale, designOffsetX, designOffsetY, designRotation, rotatingDesign, resizingDesign]);
+    }, [printArea, printAreas, activeAreaId, areaDesigns, opacity, blendMode, rotation, baseLoaded, canvasSize, designScale, designOffsetX, designOffsetY, designRotation, rotatingDesign, resizingDesign, lockedAreaIds]);
 
     useEffect(() => {
         let rafId: number;
@@ -1349,10 +1409,12 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         const { x, y } = getCoords(e);
         const hs = 0.02;
 
-        // Rotate handle (only when a design is placed in the primary print area)
+        // Rotate handle (only when a design is placed in the primary print area,
+        // and the area's placement hasn't been confirmed/locked yet)
         const canvasForHandle = canvasRef.current;
         const activeDesignImgForHandle = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
-        if (canvasForHandle && activeDesignImgForHandle) {
+        const activeAreaLockedForHandle = activeAreaId ? lockedAreaIds.has(activeAreaId) : false;
+        if (canvasForHandle && activeDesignImgForHandle && !activeAreaLockedForHandle) {
             const pxX = x * canvasForHandle.width, pxY = y * canvasForHandle.height;
             const activeAreaBoxForHandle = printAreas.find(a => a.id === activeAreaId) ?? printArea;
             const handlePos = getRotateHandleWorldPos(
@@ -1501,7 +1563,8 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         if (!canvas) return;
 
         const activeDesignImgForCursor = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
-        if (activeDesignImgForCursor) {
+        const activeAreaLockedForCursor = activeAreaId ? lockedAreaIds.has(activeAreaId) : false;
+        if (activeDesignImgForCursor && !activeAreaLockedForCursor) {
             const pxX = x * canvas.width, pxY = y * canvas.height;
             const activeAreaBoxForCursor = printAreas.find(a => a.id === activeAreaId) ?? printArea;
             const handlePos = getRotateHandleWorldPos(
@@ -1774,7 +1837,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                         {printAreas.map(area => (
                                             <div
                                                 key={area.id}
-                                                onClick={() => setActiveAreaId(activeAreaId === area.id ? null : area.id)}
+                                                onClick={() => selectArea(activeAreaId === area.id ? null : area.id)}
                                                 className={cn(
                                                     'px-2 py-1.5 rounded-lg cursor-pointer transition-colors text-xs',
                                                     activeAreaId === area.id
@@ -1783,7 +1846,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                                 )}
                                             >
                                                 <div className="flex items-center justify-between">
-                                                    <span onClick={() => setActiveAreaId(area.id)}>{area.label}</span>
+                                                    <span onClick={() => selectArea(area.id)}>{area.label}</span>
                                                     <div className="flex items-center gap-1">
                                                         {!areaDesigns[area.id] && (
                                                             <span className="text-[9px] px-1.5 py-0.5 bg-slate-700 text-slate-500 rounded">auto</span>
@@ -1876,7 +1939,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                             return (
                                                 <button
                                                     key={area.id}
-                                                    onClick={() => setActiveAreaId(area.id)}
+                                                    onClick={() => selectArea(area.id)}
                                                     className={cn(
                                                         'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all',
                                                         isActive
@@ -1936,11 +1999,14 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                                         Change
                                                     </button>
                                                     <button
-                                                        onClick={() => setAreaDesigns(prev => {
-                                                            const next = { ...prev };
-                                                            delete next[activeAreaId];
-                                                            return next;
-                                                        })}
+                                                        onClick={() => {
+                                                            clearAreaLock(activeAreaId);
+                                                            setAreaDesigns(prev => {
+                                                                const next = { ...prev };
+                                                                delete next[activeAreaId];
+                                                                return next;
+                                                            });
+                                                        }}
                                                         className="flex-1 py-1.5 text-xs text-slate-500 hover:text-red-400 transition-colors"
                                                     >
                                                         Remove
@@ -1967,11 +2033,26 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                             </section>
 
                             {/* Design Transform Controls */}
-                            {Object.keys(areaDesigns).length > 0 && (
+                            {Object.keys(areaDesigns).length > 0 && (() => {
+                                const isCurrentAreaLocked = activeAreaId ? lockedAreaIds.has(activeAreaId) : false;
+                                return (
                                 <section>
                                     <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
                                         Design Position
                                     </h3>
+                                    {isCurrentAreaLocked ? (
+                                        <div className="space-y-2">
+                                            <p className="text-[11px] text-emerald-400 flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5" /> Yerleşim onaylandı
+                                            </p>
+                                            <button
+                                                onClick={editActiveAreaPlacement}
+                                                className="w-full py-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium border border-blue-500/30 hover:border-blue-500/50 rounded-lg transition-colors"
+                                            >
+                                                Düzenle
+                                            </button>
+                                        </div>
+                                    ) : (
                                     <div className="space-y-3">
                                         {/* Scale */}
                                         <div>
@@ -1985,7 +2066,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                                 className="w-full accent-blue-500 h-1.5"
                                             />
                                         </div>
-                                        
+
                                         {/* Horizontal offset */}
                                         <div>
                                             <label className="text-xs text-slate-400 flex items-center justify-between mb-1">
@@ -1998,7 +2079,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                                 className="w-full accent-blue-500 h-1.5"
                                             />
                                         </div>
-                                        
+
                                         {/* Vertical offset */}
                                         <div>
                                             <label className="text-xs text-slate-400 flex items-center justify-between mb-1">
@@ -2011,7 +2092,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                                 className="w-full accent-blue-500 h-1.5"
                                             />
                                         </div>
-                                        
+
                                         {/* Rotation */}
                                         <div>
                                             <label className="text-xs text-slate-400 flex items-center justify-between mb-1">
@@ -2024,7 +2105,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                                 className="w-full accent-blue-500 h-1.5"
                                             />
                                         </div>
-                                        
+
                                         {/* Reset button */}
                                         <button
                                             onClick={() => { setDesignScale(1); setDesignOffsetX(0); setDesignOffsetY(0); setDesignRotation(0); }}
@@ -2032,9 +2113,20 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                         >
                                             Reset Position
                                         </button>
+
+                                        {/* Confirm placement — Placeit "Crop" step */}
+                                        <button
+                                            onClick={confirmActiveAreaPlacement}
+                                            disabled={!activeAreaId}
+                                            className="w-full py-2 text-xs font-semibold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all flex items-center justify-center gap-1.5"
+                                        >
+                                            <CheckCircle2 className="w-3.5 h-3.5" /> Yerleşimi Onayla
+                                        </button>
                                     </div>
+                                    )}
                                 </section>
-                            )}
+                                );
+                            })()}
                         </div>
 
                         {/* Action Buttons */}
@@ -2267,6 +2359,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                     onClose={() => setShowDesignPicker(false)}
                     onSelect={(img) => {
                         if (activeAreaId) {
+                            clearAreaLock(activeAreaId);
                             setAreaDesigns(prev => ({
                                 ...prev,
                                 [activeAreaId]: img,
@@ -2281,6 +2374,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 <DesignPickerModal
                     onClose={() => setPickingDesignForAreaId(null)}
                     onSelect={(img) => {
+                        clearAreaLock(pickingDesignForAreaId);
                         setAreaDesigns(prev => ({
                             ...prev,
                             [pickingDesignForAreaId]: { id: img.id, imageUrl: img.imageUrl }

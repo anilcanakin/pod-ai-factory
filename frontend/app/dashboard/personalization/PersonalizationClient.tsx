@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Wand2, Upload, X, Loader2, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { cn, toThumbUrl } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { FileDropzone } from '@/components/shared/FileDropzone';
 import {
@@ -313,10 +313,17 @@ export function PersonalizationClient() {
                                             >
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img
-                                                    src={resolveUrl(thumbUrl)}
+                                                    src={toThumbUrl(resolveUrl(thumbUrl))}
                                                     alt=""
                                                     className="w-full h-full object-cover"
-                                                    onError={() => setBrokenThumbIds(prev => new Set(prev).add(o.id))}
+                                                    onError={e => {
+                                                        const original = resolveUrl(thumbUrl);
+                                                        if (e.currentTarget.src !== original) {
+                                                            e.currentTarget.src = original;
+                                                        } else {
+                                                            setBrokenThumbIds(prev => new Set(prev).add(o.id));
+                                                        }
+                                                    }}
                                                 />
                                             </button>
                                         ) : (

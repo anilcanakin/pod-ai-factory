@@ -150,10 +150,7 @@ router.post('/',
                 // Save base PNG (flattened render)
                 const basePngName = 'base.png';
                 fs.writeFileSync(path.join(finalDir, basePngName), psdResult.baseBuffer);
-                await generateThumbnail(
-                    psdResult.baseBuffer,
-                    `mockups/${category}/${templateId}/${basePngName}`
-                );
+                await generateThumbnail(psdResult.baseBuffer, path.join(finalDir, basePngName));
 
                 // Save grayscale base for color tinting
                 const grayPngName = 'gray_base.png';
@@ -199,10 +196,8 @@ router.post('/',
                 baseImagePath   = `assets/mockups/${category}/${templateId}/${baseFile.filename}`;
                 maskImagePath   = maskFile ? `assets/mockups/${category}/${templateId}/${maskFile.filename}` : null;
                 shadowImagePath = shadowFile ? `assets/mockups/${category}/${templateId}/${shadowFile.filename}` : null;
-                await generateThumbnail(
-                    path.join(finalDir, baseFile.filename),
-                    `mockups/${category}/${templateId}/${baseFile.filename}`
-                );
+                const baseAbsPath = path.join(finalDir, baseFile.filename);
+                await generateThumbnail(baseAbsPath, baseAbsPath);
 
                 const singlePrintArea = await detectPrintArea(path.join(finalDir, baseFile.filename));
                 const autoBlendMode = singlePrintArea.blendMode || 'multiply';

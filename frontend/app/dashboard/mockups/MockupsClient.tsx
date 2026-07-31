@@ -1216,6 +1216,16 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             ctx.strokeStyle = '#3b82f6';
             ctx.lineWidth = 2;
             ctx.stroke();
+
+            // Design resize handle — bottom-right corner of the design's own bounding
+            // box, square (vs. the rotate handle's circle) so the two read as distinct.
+            // Separate from the print-area's own bottom-right resize handle.
+            const resizeHandleSize = Math.max(12, canvas.width * 0.016);
+            ctx.fillStyle = resizingDesign ? '#3b82f6' : '#ffffff';
+            ctx.fillRect(designW / 2 - resizeHandleSize / 2, designH / 2 - resizeHandleSize / 2, resizeHandleSize, resizeHandleSize);
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(designW / 2 - resizeHandleSize / 2, designH / 2 - resizeHandleSize / 2, resizeHandleSize, resizeHandleSize);
             ctx.restore();
         }
 
@@ -1285,7 +1295,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         }
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [printArea, printAreas, activeAreaId, areaDesigns, opacity, blendMode, rotation, baseLoaded, canvasSize, designScale, designOffsetX, designOffsetY, designRotation, rotatingDesign]);
+    }, [printArea, printAreas, activeAreaId, areaDesigns, opacity, blendMode, rotation, baseLoaded, canvasSize, designScale, designOffsetX, designOffsetY, designRotation, rotatingDesign, resizingDesign]);
 
     useEffect(() => {
         let rafId: number;

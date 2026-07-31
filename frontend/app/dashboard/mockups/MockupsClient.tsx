@@ -1229,8 +1229,9 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             ctx.restore();
         }
 
-        // Print region border — sadece printAreas boşsa göster
-        if (printAreas.length === 0) {
+        // Print region border — sadece printAreas boşsa VE alana henüz tasarım
+        // atanmamışsa göster (tasarım yerleştirme modunda kutu tamamen gizli).
+        if (printAreas.length === 0 && !activeDesignImg) {
             ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
             ctx.lineWidth = Math.max(2, canvas.width * 0.003);
             ctx.setLineDash([8, 5]);
@@ -1244,9 +1245,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             ctx.fillStyle = 'rgba(59, 130, 246, 0.5)';
             ctx.font = `${Math.max(12, canvas.width * 0.015)}px sans-serif`;
             ctx.textAlign = 'center';
-            if (!activeDesignImg) {
-                ctx.fillText('Print Area', labelCx, labelCy);
-            }
+            ctx.fillText('Print Area', labelCx, labelCy);
         }
         // Additional print areas
         if (printAreas.length > 0) {
@@ -1272,6 +1271,9 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                 ctx.restore();
             });
             printAreas.forEach((area, i) => {
+                // Tasarım atanmış alanlarda kutu tamamen gizli — sadece kendi
+                // rotate/resize handle'ıyla düzenlenir (Tasarım Yerleştirme Modu).
+                if (areaDesigns[area.id]) return;
                 ctx.strokeStyle = activeAreaId === area.id ? '#3b82f6' : '#64748b';
                 ctx.lineWidth = activeAreaId === area.id ? 2 : 1;
                 ctx.setLineDash([5, 5]);
@@ -1369,6 +1371,8 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         if (printAreas.length > 0) {
             for (let i = printAreas.length - 1; i >= 0; i--) {
                 const area = printAreas[i];
+                // Tasarımlı alan — kutu tıklanamaz, sadece kendi handle'ları çalışır.
+                if (areaDesigns[area.id]) continue;
                 // Resize handle (bottom-right corner)
                 if (x >= area.x + area.width - hs && x <= area.x + area.width + hs &&
                     y >= area.y + area.height - hs && y <= area.y + area.height + hs) {
@@ -1389,7 +1393,10 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             }
         }
 
-        // Primary print area
+        // Primary print area — tasarım atanmışsa kutu tıklanamaz (Tasarım Yerleştirme Modu)
+        const activeDesignImgForPrimary = activeAreaId ? areaDesignImgsRef.current[activeAreaId] : null;
+        if (activeDesignImgForPrimary) return;
+
         const phs = 0.03;
         if (x >= printArea.x + printArea.width - phs && x <= printArea.x + printArea.width + phs &&
             y >= printArea.y + printArea.height - phs && y <= printArea.y + printArea.height + phs) {
@@ -1509,6 +1516,7 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
         const hs = 0.02;
         for (let i = printAreas.length - 1; i >= 0; i--) {
             const area = printAreas[i];
+            if (areaDesigns[area.id]) continue; // tasarımlı alan — kutu etkileşimsiz
             if (x >= area.x + area.width - hs && x <= area.x + area.width + hs &&
                 y >= area.y + area.height - hs && y <= area.y + area.height + hs) {
                 canvas.style.cursor = 'se-resize'; return;
@@ -1516,6 +1524,10 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             if (x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height) {
                 canvas.style.cursor = 'move'; return;
             }
+        }
+        if (activeDesignImgForCursor) {
+            canvas.style.cursor = 'crosshair';
+            return;
         }
         const phs = 0.03;
         if (x >= printArea.x + printArea.width - phs && x <= printArea.x + printArea.width + phs &&

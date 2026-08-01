@@ -1,5 +1,5 @@
 'use strict';
-const { test, describe } = require('node:test');
+const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path   = require('path');
 const sharp  = require('sharp');
@@ -185,5 +185,139 @@ describe('compositePhoto', () => {
     fs.unlinkSync(baseTmpPath);
     fs.unlinkSync(tinyPath);
     if (result.printFileUrl && fs.existsSync(result.printFileUrl)) fs.unlinkSync(result.printFileUrl);
+  });
+});
+
+// ── Helpers for glyph-path assertions ──────────────────────────────────────────
+
+// Extracts the numeric d="..." attribute of the (single, top-level) <path> emitted
+// by buildTextPathSvg and returns its unscaled bounding-box width. Coordinates in
+// the d string always alternate x,y per command point (M/L/Q/C — see
+// pathCommandsToD in composite-engine.service.js), so even indices are all x's.
+function pathWidth(svg) {
+  const d = svg.match(/<path d="([^"]*)"/)[1];
+  const nums = d.match(/-?\d+\.\d+|-?\d+/g).map(Number);
+  const xs = nums.filter((_, i) => i % 2 === 0);
+  return Math.max(...xs) - Math.min(...xs);
+}
+
+// Scans a PNG buffer for the first fully-opaque pixel (alpha === 255) and returns
+// its RGB. Solid single-color glyph fills produce fully-opaque interior pixels, so
+// this reliably samples the actual ink color without needing exact coordinates.
+async function firstOpaquePixel(buf) {
+  const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < data.length; i += info.channels) {
+    if (data[i + 3] === 255) return { r: data[i], g: data[i + 1], b: data[i + 2] };
+  }
+  return null;
+}
+
+// ── 7. buildTextPathSvg — glyph path integrity (opentype.js NaN bug regression) ─
+describe('buildTextPathSvg', () => {
+  const canvasW = 1200, canvasH = 1440;
+  const fontPath = engine.FONT_REGISTRY['Montserrat-Bold'];
+  const baseLayer = { x: 100, y: 300, size: 60, color: '#000000', align: 'left', font: 'Montserrat-Bold' };
+
+  const samples = [
+    ['short text', 'Jo'],
+    ['long text', 'Congratulations Class of 2026 Graduate'],
+    ['accented text', 'José García Muñoz'],
+    ["apostrophe + hyphen (real order name)", "Mrs. O'Brien-Rodriguez"],
+  ];
+
+  for (const [label, text] of samples) {
+    test(`${label}: glyph path contains no NaN`, () => {
+      const svg = engine.buildTextPathSvg({ canvasW, canvasH, layer: baseLayer, text, fontPath });
+      const d = svg.match(/<path d="([^"]*)"/)[1];
+      assert.ok(d.length > 0, 'path d should not be empty');
+      assert.ok(!/NaN/.test(d), `path data contains NaN for "${text}": ${d.slice(0, 200)}`);
+    });
+  }
+
+  test('scaleX default (1): no scale wrapper, rendered width respects maxWidth', () => {
+    const layer = { ...baseLayer, maxWidth: 300 };
+    const svg = engine.buildTextPathSvg({
+      canvasW, canvasH, layer, text: 'A Wonderfully Long Example Sample Name', fontPath,
+    });
+    assert.ok(!svg.includes('<g transform'), 'no scale wrapper when scaleX is default (1)');
+    const width = pathWidth(svg);
+    assert.ok(width <= 301, `expected rendered width <= 301, got ${width}`);
+  });
+
+  test('scaleX 0.5: width computation accounts for scaleX under maxWidth', () => {
+    const text = 'A Wonderfully Long Example Sample Name';
+    const layerNoScale   = { ...baseLayer, maxWidth: 300 };
+    const layerHalfScale = { ...baseLayer, maxWidth: 300, scaleX: 0.5 };
+
+    const svgNoScale   = engine.buildTextPathSvg({ canvasW, canvasH, layer: layerNoScale,   text, fontPath });
+    const svgHalfScale = engine.buildTextPathSvg({ canvasW, canvasH, layer: layerHalfScale, text, fontPath });
+
+    assert.ok(svgHalfScale.includes('<g transform="scale(0.5 1)">'), 'scale wrapper present when scaleX != 1');
+
+    const unscaledWidthNoScale   = pathWidth(svgNoScale);
+    const unscaledWidthHalfScale = pathWidth(svgHalfScale);
+    const renderedWidthHalfScale = unscaledWidthHalfScale * 0.5;
+
+    // Screen-space width (post-scale) must still respect maxWidth in both cases —
+    // this is the regression the scaleX*width comparison in buildTextPathSvg protects.
+    assert.ok(renderedWidthHalfScale <= 301, `expected rendered width <= 301, got ${renderedWidthHalfScale}`);
+
+    // scaleX=0.5 needs LESS font-size shrinking to fit the same maxWidth (its on-screen
+    // width is already halved), so its unscaled glyph path should stay wider than the
+    // scaleX=1 case. If a future change dropped scaleX from the maxWidth comparison,
+    // both would shrink identically and this assertion would fail.
+    assert.ok(unscaledWidthHalfScale > unscaledWidthNoScale,
+      `expected scaleX=0.5 unscaled width (${unscaledWidthHalfScale}) > scaleX=1 unscaled width (${unscaledWidthNoScale})`);
+  });
+});
+
+// ── 8. composeTextOnlyDesign — garmentColor / inkTintable ──────────────────────
+describe('composeTextOnlyDesign', () => {
+  const printW = 600, printH = 400;
+  let baseArtworkPath;
+
+  before(async () => {
+    const buf = await sharp({
+      create: { width: printW, height: printH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    }).png().toBuffer();
+    baseArtworkPath = path.join(os.tmpdir(), `test-text-only-base-${Date.now()}.png`);
+    fs.writeFileSync(baseArtworkPath, buf);
+  });
+
+  after(() => {
+    if (baseArtworkPath && fs.existsSync(baseArtworkPath)) fs.unlinkSync(baseArtworkPath);
+  });
+
+  function baseTemplate(inkTintable) {
+    return {
+      printWidthPx:  printW,
+      printHeightPx: printH,
+      mockupConfig:  { inkTintable },
+      textLayers: [
+        { key: 'name', font: 'Montserrat-Bold', size: 80, x: 300, y: 220, color: '#1d1d1b', align: 'center' },
+      ],
+    };
+  }
+
+  test('inkTintable:false — garmentColor is ignored, output byte-identical (regression: other templates unaffected)', async () => {
+    const template = baseTemplate(false);
+    const withoutColor = await engine.composeTextOnlyDesign(baseArtworkPath, template, { name: 'Emma' }, {});
+    const withColor    = await engine.composeTextOnlyDesign(baseArtworkPath, template, { name: 'Emma' }, { garmentColor: '#000000' });
+    assert.ok(withoutColor.equals(withColor), 'output must be byte-identical when inkTintable is false, regardless of garmentColor');
+  });
+
+  test('inkTintable:true — light garmentColor uses dark ink, dark garmentColor uses light ink', async () => {
+    const template = baseTemplate(true);
+
+    const lightBg = await engine.composeTextOnlyDesign(baseArtworkPath, template, { name: 'Emma' }, { garmentColor: '#FFFFFF' });
+    const darkBg  = await engine.composeTextOnlyDesign(baseArtworkPath, template, { name: 'Emma' }, { garmentColor: '#000000' });
+
+    assert.ok(!lightBg.equals(darkBg), 'output must differ between light and dark garmentColor');
+
+    const lightInk = await firstOpaquePixel(lightBg);
+    const darkInk  = await firstOpaquePixel(darkBg);
+
+    assert.deepEqual(lightInk, { r: 0x1d, g: 0x1d, b: 0x1b }, 'light garment background should use DEFAULT_INK (#1d1d1b)');
+    assert.deepEqual(darkInk,  { r: 0xff, g: 0xff, b: 0xff }, 'dark garment background should use CONTRAST_INK (#FFFFFF)');
   });
 });

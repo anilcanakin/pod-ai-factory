@@ -14,6 +14,15 @@
 - Git akışı: Windows commit+push → sunucuda `git pull && pm2 restart <servis>`.
 - Frontend PRODUCTION build (`next start`). Yeni route.ts eklenince `cd frontend && npm run build` ŞART, yoksa görünmez.
 
+## STAGING (2026-08-01 kuruldu)
+- Backend PM2 'factory-backend-staging' :3002, frontend 'factory-frontend-staging' :3010 (http://100.96.119.102:3010).
+- Ayrı Postgres DB (pod_ai_factory_staging, boş şema — kendi test verisini üretir), ayrı Redis DB index (1, prod 0 kullanıyor — BullMQ kuyruk çakışması olmasın diye).
+- .env.staging (root) + frontend/.env.staging — ikisi de gitignore'da, secrets içerir.
+- STAGING_MODE=true → order-poller/playwright-health/radar/power-seller cron'ları başlamıyor (gerçek Etsy hesabına dokunmaz). SEO/MemoryExpiry cron'ları çalışmaya devam eder (DB-internal, riskli değil).
+- Frontend build ayrı dizine gider (frontend/.next-staging, next.config.ts'de distDir koşullu) — prod'un .next'ini EZMEZ.
+- Kod değişikliği sonrası: backend `npm run restart:staging`, frontend değişikliği için önce `npm run build:staging` sonra restart (Next prod build, hot-reload yok).
+- Config: ecosystem.staging.config.js (root).
+
 ## ETSY ENTEGRASYON (çözülmüş, dokunma)
 - Şablon: src/config/yuppion-variation-template.js — 399 product (132 enabled + 267 disabled). property_name (Size=513, Primary color=200), price düz float, readiness_state_id=1421270594788.
 - updateListingInventory body: price_on_property=[513,200], diğer 3 on_property=[]. 399'un TAMAMI gerekli (Etsy "all combinations").

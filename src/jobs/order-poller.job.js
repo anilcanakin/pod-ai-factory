@@ -16,6 +16,10 @@ async function runCheck() {
 }
 
 function startCron() {
+    if (process.env.STAGING_MODE === 'true') {
+        console.log('[OrderPoller] STAGING_MODE aktif — gerçek Etsy hesabına dokunmamak için cron devre dışı.');
+        return;
+    }
     console.log('[OrderPoller] Başlatıldı — 30 dakikada bir Etsy sipariş kontrolü aktif.');
     setInterval(runCheck, INTERVAL_MS);
 }

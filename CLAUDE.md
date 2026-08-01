@@ -17,6 +17,7 @@ Son güncelleme: 15 Mayıs 2026
 - Kod yazarken, test çalıştırırken, commit atarken onay sorma — direkt yap.
 - Sadece destructive git işlemlerinde (force push, hard reset, branch silme) sor.
 - Her commit sonrası otomatik olarak push et, kullanıcıya ayrıca sormaya gerek yok — "Onaylıyor musun?" onayı zaten push dahil tüm işlemi kapsar. İstisna: kullanıcı açıkça "push etme, önce göreyim" derse bekle.
+- Yeni template/composite değişikliklerini önce staging'de (http://100.96.119.102:3010, backend :3002) test et, sorunsuzsa production'a al. Staging kurulumu: [[STATE.md#staging]], `ecosystem.staging.config.js`, `.env.staging`.
 
 ---
 

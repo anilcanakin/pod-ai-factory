@@ -15,6 +15,10 @@ async function runHealthCheck() {
 }
 
 function startCron() {
+    if (process.env.STAGING_MODE === 'true') {
+        console.log('[PlaywrightHealthCron] STAGING_MODE aktif — gerçek Etsy oturumuna dokunmamak için cron devre dışı.');
+        return;
+    }
     console.log('[PlaywrightHealthCron] Başlatıldı — saatlik Playwright sağlık kontrolü aktif.');
     setInterval(runHealthCheck, INTERVAL_MS);
 }

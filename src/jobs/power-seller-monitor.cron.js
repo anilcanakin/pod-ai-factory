@@ -28,6 +28,10 @@ async function runScan() {
 }
 
 function startCron() {
+    if (process.env.STAGING_MODE === 'true') {
+        console.log('[PowerSeller Cron] STAGING_MODE aktif — gerçek Etsy mağaza taramasına dokunmamak için cron devre dışı.');
+        return;
+    }
     setTimeout(() => {
         runScan();
         setInterval(runScan, INTERVAL_MS);

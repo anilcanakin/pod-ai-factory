@@ -168,7 +168,8 @@ function buildModelInput(modelId, prompt, imageSize, negativePrompt = '') {
             ...base,
             aspect_ratio: imageSizeToAspectRatio(imageSize),
             style_type: 'DESIGN',
-            rendering_speed: 'QUALITY'
+            rendering_speed: 'QUALITY',
+            magic_prompt_option: 'OFF'
         };
     }
     

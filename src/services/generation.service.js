@@ -169,7 +169,7 @@ function buildModelInput(modelId, prompt, imageSize, negativePrompt = '') {
             aspect_ratio: imageSizeToAspectRatio(imageSize),
             rendering_speed: 'QUALITY',
             style: 'REALISTIC',
-            expand_prompt: true
+            expand_prompt: false
         };
     }
     

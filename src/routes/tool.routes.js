@@ -154,7 +154,9 @@ router.post('/upscale', async (req, res) => {
         // Upload to Supabase for permanent hosting (FAL CDN URLs expire)
         let permanentUrl = outputUrl;
         try {
-            const storagePath = `upscaled/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+            // AuraSR PNG döner — .jpg uzantısı bayt/uzantı uyuşmazlığı yaratıp (Content-Type
+            // yanlış image/jpeg oluyor) indirilen dosyanın açılamamasına sebep oluyordu.
+            const storagePath = `upscaled/${Date.now()}_${Math.random().toString(36).slice(2)}.png`;
             permanentUrl = await uploadUrlToStorage(outputUrl, storagePath);
         } catch (uploadErr) {
             console.warn('[Upscale] Supabase upload failed, using FAL CDN URL:', uploadErr.message);

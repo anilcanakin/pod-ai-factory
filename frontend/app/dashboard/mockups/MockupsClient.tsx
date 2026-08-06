@@ -720,8 +720,7 @@ function TemplateCard({ template, onSelect, onToggleSelect, onDelete, onGenerate
                     </div>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                    {template.configJson?.meta?.isPsdDerived &&
-                     template.configJson?.meta?.shadowSource !== 'ai' && (
+                    {template.configJson?.meta?.shadowSource !== 'ai' && (
                         <button
                             onClick={e => { e.stopPropagation(); onGenerateShadow?.(); }}
                             disabled={shadowGenerating}

@@ -678,8 +678,12 @@ router.post('/:id/generate-shadow', async (req, res) => {
         const depthRes = await fetch(depthUrl);
         const depthBuffer = Buffer.from(await depthRes.arrayBuffer());
 
+        // negate({alpha:false}): sharp'ın negate() varsayılanı (alpha:true) — kaynak görselde
+        // henüz alpha kanalı yokken bile — aynı zincirde SONRADAN ensureAlpha() ile eklenen
+        // alpha kanalını da negatifleyip 255→0 yapıyor (tembel pipeline sırası nedeniyle).
+        // Sonuç: shadow PNG'si tamamen şeffaf çıkıyor, render'da hiçbir görünür etkisi olmuyordu.
         const shadowBuffer = await sharp(depthBuffer)
-            .negate()
+            .negate({ alpha: false })
             .blur(3)
             .ensureAlpha()
             .modulate({ brightness: 0.4 })

@@ -223,13 +223,27 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
     }
 
     // 7. Blend mode
+    // Parlaklık print area'dan ölçülür, tüm base görselden DEĞİL — arka plan/stüdyo ışığı/model
+    // teni tüm-görsel ortalamasını yukarı çekip siyah tişörtlerde bile eşiği (100) aşırıp yanlışlıkla
+    // 'multiply' seçtiriyordu (siyah zemin × multiply = tasarım neredeyse tamamen karardı).
     let sharpBlend = 'multiply';
     if (!isVideo) {
-        const { data: templateData } = await sharp(effectiveBasePath)
-            .greyscale()
-            .resize(50, 50)
-            .raw()
-            .toBuffer({ resolveWithObject: true });
+        let templateData;
+        try {
+            ({ data: templateData } = await sharp(effectiveBasePath)
+                .extract({ left: paX, top: paY, width: paW, height: paH })
+                .greyscale()
+                .resize(50, 50)
+                .raw()
+                .toBuffer({ resolveWithObject: true }));
+        } catch (extractErr) {
+            console.warn(`[Render] Print area brightness extract başarısız, tüm görsele düşülüyor: ${extractErr.message}`);
+            ({ data: templateData } = await sharp(effectiveBasePath)
+                .greyscale()
+                .resize(50, 50)
+                .raw()
+                .toBuffer({ resolveWithObject: true }));
+        }
 
         const avgBrightness = templateData.reduce((sum, val) => sum + val, 0) / templateData.length;
         const requestedBlend = placement?.blendMode;

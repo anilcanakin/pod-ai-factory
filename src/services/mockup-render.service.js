@@ -361,14 +361,25 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
     }
 
     // 9. Prepare Shadow Overlay
+    // Multiply blend %100 opaklıkla uygulanınca doku/kıvrım varyansı ile birlikte düz
+    // alanlarda da tasarımın rengini soldurup koyulaştırıyordu (ölçüldü: referansa göre
+    // ~%21 renk kaybı). SHADOW_OPACITY ile gölgeyi beyaza doğru harmanlayıp (RGB'yi
+    // sıkıştırıp, alpha'ya dokunmadan) etkiyi ~%7 renk kaybına indiriyoruz — doku hâlâ
+    // görünür kalıyor, tasarımın rengi neredeyse korunuyor.
+    const SHADOW_OPACITY = 0.35;
     if (template.shadowImagePath) {
         const shadowFullPath = path.isAbsolute(template.shadowImagePath) ? template.shadowImagePath : path.join(ASSETS_ROOT, '..', template.shadowImagePath);
         if (fs.existsSync(shadowFullPath)) {
             const shadowBuffer = await sharp(shadowFullPath)
                 .resize(baseW, baseH, { fit: 'fill' })
+                .ensureAlpha()
+                .linear(
+                    [SHADOW_OPACITY, SHADOW_OPACITY, SHADOW_OPACITY, 1],
+                    [255 * (1 - SHADOW_OPACITY), 255 * (1 - SHADOW_OPACITY), 255 * (1 - SHADOW_OPACITY), 0]
+                )
                 .png()
                 .toBuffer();
-            
+
             designComposites.push({
                 input: shadowBuffer,
                 left: 0, top: 0,

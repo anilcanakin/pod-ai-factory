@@ -87,7 +87,8 @@ function RemoveBgInner() {
         setCards(prev => prev.map(c => c.id === id ? { ...c, status: 'processing' } : c));
         try {
             const result = await apiTools.removeBg(card.sourceUrl, model);
-            setCards(prev => prev.map(c => c.id === id ? { ...c, resultUrl: result.url, status: 'done' } : c));
+            const resolvedResultUrl = result.url.startsWith('http') ? result.url : `${API_BASE}/${result.url}`;
+            setCards(prev => prev.map(c => c.id === id ? { ...c, resultUrl: resolvedResultUrl, status: 'done' } : c));
             if (result.savedImageId) {
                 toast.success('Saved to gallery — ready for mockup!');
             } else {

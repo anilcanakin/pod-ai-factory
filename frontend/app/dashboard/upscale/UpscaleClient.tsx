@@ -6,6 +6,14 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Upload, X, ZoomIn, Loader2, Download } from 'lucide-react';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+
+function resolveUrl(p: string | null | undefined): string {
+    if (!p) return '';
+    if (p.startsWith('http') || p.startsWith('blob:') || p.startsWith('data:')) return p;
+    return `${API_BASE}/${p.replace(/^\//, '')}`;
+}
+
 export function UpscaleClient() {
     const [sourceImage, setSourceImage] = useState<string | null>(null);
     const [result, setResult] = useState<string | null>(null);
@@ -54,7 +62,7 @@ export function UpscaleClient() {
         setIsProcessing(true);
         try {
             const res = await apiTools.upscale(sourceImage, scale);
-            setResult(res.url);
+            setResult(resolveUrl(res.url));
             setResultModel(res.model ?? 'aurasr-v2');
             if (res.savedImageId) {
                 toast.success('Saved to gallery — ready for mockup!');

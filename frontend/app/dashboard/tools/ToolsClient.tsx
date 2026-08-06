@@ -340,7 +340,7 @@ function UpscalePanel() {
         setIsProcessing(true);
         try {
             const res = await apiTools.upscale(sourceImage, scale);
-            setResult(res.url);
+            setResult(resolveUrl(res.url));
             setResultModel(res.model ?? 'aurasr-v2');
             toast.success(res.savedImageId ? 'Galeriye kaydedildi!' : `${res.scale}x upscale — ${res.model}`);
         } catch (err: unknown) {

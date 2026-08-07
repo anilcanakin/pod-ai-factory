@@ -816,6 +816,16 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                     Etsy ↗
                 </a>
             )}
+            {img.mockups?.some(m => m.videoUrl) && (
+                <span className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 bg-purple-600/90 text-white text-[10px] font-semibold rounded-[6px] shadow-sm">
+                    🎬 Video
+                </span>
+            )}
+            {img.mockups?.some(m => m.videoStatus === 'pending') && (
+                <span className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 bg-black/70 text-white text-[10px] rounded-[6px] shadow-sm">
+                    🎬 Üretiliyor…
+                </span>
+            )}
 
             {/* Image or Pending Skeleton */}
             {isPending ? (

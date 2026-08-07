@@ -471,7 +471,8 @@ const server = app.listen(PORT, async () => {
     require('./queues/knowledge.worker');
     require('./queues/batch.worker');
     require('./queues/personalization.worker');
-    console.log('[Workers] Asset, Mockup, Knowledge, Batch ve Personalization başlatıldı.');
+    require('./queues/video.worker');
+    console.log('[Workers] Asset, Mockup, Knowledge, Batch, Personalization ve Video başlatıldı.');
   } catch (err) {
     console.error('[Workers] Worker başlatma hatama:', err.message);
   }

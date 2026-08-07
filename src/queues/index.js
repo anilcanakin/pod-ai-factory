@@ -32,6 +32,17 @@ const personalizationQueue = new Queue('personalization-composite', {
   },
 });
 
+// attempts:1 — video üretimi pahalı (~$0.20-0.35/video); job-level otomatik retry
+// istemiyoruz, birincil/fallback model mantığı zaten worker içinde ele alınıyor.
+const videoQueue = new Queue('video-generation', {
+  connection,
+  defaultJobOptions: {
+    attempts: 1,
+    removeOnComplete: { count: 100, age: 86_400  },
+    removeOnFail:     { count: 100, age: 172_800 },
+  },
+});
+
 module.exports = {
     visionQueue,
     variationQueue,
@@ -41,5 +52,6 @@ module.exports = {
     batchQueue,
     batchSetupQueue,
     personalizationQueue,
+    videoQueue,
     defaultJobOptions,
 };

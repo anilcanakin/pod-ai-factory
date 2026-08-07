@@ -153,7 +153,7 @@ router.get('/recent', async (req, res) => {
                 rawResponse: true,
                 jobId: true,
                 mockups: {
-                    select: { id: true, mockupUrl: true, templateId: true },
+                    select: { id: true, mockupUrl: true, templateId: true, videoUrl: true, videoStatus: true },
                     take: 1,
                 },
                 seoData: {
@@ -211,7 +211,7 @@ router.get('/listings', async (req, res) => {
                 createdAt: true,
                 jobId: true,
                 mockups: {
-                    select: { id: true, mockupUrl: true, templateId: true },
+                    select: { id: true, mockupUrl: true, templateId: true, videoUrl: true, videoStatus: true },
                     take: 1,
                 },
                 seoData: {
@@ -267,7 +267,7 @@ router.get('/:jobId', async (req, res) => {
                 rawResponse: true,
                 jobId: true,
                 mockups: {
-                    select: { id: true, mockupUrl: true, templateId: true },
+                    select: { id: true, mockupUrl: true, templateId: true, videoUrl: true, videoStatus: true },
                     take: 5,
                 },
                 seoData: {

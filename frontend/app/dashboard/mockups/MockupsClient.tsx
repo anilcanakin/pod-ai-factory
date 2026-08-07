@@ -1070,11 +1070,13 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
     const [rendering, setRendering] = useState(false);
     const [batchRendering, setBatchRendering] = useState(false);
     const [renderResult, setRenderResult] = useState<string | null>(null);
+    const [renderMockupId, setRenderMockupId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [savingToGallery, setSavingToGallery] = useState(false);
 
-    // Video mockup
-    const [videoRendering, setVideoRendering] = useState(false);
+    // Video mockup — asenkron: kuyruğa alınır, arka planda tamamlanır, poll ile takip edilir
+    const [videoQueued, setVideoQueued] = useState(false);
+    const [videoStatus, setVideoStatus] = useState<'none' | 'pending' | 'done' | 'failed'>('none');
     const [videoResult, setVideoResult] = useState<string | null>(null);
     const [motionType, setMotionType] = useState<'subtle' | 'rotate' | 'wave' | 'zoom'>('subtle');
 
@@ -1768,7 +1770,11 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             );
             const renderedUrl = resolveUrl(result.mockupUrl);
             setRenderResult(renderedUrl);
-            
+            setRenderMockupId(result.id);
+            setVideoQueued(false);
+            setVideoStatus('none');
+            setVideoResult(null);
+
             try {
                 await apiGallery.saveMockup(renderedUrl, primaryId);
                 addToast('success', 'Mockup rendered and saved to gallery!');
@@ -2367,45 +2373,61 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                                     </select>
                                     <button
                                         onClick={async () => {
-                                            if (!renderResult || renderResult.includes('localhost')) {
-                                                addToast('error', 'Video requires a public URL. Make sure the mockup is saved to Supabase (not localhost).');
+                                            if (!renderMockupId) {
+                                                addToast('error', 'Mockup ID bulunamadı — önce render edin.');
                                                 return;
                                             }
-                                            setVideoRendering(true);
+                                            setVideoQueued(true);
+                                            setVideoStatus('pending');
                                             setVideoResult(null);
                                             try {
-                                                console.log('[Video] mockupImageUrl being sent:', renderResult);
-                                                const res = await fetch('/api/mockups/templates/render-video', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    credentials: 'include',
-                                                    body: JSON.stringify({ mockupImageUrl: renderResult, duration: 5, motionType })
-                                                });
-                                                const responseText = await res.text();
-                                                console.log('[Video] Response status:', res.status);
-                                                console.log('[Video] Response body:', responseText);
-                                                const data = JSON.parse(responseText);
-                                                if (data.videoUrl) {
-                                                    setVideoResult(data.videoUrl);
-                                                    addToast('success', 'Video mockup created!');
-                                                } else {
-                                                    addToast('error', data.error || 'Video failed');
-                                                    console.error('[Video] Error detail:', data.detail);
-                                                }
+                                                await apiMockups.renderVideo(renderMockupId, motionType, 5);
+                                                addToast('success', 'Video kuyruğa alındı — hazır olunca bildirim gelecek, bu sayfada da bekleyebilirsiniz.');
+
+                                                const mockupIdForPoll = renderMockupId;
+                                                const startedAt = Date.now();
+                                                const MAX_WAIT_MS = 8 * 60 * 1000; // 8 dakika üst sınır
+                                                const poll = async () => {
+                                                    if (Date.now() - startedAt > MAX_WAIT_MS) {
+                                                        setVideoStatus('failed');
+                                                        addToast('error', 'Video üretimi çok uzun sürdü — bildirimlerden kontrol edin.');
+                                                        return;
+                                                    }
+                                                    try {
+                                                        const s = await apiMockups.videoStatus(mockupIdForPoll);
+                                                        if (s.videoStatus === 'done' && s.videoUrl) {
+                                                            setVideoStatus('done');
+                                                            setVideoResult(resolveUrl(s.videoUrl));
+                                                            addToast('success', 'Video mockup hazır!');
+                                                            return;
+                                                        }
+                                                        if (s.videoStatus === 'failed') {
+                                                            setVideoStatus('failed');
+                                                            addToast('error', 'Video üretimi başarısız oldu.');
+                                                            return;
+                                                        }
+                                                    } catch (_) { /* geçici ağ hatasında polling'i sürdür */ }
+                                                    setTimeout(poll, 5000);
+                                                };
+                                                setTimeout(poll, 5000);
                                             } catch (err: any) {
+                                                setVideoStatus('failed');
                                                 addToast('error', err.message);
                                             } finally {
-                                                setVideoRendering(false);
+                                                setVideoQueued(false);
                                             }
                                         }}
-                                        disabled={videoRendering}
+                                        disabled={videoQueued || videoStatus === 'pending'}
                                         className="w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-all"
                                     >
-                                        {videoRendering
-                                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Creating video (~30-60s)...</>
+                                        {videoStatus === 'pending'
+                                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Arka planda üretiliyor (~1-2dk), bekleyebilir ya da sayfadan ayrılabilirsiniz...</>
                                             : <>🎬 Create Video Mockup</>
                                         }
                                     </button>
+                                    {videoStatus === 'failed' && (
+                                        <p className="text-xs text-red-400">Video üretimi başarısız oldu. Tekrar deneyebilirsiniz.</p>
+                                    )}
                                     {videoResult && (
                                         <div className="space-y-2">
                                             <video src={videoResult} controls autoPlay loop className="w-full rounded-lg" />

@@ -1,6 +1,6 @@
 'use strict';
 
-const sharp     = require('sharp');
+const sharp     = require('../lib/sharp-safe');
 const path      = require('path');
 const fs        = require('fs');
 const os        = require('os');

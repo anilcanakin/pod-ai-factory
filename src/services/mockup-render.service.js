@@ -16,7 +16,7 @@
  *   { printArea, transform: { rotation, opacity, blendMode }, render: { renderMode, ... }, meta: { ... } }
  */
 
-const sharp = require('sharp');
+const sharp = require('../lib/sharp-safe');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -512,7 +512,7 @@ async function applyDisplacementMap(designBuffer, dispBuffer, strength = 8) {
 }
 
 async function detectPrintArea(imagePath) {
-    const sharp = require('sharp');
+    const sharp = require('../lib/sharp-safe');
     
     const { data, info } = await sharp(imagePath)
         .greyscale()

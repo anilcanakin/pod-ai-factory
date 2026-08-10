@@ -3,7 +3,7 @@ const redisConnection = require('../config/redis');
 const fs   = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
-const sharp = require('sharp');
+const sharp = require('../lib/sharp-safe');
 const safetyService  = require('../services/safety.service');
 const falProvider    = require('../services/providers/fal.provider');
 const anthropic      = require('../lib/anthropic');
@@ -14,13 +14,18 @@ if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function createNormalizedMaster(imageUrl, imageId) {
+async function createNormalizedMaster(source, imageId) {
     const filename = `${imageId}_master_4500x5400.png`;
     const filepath = path.join(outputDir, filename);
 
-    const res = await fetch(imageUrl);
-    if (!res.ok) throw new Error(`Master download failed: ${res.status}`);
-    const buf = await res.buffer();
+    let buf;
+    if (Buffer.isBuffer(source)) {
+        buf = source;
+    } else {
+        const res = await fetch(source);
+        if (!res.ok) throw new Error(`Master download failed: ${res.status}`);
+        buf = await res.buffer();
+    }
 
     // 5% margin on each side → design area 4275×5130
     const designBuf = await sharp(buf)
@@ -141,13 +146,45 @@ async function processAsset(job) {
             console.warn(`[AssetWorker] Upscale başarısız (no-bg görsel kullanılıyor): ${err.message}`);
         }
 
+        // 2b. Cap oversized upscale output before sharp compositing downstream.
+        // aura-sr çıktısı gerekenden çok büyük gelebilir; burada tek seferde cap'leyip
+        // hem master hem mockup adımına aynı capped kaynağı veriyoruz (ikisi ayrı ayrı
+        // ham upscale URL'sini indirip işlemesin).
+        let pipelineSource = upscaledUrl; // cap başarısızsa ham URL fallback
+        let cappedPath = null;
+        try {
+            const res = await fetch(upscaledUrl);
+            if (!res.ok) throw new Error(`Upscale sonucu indirilemedi: ${res.status}`);
+            const buf = await res.buffer();
+
+            const meta = await sharp(buf).metadata();
+            let cappedBuf = buf;
+            if (meta.width > 8000 || meta.height > 8000) {
+                cappedBuf = await sharp(buf)
+                    .resize(8000, 8000, { fit: 'inside', withoutEnlargement: true })
+                    .toBuffer();
+                console.log(`[AssetWorker] Upscale çıktısı cap'lendi: ${meta.width}x${meta.height} -> max 8000`);
+            }
+
+            pipelineSource = cappedBuf;
+            cappedPath = path.join(outputDir, `${imageId}_${Date.now()}_upscaled_capped.png`);
+            fs.writeFileSync(cappedPath, cappedBuf);
+        } catch (err) {
+            console.warn(`[AssetWorker] Upscale cap adımı başarısız (ham upscale URL ile devam ediliyor): ${err.message}`);
+        }
+
         // 3. Create 4500×5400 master PNG
-        const masterFileUrl = await createNormalizedMaster(upscaledUrl, imageId);
+        const masterFileUrl = await createNormalizedMaster(pipelineSource, imageId);
         console.log(`[AssetWorker] Master oluşturuldu -> ${masterFileUrl}`);
 
         // 4. Render workspace mockups (empty if no templates defined)
-        const mockupsData = await renderWorkspaceMockups(upscaledUrl, imageId, workspaceId);
+        const mockupsData = await renderWorkspaceMockups(cappedPath || upscaledUrl, imageId, workspaceId);
         console.log(`[AssetWorker] Mockup sayısı: ${mockupsData.length}`);
+
+        // Capped dosya sadece ara girdi — master + mockup'lar zaten kendi kalıcı yollarına yazıldı.
+        if (cappedPath) {
+            fs.unlink(cappedPath, () => {});
+        }
 
         // 5. SEO generation via Claude Haiku + Brain context
         let seoData;

@@ -2,7 +2,7 @@ const { Worker } = require('bullmq');
 const redisConnection = require('../config/redis');
 const fs = require('fs');
 const path = require('path');
-const sharp = require('sharp');
+const sharp = require('../lib/sharp-safe');
 
 const prisma = require('../lib/prisma');
 

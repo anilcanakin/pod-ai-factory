@@ -651,17 +651,34 @@ function GalleryInner() {
                                 {viewImg.mockups && viewImg.mockups.length > 0 && (
                                     <div className="grid grid-cols-3 gap-2">
                                         {viewImg.mockups.map(m => (
-                                            /* eslint-disable-next-line @next/next/no-img-element */
-                                            <img
-                                                key={m.id}
-                                                src={toThumbUrl(resolveUrl(m.mockupUrl))}
-                                                alt="Mockup"
-                                                className="w-full aspect-square object-cover rounded-lg border border-border-default"
-                                                onError={e => {
-                                                    const original = resolveUrl(m.mockupUrl);
-                                                    if (e.currentTarget.src !== original) e.currentTarget.src = original;
-                                                }}
-                                            />
+                                            m.videoUrl ? (
+                                                <video
+                                                    key={m.id}
+                                                    src={resolveUrl(m.videoUrl)}
+                                                    controls
+                                                    loop
+                                                    muted
+                                                    className="w-full aspect-square object-cover rounded-lg border border-border-default"
+                                                />
+                                            ) : (
+                                                <div key={m.id} className="relative">
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img
+                                                        src={toThumbUrl(resolveUrl(m.mockupUrl))}
+                                                        alt="Mockup"
+                                                        className="w-full aspect-square object-cover rounded-lg border border-border-default"
+                                                        onError={e => {
+                                                            const original = resolveUrl(m.mockupUrl);
+                                                            if (e.currentTarget.src !== original) e.currentTarget.src = original;
+                                                        }}
+                                                    />
+                                                    {m.videoStatus === 'pending' && (
+                                                        <span className="absolute bottom-1 right-1 text-[9px] bg-black/70 text-white px-1.5 py-0.5 rounded">
+                                                            🎬 üretiliyor…
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )
                                         ))}
                                     </div>
                                 )}
@@ -798,6 +815,16 @@ function GalleryCard({ img, selected, onToggleSelect, onApprove, onReject, onDel
                 >
                     Etsy ↗
                 </a>
+            )}
+            {img.mockups?.some(m => m.videoUrl) && (
+                <span className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 bg-purple-600/90 text-white text-[10px] font-semibold rounded-[6px] shadow-sm">
+                    🎬 Video
+                </span>
+            )}
+            {img.mockups?.some(m => m.videoStatus === 'pending') && (
+                <span className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 bg-black/70 text-white text-[10px] rounded-[6px] shadow-sm">
+                    🎬 Üretiliyor…
+                </span>
             )}
 
             {/* Image or Pending Skeleton */}

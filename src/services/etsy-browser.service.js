@@ -129,19 +129,31 @@ async function createEtsyDraft(listing) {
                 await priceField.fill(String(listing.price));
             }
 
-            // ── Images ────────────────────────────────────────────────────────
-            if (listing.imageUrls && listing.imageUrls.length > 0) {
+            // ── Images (+ opsiyonel video) ───────────────────────────────────────
+            // Etsy'nin "Photos and video" alanı tek bir dropzone/file input üzerinden
+            // hem fotoğraf hem video kabul ediyor (max 1 video) — bu yüzden video da
+            // aynı setInputFiles() dizisine ekleniyor. NOT: Bu kısım canlı Etsy'ye karşı
+            // test edilmedi — Etsy UI'sinde video için ayrı bir input olursa (ör. UI
+            // güncellemesiyle) burada ayrı bir locator gerekebilir.
+            if ((listing.imageUrls && listing.imageUrls.length > 0) || listing.videoUrl) {
                 const nodeFetch = require('node-fetch');
                 const os = require('os');
                 const tmpDir = path.join(os.tmpdir(), 'etsy-upload');
                 if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
                 const imagePaths = [];
-                for (let i = 0; i < listing.imageUrls.length; i++) {
+                for (let i = 0; i < (listing.imageUrls || []).length; i++) {
                     const tmpPath = path.join(tmpDir, `image-${Date.now()}-${i}.jpg`);
                     const resp = await nodeFetch(listing.imageUrls[i]);
                     fs.writeFileSync(tmpPath, await resp.buffer());
                     imagePaths.push(tmpPath);
+                }
+
+                if (listing.videoUrl) {
+                    const videoTmpPath = path.join(tmpDir, `video-${Date.now()}.mp4`);
+                    const videoResp = await nodeFetch(listing.videoUrl);
+                    fs.writeFileSync(videoTmpPath, await videoResp.buffer());
+                    imagePaths.push(videoTmpPath);
                 }
 
                 const fileInput = page.locator('input[type="file"]').first();

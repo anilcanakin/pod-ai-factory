@@ -210,6 +210,10 @@ async function _shouldRun() {
 }
 
 function startCron() {
+    if (process.env.STAGING_MODE === 'true') {
+        console.log('[Radar] STAGING_MODE aktif — gerçek Etsy/Pinterest taramasına dokunmamak için cron devre dışı.');
+        return;
+    }
     console.log('[Radar] Cron başlatıldı — haftalık tarama aktif.');
 
     setTimeout(async () => {

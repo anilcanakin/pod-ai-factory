@@ -167,16 +167,17 @@ function buildModelInput(modelId, prompt, imageSize, negativePrompt = '') {
         return {
             ...base,
             aspect_ratio: imageSizeToAspectRatio(imageSize),
-            style_type: 'DESIGN',
-            rendering_speed: 'QUALITY'
+            rendering_speed: 'QUALITY',
+            style: 'AUTO',
+            expand_prompt: false
         };
     }
     
     if (modelId.includes('recraft')) {
-        // Recraft text-to-image param adı 'size' (image_size değil), negative_prompt desteklenmiyor.
+        // Recraft text-to-image param adı 'image_size' ('size' değil, FAL şeması tanımıyordu), negative_prompt desteklenmiyor.
         return {
             ...base,
-            size: imageSize || 'square_hd',
+            image_size: imageSize || 'square_hd',
             style: 'vector_illustration',
         };
     }
@@ -190,12 +191,11 @@ function buildModelInput(modelId, prompt, imageSize, negativePrompt = '') {
         };
     }
 
-    // Flux Dev default
+    // Flux Dev default — fal-ai/flux/dev şemasında negative_prompt yok, FLUX negatif prompt desteklemiyor.
     return {
         ...base,
         image_size: imageSize,
         num_inference_steps: 28,
-        negative_prompt: negativePrompt || 'blurry, low quality, watermark, text, background, scenery'
     };
 }
 

@@ -22,7 +22,7 @@ type Tab = 'remove-bg' | 'upscale' | 'vector';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
     { id: 'remove-bg', label: 'BG Kaldır', icon: Scissors, desc: 'Tek seferde 5 görsele kadar arka plan kaldır' },
-    { id: 'upscale',   label: 'Upscale',   icon: ZoomIn,   desc: 'AuraSR v2 ile çözünürlüğü 4x artır' },
+    { id: 'upscale',   label: 'Upscale',   icon: ZoomIn,   desc: 'Real-ESRGAN ile çözünürlüğü artır' },
     { id: 'vector',    label: 'Vektör',    icon: Wand2,    desc: 'PNG tasarımı Recraft v3 ile vektöre dönüştür' },
 ];
 
@@ -322,7 +322,7 @@ function RemoveBgPanel({ preloadUrl }: { preloadUrl?: string }) {
 function UpscalePanel() {
     const [sourceImage, setSourceImage] = useState<string | null>(null);
     const [result, setResult] = useState<string | null>(null);
-    const [resultModel, setResultModel] = useState<string>('aurasr-v2');
+    const [resultModel, setResultModel] = useState<string>('real-esrgan');
     const [scale, setScale] = useState<number>(4);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -340,8 +340,8 @@ function UpscalePanel() {
         setIsProcessing(true);
         try {
             const res = await apiTools.upscale(sourceImage, scale);
-            setResult(res.url);
-            setResultModel(res.model ?? 'aurasr-v2');
+            setResult(resolveUrl(res.url));
+            setResultModel(res.model ?? 'real-esrgan');
             toast.success(res.savedImageId ? 'Galeriye kaydedildi!' : `${res.scale}x upscale — ${res.model}`);
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Upscale başarısız');

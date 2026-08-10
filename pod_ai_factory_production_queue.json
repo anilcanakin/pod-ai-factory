@@ -1,0 +1,65 @@
+[
+  {
+    "niche": "Custom Name Nurse Shirt (Stethoscope + Heart, Personalized)",
+    "status": "ready_for_production",
+    "validation": {
+      "date": "2026-08-02",
+      "source": "eHunt Product Research CSV (60 rows) + live Etsy competitor scan",
+      "result": "30/30 of top-30 organic results show real sales (range 12-4941 total sales)",
+      "top_competitors": [
+        { "shop": "Wildsongoods", "total_sales": 4941, "weekly": 43, "product": "Embroidered Nurse Quarter Zip" },
+        { "shop": "UniversalApparelArt", "total_sales": 1892, "weekly": 10, "product": "Comfort Colors RN Pocket Tee" },
+        { "shop": "VisionCustomTee", "total_sales": 1157, "weekly": 1, "product": "Stethoscope Heartbeat RN Tee" },
+        { "shop": "ArchAngelDesignStore", "total_sales": 599, "weekly": 0 },
+        { "shop": "OJEYAPPAREL", "total_sales": 535, "weekly": 0 },
+        { "shop": "AlbaRosaUS", "total_sales": 437, "weekly": 13 }
+      ],
+      "clone_cluster_risk": "low - multiple independent winners, not a single-winner pattern"
+    },
+    "design_source": "Calisma_Yuzeyi_1.svg (heart-shaped stethoscope silhouette + 'RN' text + personalized name field)",
+    "products": [
+      { "type": "Unisex T-Shirt", "base": "Bella Canvas 3001 / Comfort Colors", "personalization_field": "name" },
+      { "type": "Sweatshirt", "base": "Gildan 18000 / Comfort Colors", "personalization_field": "name" },
+      { "type": "Hoodie", "base": "Gildan 18500 / Comfort Colors", "personalization_field": "name" }
+    ],
+    "seo": {
+      "title": "Personalized Nurse Shirt, Custom Name RN Stethoscope Heart Tee, Registered Nurse Gift, Nurse Appreciation, New Grad Nurse Sweatshirt",
+      "tags": [
+        "personalized nurse",
+        "custom name nurse",
+        "nurse stethoscope",
+        "RN gift shirt",
+        "registered nurse tee",
+        "nurse appreciation",
+        "new nurse grad gift",
+        "nurse week shirt",
+        "custom RN shirt",
+        "nursing student gift",
+        "nurse heart shirt",
+        "nurse in the making",
+        "RN pocket shirt"
+      ],
+      "description_outline": [
+        "Opening: personalization + gift hook (first 2 lines matter for Google indexing)",
+        "Material/fabric options (Bella Canvas 3001 vs Comfort Colors)",
+        "Personalization instructions (how to submit name)",
+        "Size chart link",
+        "Production/shipping note (Yuppion US-domestic)"
+      ]
+    },
+    "mockups": [
+      "Main: flat-lay or model shot on solid background, design centered and legible",
+      "Close-up: personalization readability proof (example name visible)",
+      "Color variant grid: 4-6 Bella Canvas/Comfort Colors colors",
+      "Lifestyle: nurse appreciation week gift-context image (purple/teal tones)",
+      "Sweatshirt/Hoodie specific: back view or layered/cold-weather styling"
+    ],
+    "next_steps": [
+      "Generate design variants via Ideogram 3.0 with concrete example name (not bracket notation)",
+      "Background removal (mandatory - Ideogram has no true transparency)",
+      "Layer text/name via Python/PIL, not AI model",
+      "Generate mockups per product type",
+      "Publish via autonomous Etsy publishing loop"
+    ]
+  }
+]

@@ -6,7 +6,9 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "build:staging": "env STAGING_BUILD=true $(grep -v '^#' .env.staging | grep -v '^$' | xargs) next build",
+    "start:staging": "env STAGING_BUILD=true $(grep -v '^#' .env.staging | grep -v '^$' | xargs) next start --port 3010"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

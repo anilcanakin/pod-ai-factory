@@ -223,13 +223,27 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
     }
 
     // 7. Blend mode
+    // Parlaklık print area'dan ölçülür, tüm base görselden DEĞİL — arka plan/stüdyo ışığı/model
+    // teni tüm-görsel ortalamasını yukarı çekip siyah tişörtlerde bile eşiği (100) aşırıp yanlışlıkla
+    // 'multiply' seçtiriyordu (siyah zemin × multiply = tasarım neredeyse tamamen karardı).
     let sharpBlend = 'multiply';
     if (!isVideo) {
-        const { data: templateData } = await sharp(effectiveBasePath)
-            .greyscale()
-            .resize(50, 50)
-            .raw()
-            .toBuffer({ resolveWithObject: true });
+        let templateData;
+        try {
+            ({ data: templateData } = await sharp(effectiveBasePath)
+                .extract({ left: paX, top: paY, width: paW, height: paH })
+                .greyscale()
+                .resize(50, 50)
+                .raw()
+                .toBuffer({ resolveWithObject: true }));
+        } catch (extractErr) {
+            console.warn(`[Render] Print area brightness extract başarısız, tüm görsele düşülüyor: ${extractErr.message}`);
+            ({ data: templateData } = await sharp(effectiveBasePath)
+                .greyscale()
+                .resize(50, 50)
+                .raw()
+                .toBuffer({ resolveWithObject: true }));
+        }
 
         const avgBrightness = templateData.reduce((sum, val) => sum + val, 0) / templateData.length;
         const requestedBlend = placement?.blendMode;
@@ -347,14 +361,25 @@ async function renderMockup({ designPath, template, imageId, workspaceId, placem
     }
 
     // 9. Prepare Shadow Overlay
+    // Multiply blend %100 opaklıkla uygulanınca doku/kıvrım varyansı ile birlikte düz
+    // alanlarda da tasarımın rengini soldurup koyulaştırıyordu (ölçüldü: referansa göre
+    // ~%21 renk kaybı). SHADOW_OPACITY ile gölgeyi beyaza doğru harmanlayıp (RGB'yi
+    // sıkıştırıp, alpha'ya dokunmadan) etkiyi ~%7 renk kaybına indiriyoruz — doku hâlâ
+    // görünür kalıyor, tasarımın rengi neredeyse korunuyor.
+    const SHADOW_OPACITY = 0.35;
     if (template.shadowImagePath) {
         const shadowFullPath = path.isAbsolute(template.shadowImagePath) ? template.shadowImagePath : path.join(ASSETS_ROOT, '..', template.shadowImagePath);
         if (fs.existsSync(shadowFullPath)) {
             const shadowBuffer = await sharp(shadowFullPath)
                 .resize(baseW, baseH, { fit: 'fill' })
+                .ensureAlpha()
+                .linear(
+                    [SHADOW_OPACITY, SHADOW_OPACITY, SHADOW_OPACITY, 1],
+                    [255 * (1 - SHADOW_OPACITY), 255 * (1 - SHADOW_OPACITY), 255 * (1 - SHADOW_OPACITY), 0]
+                )
                 .png()
                 .toBuffer();
-            
+
             designComposites.push({
                 input: shadowBuffer,
                 left: 0, top: 0,

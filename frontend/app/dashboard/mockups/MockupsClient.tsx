@@ -137,6 +137,8 @@ export function MockupsClient() {
         try { return JSON.parse(localStorage.getItem('mockup_product_colors') || '{}'); } catch { return {}; }
     });
     const [shadowGenerating, setShadowGenerating] = useState<string | null>(null);
+    const [shadowBulkRunning, setShadowBulkRunning] = useState(false);
+    const [shadowBulkProgress, setShadowBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
 
     const setProductColor = (templateId: string, color: string) => {
         const next = { ...productColors, [templateId]: color };
@@ -234,6 +236,31 @@ export function MockupsClient() {
         }
     };
 
+    const handleGenerateAllShadows = async () => {
+        const targets = templates.filter(t => t.configJson?.meta?.shadowSource !== 'ai');
+        if (targets.length === 0) {
+            addToast('success', 'Bu kategorideki tüm mockuplarda zaten AI shadow var');
+            return;
+        }
+        if (!confirm(`${targets.length} mockup için AI shadow üretilecek (sırayla, her biri ~10-30 sn). Devam edilsin mi?`)) return;
+        setShadowBulkRunning(true);
+        setShadowBulkProgress({ done: 0, total: targets.length });
+        let successCount = 0;
+        let failCount = 0;
+        for (const t of targets) {
+            try {
+                await apiMockups.generateShadow(t.id);
+                successCount++;
+            } catch (err) {
+                failCount++;
+            }
+            setShadowBulkProgress(p => ({ ...p, done: p.done + 1 }));
+        }
+        setShadowBulkRunning(false);
+        addToast(failCount === 0 ? 'success' : 'error', `AI shadow tamamlandı: ${successCount} başarılı${failCount ? `, ${failCount} başarısız` : ''}`);
+        loadTemplates();
+    };
+
     const handleBulkRender = async () => {
         if (!bulkDesignImageId || bulkSelectedIds.size === 0) return;
         setBulkRendering(true);
@@ -292,6 +319,17 @@ export function MockupsClient() {
                         )}
                     >
                         <Grid3x3 className="w-4 h-4" /> {bulkMode ? 'Exit Bulk' : 'Bulk Render'}
+                    </button>
+                    <button
+                        onClick={handleGenerateAllShadows}
+                        disabled={shadowBulkRunning}
+                        title="Bu kategorideki AI shadow'u olmayan tüm mockuplara sırayla AI shadow ekler"
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all border bg-purple-600/10 border-purple-500/30 text-purple-300 hover:border-purple-500/60 disabled:opacity-50"
+                    >
+                        {shadowBulkRunning
+                            ? <><Loader2 className="w-4 h-4 animate-spin" /> {shadowBulkProgress.done}/{shadowBulkProgress.total}</>
+                            : <><Wand2 className="w-4 h-4" /> Tüm Mockuplara AI Shadow</>
+                        }
                     </button>
                     <button
                         onClick={() => setShowBulkUpload(true)}
@@ -720,8 +758,7 @@ function TemplateCard({ template, onSelect, onToggleSelect, onDelete, onGenerate
                     </div>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                    {template.configJson?.meta?.isPsdDerived &&
-                     template.configJson?.meta?.shadowSource !== 'ai' && (
+                    {template.configJson?.meta?.shadowSource !== 'ai' && (
                         <button
                             onClick={e => { e.stopPropagation(); onGenerateShadow?.(); }}
                             disabled={shadowGenerating}
@@ -1071,13 +1108,16 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
     const [rendering, setRendering] = useState(false);
     const [batchRendering, setBatchRendering] = useState(false);
     const [renderResult, setRenderResult] = useState<string | null>(null);
+    const [renderMockupId, setRenderMockupId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [savingToGallery, setSavingToGallery] = useState(false);
 
-    // Video mockup
-    const [videoRendering, setVideoRendering] = useState(false);
+    // Video mockup — asenkron: kuyruğa alınır, arka planda tamamlanır, poll ile takip edilir
+    const [videoQueued, setVideoQueued] = useState(false);
+    const [videoStatus, setVideoStatus] = useState<'none' | 'pending' | 'done' | 'failed'>('none');
     const [videoResult, setVideoResult] = useState<string | null>(null);
     const [motionType, setMotionType] = useState<'subtle' | 'rotate' | 'wave' | 'zoom'>('subtle');
+    const [videoMode, setVideoMode] = useState<'single' | 'reel'>('single');
 
     // Multi print areas
     const [printAreas, setPrintAreas] = useState<Array<{
@@ -1769,7 +1809,11 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
             );
             const renderedUrl = resolveUrl(result.mockupUrl);
             setRenderResult(renderedUrl);
-            
+            setRenderMockupId(result.id);
+            setVideoQueued(false);
+            setVideoStatus('none');
+            setVideoResult(null);
+
             try {
                 await apiGallery.saveMockup(renderedUrl, primaryId);
                 addToast('success', 'Mockup rendered and saved to gallery!');
@@ -2356,57 +2400,99 @@ function TemplateEditor({ template, onClose, onUpdated, addToast, designUrl, des
                             {renderResult && (
                                 <div className="p-3 border-t border-slate-700/60 space-y-3">
                                     <p className="text-xs font-semibold text-slate-300">🎬 Create Video Mockup</p>
-                                    <select
-                                        value={motionType}
-                                        onChange={e => setMotionType(e.target.value as 'subtle' | 'rotate' | 'wave' | 'zoom')}
-                                        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-xs"
-                                    >
-                                        <option value="subtle">Subtle Movement</option>
-                                        <option value="rotate">360° Rotation</option>
-                                        <option value="wave">Fabric Wave</option>
-                                        <option value="zoom">Zoom In</option>
-                                    </select>
+                                    <div className="flex gap-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => setVideoMode('single')}
+                                            className={cn(
+                                                'flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                                                videoMode === 'single' ? 'bg-purple-600/30 border-purple-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'
+                                            )}
+                                        >
+                                            Tek Klip
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setVideoMode('reel')}
+                                            className={cn(
+                                                'flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                                                videoMode === 'reel' ? 'bg-purple-600/30 border-purple-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'
+                                            )}
+                                        >
+                                            Reel (dönüş+zoom+doku)
+                                        </button>
+                                    </div>
+                                    {videoMode === 'single' ? (
+                                        <select
+                                            value={motionType}
+                                            onChange={e => setMotionType(e.target.value as 'subtle' | 'rotate' | 'wave' | 'zoom')}
+                                            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-xs"
+                                        >
+                                            <option value="subtle">Subtle Movement</option>
+                                            <option value="rotate">360° Rotation</option>
+                                            <option value="wave">Fabric Wave</option>
+                                            <option value="zoom">Zoom In</option>
+                                        </select>
+                                    ) : (
+                                        <p className="text-[10px] text-slate-500">3 klip (dönüş → zoom → doku) art arda üretilip birleştirilir — ~3x süre/maliyet.</p>
+                                    )}
                                     <button
                                         onClick={async () => {
-                                            if (!renderResult || renderResult.includes('localhost')) {
-                                                addToast('error', 'Video requires a public URL. Make sure the mockup is saved to Supabase (not localhost).');
+                                            if (!renderMockupId) {
+                                                addToast('error', 'Mockup ID bulunamadı — önce render edin.');
                                                 return;
                                             }
-                                            setVideoRendering(true);
+                                            setVideoQueued(true);
+                                            setVideoStatus('pending');
                                             setVideoResult(null);
                                             try {
-                                                console.log('[Video] mockupImageUrl being sent:', renderResult);
-                                                const res = await fetch('/api/mockups/templates/render-video', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    credentials: 'include',
-                                                    body: JSON.stringify({ mockupImageUrl: renderResult, duration: 5, motionType })
-                                                });
-                                                const responseText = await res.text();
-                                                console.log('[Video] Response status:', res.status);
-                                                console.log('[Video] Response body:', responseText);
-                                                const data = JSON.parse(responseText);
-                                                if (data.videoUrl) {
-                                                    setVideoResult(data.videoUrl);
-                                                    addToast('success', 'Video mockup created!');
-                                                } else {
-                                                    addToast('error', data.error || 'Video failed');
-                                                    console.error('[Video] Error detail:', data.detail);
-                                                }
+                                                await apiMockups.renderVideo(renderMockupId, motionType, 5, videoMode);
+                                                addToast('success', 'Video kuyruğa alındı — hazır olunca bildirim gelecek, bu sayfada da bekleyebilirsiniz.');
+
+                                                const mockupIdForPoll = renderMockupId;
+                                                const startedAt = Date.now();
+                                                const MAX_WAIT_MS = (videoMode === 'reel' ? 15 : 8) * 60 * 1000; // reel modda 3 klip ardışık — daha uzun üst sınır
+                                                const poll = async () => {
+                                                    if (Date.now() - startedAt > MAX_WAIT_MS) {
+                                                        setVideoStatus('failed');
+                                                        addToast('error', 'Video üretimi çok uzun sürdü — bildirimlerden kontrol edin.');
+                                                        return;
+                                                    }
+                                                    try {
+                                                        const s = await apiMockups.videoStatus(mockupIdForPoll);
+                                                        if (s.videoStatus === 'done' && s.videoUrl) {
+                                                            setVideoStatus('done');
+                                                            setVideoResult(resolveUrl(s.videoUrl));
+                                                            addToast('success', 'Video mockup hazır!');
+                                                            return;
+                                                        }
+                                                        if (s.videoStatus === 'failed') {
+                                                            setVideoStatus('failed');
+                                                            addToast('error', 'Video üretimi başarısız oldu.');
+                                                            return;
+                                                        }
+                                                    } catch (_) { /* geçici ağ hatasında polling'i sürdür */ }
+                                                    setTimeout(poll, 5000);
+                                                };
+                                                setTimeout(poll, 5000);
                                             } catch (err: any) {
+                                                setVideoStatus('failed');
                                                 addToast('error', err.message);
                                             } finally {
-                                                setVideoRendering(false);
+                                                setVideoQueued(false);
                                             }
                                         }}
-                                        disabled={videoRendering}
+                                        disabled={videoQueued || videoStatus === 'pending'}
                                         className="w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-all"
                                     >
-                                        {videoRendering
-                                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Creating video (~30-60s)...</>
+                                        {videoStatus === 'pending'
+                                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Arka planda üretiliyor (~1-2dk), bekleyebilir ya da sayfadan ayrılabilirsiniz...</>
                                             : <>🎬 Create Video Mockup</>
                                         }
                                     </button>
+                                    {videoStatus === 'failed' && (
+                                        <p className="text-xs text-red-400">Video üretimi başarısız oldu. Tekrar deneyebilirsiniz.</p>
+                                    )}
                                     {videoResult && (
                                         <div className="space-y-2">
                                             <video src={videoResult} controls autoPlay loop className="w-full rounded-lg" />

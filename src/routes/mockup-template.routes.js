@@ -9,6 +9,7 @@ const { detectPrintArea } = require('../services/mockup-render.service');
 const { analyze: analyzePsd } = require('../services/psd-analyzer.service');
 const catalogSvc = require('../services/yuppion-catalog.service');
 const { generateThumbnail } = require('../services/storage.service');
+const { videoQueue } = require('../queues');
 
 const prisma = require('../lib/prisma');
 
@@ -579,67 +580,52 @@ router.post('/bulk-upload', prepareTmpDir, async (req, res) => {
     }
 });
 
-// POST /api/mockup-templates/render-video
+// POST /api/mockup-templates/render-video — ASENKRON: kuyruğa alır, hemen döner.
+// Video hazır olunca bildirim (zil ikonu) ve Mockup.videoUrl üzerinden Galeri'de görünür.
 router.post('/render-video', async (req, res) => {
     try {
         if (!req.workspaceId) return res.status(401).json({ error: 'Unauthorized' });
 
-        const { mockupImageUrl, duration = 5, motionType = 'subtle' } = req.body;
-        if (!mockupImageUrl) return res.status(400).json({ error: 'mockupImageUrl required' });
+        const { mockupId, duration = 5, motionType = 'subtle' } = req.body;
+        if (!mockupId) return res.status(400).json({ error: 'mockupId required' });
 
-        // Fal.ai can't reach localhost URLs — require a public URL
-        if (mockupImageUrl.includes('localhost') || mockupImageUrl.includes('127.0.0.1')) {
-            return res.status(400).json({ error: 'mockupImageUrl must be a public URL (Supabase/CDN). Localhost URLs are not reachable by Fal.ai.' });
-        }
+        const mockup = await prisma.mockup.findFirst({
+            where: { id: mockupId, image: { job: { workspaceId: req.workspaceId } } },
+        });
+        if (!mockup) return res.status(404).json({ error: 'Mockup not found' });
 
-        const { fal } = require('@fal-ai/client');
-
-        const motionPrompts = {
-            subtle: 'gentle fabric movement, slight breeze, natural motion',
-            rotate: 'slow 360 degree rotation, product showcase',
-            wave: 'fabric waving in wind, dynamic movement',
-            zoom: 'slow zoom in on design, product focus'
-        };
-
-        const prompt = motionPrompts[motionType] || motionPrompts.subtle;
-        const falDuration = duration >= 8 ? "10" : "5";
-
-        console.log('[Video Render] Input:', { mockupImageUrl, duration, motionType, prompt });
-
-        const result = await fal.subscribe('fal-ai/kling-video/v1/standard/image-to-video', {
-            input: {
-                image_url: mockupImageUrl,
-                prompt,
-                duration: falDuration,
-            },
-            logs: true,
-            onQueueUpdate: (update) => {
-                console.log('[Video Render] Status:', update.status, update.logs?.slice(-1)?.[0]?.message || '');
-            }
+        await prisma.mockup.update({
+            where: { id: mockupId },
+            data: { videoStatus: 'pending', videoUrl: null, videoModel: null },
         });
 
-        console.log('[Video Render] Full result:', JSON.stringify(result, null, 2));
+        await videoQueue.add('render-video', {
+            mockupId,
+            workspaceId: req.workspaceId,
+            motionType,
+            duration,
+        });
 
-        const videoUrl = result?.data?.video?.url
-            || result?.data?.output?.url
-            || result?.video?.url
-            || null;
-
-        if (!videoUrl) {
-            console.error('[Video Render] No videoUrl in result:', result);
-            return res.status(500).json({ error: 'No video output returned', raw: result?.data });
-        }
-
-        res.json({ videoUrl, duration: falDuration, motionType });
-
+        console.log(`[Video Render] Kuyruğa alındı: mockupId=${mockupId} motion=${motionType}`);
+        res.status(202).json({ success: true, mockupId, status: 'pending' });
     } catch (err) {
-        console.error('[Video Render] Full error:', JSON.stringify(err, null, 2));
-        console.error('[Video Render] Message:', err.message);
-        console.error('[Video Render] Body:', err.body);
-        res.status(500).json({
-            error: err.message,
-            detail: err.body || err.detail || {}
+        console.error('[Video Render] Enqueue error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/mockup-templates/mockup/:id/video-status — frontend polling için hafif durum kontrolü
+router.get('/mockup/:id/video-status', async (req, res) => {
+    try {
+        if (!req.workspaceId) return res.status(401).json({ error: 'Unauthorized' });
+        const mockup = await prisma.mockup.findFirst({
+            where: { id: req.params.id, image: { job: { workspaceId: req.workspaceId } } },
+            select: { id: true, videoUrl: true, videoStatus: true, videoModel: true },
         });
+        if (!mockup) return res.status(404).json({ error: 'Mockup not found' });
+        res.json(mockup);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -678,8 +664,12 @@ router.post('/:id/generate-shadow', async (req, res) => {
         const depthRes = await fetch(depthUrl);
         const depthBuffer = Buffer.from(await depthRes.arrayBuffer());
 
+        // negate({alpha:false}): sharp'ın negate() varsayılanı (alpha:true) — kaynak görselde
+        // henüz alpha kanalı yokken bile — aynı zincirde SONRADAN ensureAlpha() ile eklenen
+        // alpha kanalını da negatifleyip 255→0 yapıyor (tembel pipeline sırası nedeniyle).
+        // Sonuç: shadow PNG'si tamamen şeffaf çıkıyor, render'da hiçbir görünür etkisi olmuyordu.
         const shadowBuffer = await sharp(depthBuffer)
-            .negate()
+            .negate({ alpha: false })
             .blur(3)
             .ensureAlpha()
             .modulate({ brightness: 0.4 })

@@ -134,6 +134,9 @@ model Mockup {
   image       Image    @relation(fields: [imageId], references: [id])
   templateId  String
   mockupUrl   String
+  videoUrl    String?
+  videoStatus String?  @default("none") // none | pending | done | failed
+  videoModel  String?
   createdAt   DateTime @default(now())
 }
 

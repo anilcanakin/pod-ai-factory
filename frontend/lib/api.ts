@@ -159,7 +159,7 @@ export interface GalleryImage {
     cost: number;
     createdAt: string;
     rawResponse?: string | null;
-    mockups?: { id: string; mockupUrl: string; templateId: string }[];
+    mockups?: { id: string; mockupUrl: string; templateId: string; videoUrl?: string | null; videoStatus?: string | null }[];
     seoData?: { id: string; title: string; description: string; tags: string[]; etsyListingId: string | null } | null;
 }
 
@@ -429,11 +429,15 @@ export const apiMockups = {
 
         return { results: allResults, total: files.length, success: allResults.filter((r: any) => r.status === 'success').length };
     },
-    renderVideo: (mockupImageUrl: string, motionType: 'subtle' | 'rotate' | 'wave' | 'zoom' = 'subtle', duration: number = 5) =>
-        request<{ videoUrl: string; duration: string; motionType: string }>('/mockups/templates/render-video', {
+    renderVideo: (mockupId: string, motionType: 'subtle' | 'rotate' | 'wave' | 'zoom' = 'subtle', duration: number = 5) =>
+        request<{ success: boolean; mockupId: string; status: string }>('/mockups/templates/render-video', {
             method: 'POST',
-            body: JSON.stringify({ mockupImageUrl, motionType, duration }),
+            body: JSON.stringify({ mockupId, motionType, duration }),
         }),
+    videoStatus: (mockupId: string) =>
+        request<{ id: string; videoUrl: string | null; videoStatus: string; videoModel: string | null }>(
+            `/mockups/templates/mockup/${mockupId}/video-status`
+        ),
 };
 
 // ─── SEO Generator ────────────────────────────────────────────

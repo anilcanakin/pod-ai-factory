@@ -153,8 +153,8 @@ router.get('/recent', async (req, res) => {
                 rawResponse: true,
                 jobId: true,
                 mockups: {
-                    select: { id: true, mockupUrl: true, templateId: true },
-                    take: 1,
+                    select: { id: true, mockupUrl: true, templateId: true, videoUrl: true, videoStatus: true },
+                    take: 20,
                 },
                 seoData: {
                     select: { id: true, title: true, description: true, tags: true, etsyListingId: true },
@@ -211,8 +211,8 @@ router.get('/listings', async (req, res) => {
                 createdAt: true,
                 jobId: true,
                 mockups: {
-                    select: { id: true, mockupUrl: true, templateId: true },
-                    take: 1,
+                    select: { id: true, mockupUrl: true, templateId: true, videoUrl: true, videoStatus: true },
+                    take: 20,
                 },
                 seoData: {
                     select: { id: true, title: true, description: true, tags: true, etsyListingId: true },
@@ -267,8 +267,8 @@ router.get('/:jobId', async (req, res) => {
                 rawResponse: true,
                 jobId: true,
                 mockups: {
-                    select: { id: true, mockupUrl: true, templateId: true },
-                    take: 5,
+                    select: { id: true, mockupUrl: true, templateId: true, videoUrl: true, videoStatus: true },
+                    take: 20,
                 },
                 seoData: {
                     select: { id: true, title: true, description: true, tags: true, etsyListingId: true },

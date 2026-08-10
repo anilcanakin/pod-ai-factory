@@ -114,7 +114,7 @@ router.post('/remove-bg', async (req, res) => {
         });
 
     } catch (err) {
-        console.error('[Remove BG]', err);
+        console.error('[Remove BG]', JSON.stringify(err.body, null, 2));
         res.status(500).json({ error: err.message });
     }
 });
@@ -130,12 +130,12 @@ router.post('/upscale', async (req, res) => {
 
         const scaleFactor = parseInt(scale, 10) || 4;
 
-        const result = await fal.subscribe('fal-ai/aura-sr', {
+        const result = await fal.subscribe('fal-ai/esrgan', {
             input: {
                 image_url: imageUrl,
-                upscaling_factor: scaleFactor,
-                overlapping_tiles: true,
-                checkpoint: 'v2'
+                scale: scaleFactor,
+                model: 'RealESRGAN_x4plus',
+                output_format: 'png'
             }
         });
 
@@ -154,7 +154,9 @@ router.post('/upscale', async (req, res) => {
         // Upload to Supabase for permanent hosting (FAL CDN URLs expire)
         let permanentUrl = outputUrl;
         try {
-            const storagePath = `upscaled/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+            // Real-ESRGAN output_format:'png' ile PNG döner — geçmişte AuraSR'de .jpg uzantısı
+            // bayt/uzantı uyuşmazlığı yaratıp indirilen dosyanın açılamamasına sebep olmuştu.
+            const storagePath = `upscaled/${Date.now()}_${Math.random().toString(36).slice(2)}.png`;
             permanentUrl = await uploadUrlToStorage(outputUrl, storagePath);
         } catch (uploadErr) {
             console.warn('[Upscale] Supabase upload failed, using FAL CDN URL:', uploadErr.message);
@@ -180,7 +182,7 @@ router.post('/upscale', async (req, res) => {
             data: {
                 jobId: processedJob.id,
                 variantType: 'upscaled',
-                promptUsed: `Upscale - AuraSR v2 (${scaleFactor}x)`,
+                promptUsed: `Upscale - Real-ESRGAN (${scaleFactor}x)`,
                 engine: 'upscale',
                 imageUrl: permanentUrl,
                 status: 'COMPLETED',
@@ -192,7 +194,7 @@ router.post('/upscale', async (req, res) => {
         res.json({
             url: permanentUrl,
             scale: `${scaleFactor}x`,
-            model: 'AuraSR v2',
+            model: 'Real-ESRGAN',
             savedImageId: savedImage.id
         });
 

@@ -6,10 +6,18 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Upload, X, ZoomIn, Loader2, Download } from 'lucide-react';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+
+function resolveUrl(p: string | null | undefined): string {
+    if (!p) return '';
+    if (p.startsWith('http') || p.startsWith('blob:') || p.startsWith('data:')) return p;
+    return `${API_BASE}/${p.replace(/^\//, '')}`;
+}
+
 export function UpscaleClient() {
     const [sourceImage, setSourceImage] = useState<string | null>(null);
     const [result, setResult] = useState<string | null>(null);
-    const [resultModel, setResultModel] = useState<string>('aurasr-v2');
+    const [resultModel, setResultModel] = useState<string>('real-esrgan');
     const [scale, setScale] = useState<number>(4);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -54,8 +62,8 @@ export function UpscaleClient() {
         setIsProcessing(true);
         try {
             const res = await apiTools.upscale(sourceImage, scale);
-            setResult(res.url);
-            setResultModel(res.model ?? 'aurasr-v2');
+            setResult(resolveUrl(res.url));
+            setResultModel(res.model ?? 'real-esrgan');
             if (res.savedImageId) {
                 toast.success('Saved to gallery — ready for mockup!');
             } else {
@@ -76,7 +84,7 @@ export function UpscaleClient() {
                     AI Upscaler
                 </h1>
                 <p className="text-sm text-text-secondary mt-1">
-                    Enhance image resolution up to 4x with AuraSR v2
+                    Enhance image resolution with Real-ESRGAN
                 </p>
             </div>
 
@@ -164,7 +172,7 @@ export function UpscaleClient() {
                         {result && (
                             <div className="space-y-2">
                                 <p className="text-xs font-medium text-accent uppercase tracking-wider">
-                                    Upscaled {scale}x — AuraSR v2
+                                    Upscaled {scale}x — Real-ESRGAN
                                 </p>
                                 <div className="rounded-[10px] overflow-hidden border border-accent/20 bg-bg-elevated">
                                     <img src={result} alt="Upscaled" className="w-full object-contain max-h-[500px]" />

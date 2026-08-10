@@ -366,8 +366,11 @@ export interface MockupRecord {
 
 export const apiMockups = {
     // Templates
-    listTemplates: (category?: string) =>
-        request<{ templates: MockupTemplate[]; total: number }>(`/mockups/templates${category ? `?category=${category}` : ''}`),
+    listTemplates: (category?: string, page = 1, limit = 100) => {
+        const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+        if (category) params.set('category', category);
+        return request<{ templates: MockupTemplate[]; total: number; page: number; limit: number }>(`/mockups/templates?${params}`);
+    },
     getTemplate: (id: string) => request<MockupTemplate>(`/mockups/templates/${id}`),
     getPresets: () => request<{ categories: string[]; presets: Record<string, { printArea: MockupPrintArea }> }>('/mockups/templates/presets'),
     uploadTemplate: (formData: FormData) =>

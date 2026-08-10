@@ -187,8 +187,18 @@ export function MockupsClient() {
         setLoading(true);
         try {
             const cat = activeCategory === 'all' ? undefined : activeCategory;
-            const data = await apiMockups.listTemplates(cat);
-            setTemplates(data.templates);
+            const PAGE_SIZE = 100;
+            let page = 1;
+            let all: MockupTemplate[] = [];
+            let total = Infinity;
+            while (all.length < total) {
+                const data = await apiMockups.listTemplates(cat, page, PAGE_SIZE);
+                all = all.concat(data.templates);
+                total = data.total;
+                if (data.templates.length < PAGE_SIZE) break; // güvenlik: eksik sayfa gelirse döngüyü kes
+                page += 1;
+            }
+            setTemplates(all);
         } catch (err) {
             console.error('Failed to load templates:', err);
             addToast('error', 'Failed to load templates');

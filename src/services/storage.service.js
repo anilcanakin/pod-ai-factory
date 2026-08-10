@@ -32,7 +32,7 @@ function toThumbStoragePath(storagePath) {
  */
 async function generateThumbnail(input, destAbsPath) {
     try {
-        const sharp = require('sharp');
+        const sharp = require('../lib/sharp-safe');
         const thumbAbsPath = toThumbStoragePath(destAbsPath);
         ensureDir(path.dirname(thumbAbsPath));
         await sharp(input)
@@ -89,7 +89,7 @@ async function uploadUrlToStorage(imageUrl, storagePath) {
  */
 async function uploadRejectedToStorage(imageUrl, storagePath) {
     const fetch = require('node-fetch');
-    const sharp = require('sharp');
+    const sharp = require('../lib/sharp-safe');
 
     const response = await fetch(imageUrl);
     if (!response.ok) {

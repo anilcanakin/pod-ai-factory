@@ -242,7 +242,7 @@ router.post('/one-click', async (req, res) => {
                 // Vision analysis — resize to max 1568px / JPEG q85 (<5 MB) before calling analyzeImage
                 let imageDescription = '';
                 try {
-                    const sharp = require('sharp');
+                    const sharp = require('../lib/sharp-safe');
                     const visionUrl = results.finalImageUrl;
                     let rawBuf;
                     if (visionUrl.startsWith('data:')) {

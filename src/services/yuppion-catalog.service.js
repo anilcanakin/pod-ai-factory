@@ -110,7 +110,7 @@ function findClosestColor(detectedHex, modelId = null, tolerance = MATCH_TOLERAN
  * Returns hex string or null.
  */
 async function detectGarmentColor(imagePath) {
-    const sharp = require('sharp');
+    const sharp = require('../lib/sharp-safe');
 
     let sharpInst = sharp(imagePath);
     const meta = await sharpInst.metadata();

@@ -586,8 +586,9 @@ router.post('/render-video', async (req, res) => {
     try {
         if (!req.workspaceId) return res.status(401).json({ error: 'Unauthorized' });
 
-        const { mockupId, duration = 5, motionType = 'subtle' } = req.body;
+        const { mockupId, duration = 5, motionType = 'subtle', mode = 'single' } = req.body;
         if (!mockupId) return res.status(400).json({ error: 'mockupId required' });
+        if (!['single', 'reel'].includes(mode)) return res.status(400).json({ error: 'mode must be "single" or "reel"' });
 
         const mockup = await prisma.mockup.findFirst({
             where: { id: mockupId, image: { job: { workspaceId: req.workspaceId } } },
@@ -604,6 +605,7 @@ router.post('/render-video', async (req, res) => {
             workspaceId: req.workspaceId,
             motionType,
             duration,
+            mode,
         });
 
         console.log(`[Video Render] Kuyruğa alındı: mockupId=${mockupId} motion=${motionType}`);

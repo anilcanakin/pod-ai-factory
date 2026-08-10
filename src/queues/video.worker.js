@@ -8,6 +8,12 @@
  * retries (attempts:1, see queues/index.js) since a failed video job is
  * expensive to retry blindly (both models already get one attempt each).
  * Status machine on Mockup row: pending → done | failed
+ *
+ * mode: 'single' (default) — bir klip, MOTION_PROMPTS[motionType]
+ * mode: 'reel'             — REEL_SEQUENCE'daki her hareket için ayrı klip
+ *                             üretilir, ffmpeg ile tek videoda birleştirilir.
+ *                             Bir klip başarısız olursa reel'den atlanır (en az
+ *                             1 klip başarılıysa reel yine üretilir).
  */
 
 const { Worker } = require('bullmq');
@@ -15,15 +21,17 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const sharp = require('sharp');
+const ffmpeg = require('fluent-ffmpeg');
 const { fal } = require('@fal-ai/client');
 const redisConnection = require('../config/redis');
 const prisma = require('../lib/prisma');
-const { uploadUrlToStorage } = require('../services/storage.service');
+const { uploadUrlToStorage, uploadToStorage } = require('../services/storage.service');
 const { logNotification } = require('../routes/notification.routes');
 
 fal.config({ credentials: process.env.FAL_API_KEY || process.env.FAL_KEY });
 
 const MAX_INPUT_BYTES = 9 * 1024 * 1024; // FAL sınırı 10MB — 9MB'a küçültüp pay bırak
+const REEL_SEQUENCE = ['rotate', 'zoom', 'subtle'];
 
 // Etsy sesi zaten kaldırıyor + amaç ürün tanıtımı, rastgele sahne/anlatı istemiyoruz —
 // tüm prompt'lar sabit kamera + sessiz + ürün odaklı olacak şekilde yönlendiriliyor.
@@ -99,54 +107,116 @@ async function callPixverseV45(imageDataUri, prompt, duration) {
   return result?.data?.video?.url || result?.video?.url || null;
 }
 
+// Birincil/fallback model zinciri — tek bir klip üretir, FAL'ın (geçici) CDN URL'ini döner.
+async function generateClip(imageDataUri, motionType, duration) {
+  const prompt = MOTION_PROMPTS[motionType] || MOTION_PROMPTS.subtle;
+  try {
+    console.log(`[VideoWorker] [${motionType}] Birincil model deneniyor: kling-video v2.1 standard`);
+    const url = await callKlingV21(imageDataUri, prompt, duration);
+    if (!url) throw new Error('Kling boş sonuç döndü');
+    return { url, modelUsed: 'kling-video-v2.1-standard' };
+  } catch (primaryErr) {
+    console.warn(`[VideoWorker] [${motionType}] Birincil model başarısız (${primaryErr.message}), fallback: pixverse v4.5`);
+    const url = await callPixverseV45(imageDataUri, prompt, duration);
+    if (!url) throw new Error('Her iki modelden de video URL alınamadı');
+    return { url, modelUsed: 'pixverse-v4.5-720p' };
+  }
+}
+
+async function downloadToTemp(url, suffix) {
+  const fetch = require('node-fetch');
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Klip indirilemedi: HTTP ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const tmp = path.join(os.tmpdir(), `clip-${Date.now()}-${Math.random().toString(36).slice(2)}${suffix}`);
+  fs.writeFileSync(tmp, buf);
+  return tmp;
+}
+
+// Farklı modellerden gelen klipler çözünürlük/codec bakımından uyuşmayabilir —
+// hepsini 1280x720'e normalize edip (concat filter, demuxer değil — re-encode
+// güvenli) tek dosyada birleştirir. Ses yok (Etsy zaten kaldırıyor).
+function concatClips(clipPaths, outputPath) {
+  return new Promise((resolve, reject) => {
+    if (clipPaths.length === 1) {
+      fs.copyFileSync(clipPaths[0], outputPath);
+      return resolve();
+    }
+    const scaleLabels = clipPaths.map((_, i) => `[${i}:v]scale=1280:720,setsar=1[v${i}]`).join('; ');
+    const concatIn = clipPaths.map((_, i) => `[v${i}]`).join('');
+    const filter = `${scaleLabels}; ${concatIn}concat=n=${clipPaths.length}:v=1:a=0[outv]`;
+
+    const cmd = ffmpeg();
+    clipPaths.forEach(p => cmd.input(p));
+    cmd.complexFilter(filter).map('[outv]')
+      .outputOptions(['-pix_fmt yuv420p'])
+      .save(outputPath)
+      .on('end', resolve)
+      .on('error', reject);
+  });
+}
+
+async function processReel(imageDataUri, duration) {
+  const clipPaths = [];
+  const modelsUsed = [];
+  for (const motionType of REEL_SEQUENCE) {
+    try {
+      const { url, modelUsed } = await generateClip(imageDataUri, motionType, duration);
+      const localClip = await downloadToTemp(url, '.mp4');
+      clipPaths.push(localClip);
+      modelsUsed.push(`${motionType}:${modelUsed}`);
+    } catch (err) {
+      console.warn(`[VideoWorker] [reel] "${motionType}" klibi atlandı: ${err.message}`);
+    }
+  }
+  if (clipPaths.length === 0) {
+    throw new Error('Reel için hiçbir klip üretilemedi');
+  }
+
+  const outputPath = path.join(os.tmpdir(), `reel-${Date.now()}.mp4`);
+  await concatClips(clipPaths, outputPath);
+  clipPaths.forEach(p => { try { fs.unlinkSync(p); } catch (_) {} });
+
+  return { localPath: outputPath, modelUsed: modelsUsed.join(', ') };
+}
+
 const worker = new Worker('video-generation', async (job) => {
-  const { mockupId, workspaceId, motionType = 'subtle', duration = 5 } = job.data;
+  const { mockupId, workspaceId, motionType = 'subtle', duration = 5, mode = 'single' } = job.data;
 
   const mockup = await prisma.mockup.findFirst({ where: { id: mockupId } });
   if (!mockup) throw new Error(`Mockup bulunamadı: ${mockupId}`);
 
-  console.log(`[VideoWorker] ▶ mockupId:${mockupId} motion:${motionType}`);
+  console.log(`[VideoWorker] ▶ mockupId:${mockupId} mode:${mode} motion:${motionType}`);
 
-  const prompt = MOTION_PROMPTS[motionType] || MOTION_PROMPTS.subtle;
-
-  let localPath;
-  let videoUrl = null;
-  let modelUsed = null;
-  let lastErr = null;
+  let srcLocalPath;
+  let reelLocalPath;
 
   try {
-    localPath = await resolveLocalImagePath(mockup.mockupUrl);
-    const imageDataUri = await buildDataUri(localPath);
+    srcLocalPath = await resolveLocalImagePath(mockup.mockupUrl);
+    const imageDataUri = await buildDataUri(srcLocalPath);
 
-    try {
-      console.log('[VideoWorker] Birincil model deneniyor: kling-video v2.1 standard');
-      videoUrl = await callKlingV21(imageDataUri, prompt, duration);
-      modelUsed = 'kling-video-v2.1-standard';
-    } catch (primaryErr) {
-      lastErr = primaryErr;
-      console.warn(`[VideoWorker] Birincil model başarısız (${primaryErr.message}), fallback deneniyor: pixverse v4.5`);
-      try {
-        videoUrl = await callPixverseV45(imageDataUri, prompt, duration);
-        modelUsed = 'pixverse-v4.5-720p';
-      } catch (fallbackErr) {
-        lastErr = fallbackErr;
-      }
+    let permanentUrl;
+    let modelUsed;
+
+    if (mode === 'reel') {
+      const result = await processReel(imageDataUri, duration);
+      reelLocalPath = result.localPath;
+      modelUsed = result.modelUsed;
+      const storagePath = `videos/${Date.now()}_${Math.random().toString(36).slice(2)}.mp4`;
+      permanentUrl = await uploadToStorage(reelLocalPath, storagePath);
+    } else {
+      const { url, modelUsed: single } = await generateClip(imageDataUri, motionType, duration);
+      modelUsed = single;
+      const storagePath = `videos/${Date.now()}_${Math.random().toString(36).slice(2)}.mp4`;
+      permanentUrl = await uploadUrlToStorage(url, storagePath);
     }
-
-    if (!videoUrl) {
-      throw lastErr || new Error('Her iki modelden de video URL alınamadı');
-    }
-
-    // Kalıcı depoya yükle — FAL CDN URL'leri geçicidir
-    const storagePath = `videos/${Date.now()}_${Math.random().toString(36).slice(2)}.mp4`;
-    const permanentUrl = await uploadUrlToStorage(videoUrl, storagePath);
 
     await prisma.mockup.update({
       where: { id: mockupId },
       data: { videoUrl: permanentUrl, videoStatus: 'done', videoModel: modelUsed },
     });
 
-    logNotification(workspaceId, 'success', `Video mockup hazır (${modelUsed})`, { mockupId, videoUrl: permanentUrl });
+    logNotification(workspaceId, 'success', `Video mockup hazır (${mode === 'reel' ? 'reel' : modelUsed})`, { mockupId, videoUrl: permanentUrl });
     console.log(`[VideoWorker] ✔ mockupId:${mockupId} → done (${modelUsed})`);
   } catch (err) {
     await prisma.mockup.update({
@@ -157,14 +227,17 @@ const worker = new Worker('video-generation', async (job) => {
     console.error(`[VideoWorker] ✗ mockupId:${mockupId} → failed: ${err.message}`);
     // Rethrow etmiyoruz — job-level retry istemiyoruz (attempts:1), durum zaten DB'de kayıtlı.
   } finally {
-    if (localPath && localPath.startsWith(os.tmpdir())) {
-      try { fs.unlinkSync(localPath); } catch (_) {}
+    if (srcLocalPath && srcLocalPath.startsWith(os.tmpdir())) {
+      try { fs.unlinkSync(srcLocalPath); } catch (_) {}
+    }
+    if (reelLocalPath) {
+      try { fs.unlinkSync(reelLocalPath); } catch (_) {}
     }
   }
 }, {
   connection: redisConnection,
   concurrency: 1,
-  lockDuration: 15 * 60_000, // video üretimi birkaç dakika sürebilir
+  lockDuration: 20 * 60_000, // reel modda 3 klip art arda — daha uzun sürebilir
   lockRenewTime: 5 * 60_000,
 });
 

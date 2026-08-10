@@ -429,10 +429,10 @@ export const apiMockups = {
 
         return { results: allResults, total: files.length, success: allResults.filter((r: any) => r.status === 'success').length };
     },
-    renderVideo: (mockupId: string, motionType: 'subtle' | 'rotate' | 'wave' | 'zoom' = 'subtle', duration: number = 5) =>
+    renderVideo: (mockupId: string, motionType: 'subtle' | 'rotate' | 'wave' | 'zoom' = 'subtle', duration: number = 5, mode: 'single' | 'reel' = 'single') =>
         request<{ success: boolean; mockupId: string; status: string }>('/mockups/templates/render-video', {
             method: 'POST',
-            body: JSON.stringify({ mockupId, motionType, duration }),
+            body: JSON.stringify({ mockupId, motionType, duration, mode }),
         }),
     videoStatus: (mockupId: string) =>
         request<{ id: string; videoUrl: string | null; videoStatus: string; videoModel: string | null }>(

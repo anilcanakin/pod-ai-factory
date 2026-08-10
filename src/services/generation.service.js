@@ -29,13 +29,12 @@ const SUPPORTED_MODELS = {
         speed: 'medium',
         strength: 'vector'
     },
-    // ── Google GenAI provider ─────────────────────────────────────────────────
-    'nano-banana': {
+    // ── Nano Banana 2, FAL.ai üzerinden (Google hesabı/quota bağımlılığı yok) ──
+    'fal-ai/nano-banana-2': {
         name: 'Nano Banana 2',
-        description: 'Google GenAI — nano-banana-2 model',
+        description: 'Nano Banana 2 — FAL.ai üzerinden',
         speed: 'medium',
-        strength: 'general',
-        provider: 'google-genai'   // informational — routing handled by ImageRouter
+        strength: 'general'
     },
     // ── OpenAI provider (via FAL.ai) ─────────────────────────────────────────
     'fal-ai/gpt-image-2': {
@@ -53,21 +52,21 @@ const MODEL_COSTS = {
     'fal-ai/flux/schnell': 0.003,  // Flux Schnell — fast & cheap, ~$0.003/img
     'fal-ai/ideogram/v3':  0.080,  // Ideogram 3.0 — typography specialist, ~$0.08/img
     'fal-ai/recraft/v3/text-to-image': 0.080,  // Recraft V3 vector style — FAL doc: $0.08/img (vector_illustration style tier)
-    'nano-banana':                  0.000,  // Google GenAI — pricing TBD / free tier
+    'fal-ai/nano-banana-2':         0.060,  // Nano Banana 2 via FAL.ai
     'fal-ai/gpt-image-2':           0.040,  // GPT-Image-2 — OpenAI via FAL.ai, ~$0.04/img
 };
 const FALLBACK_COST = 0.020; // used for unknown/new models
 
 // ─── Model Router ────────────────────────────────────────────────────────────
 // Kullanıcı dostu tier adlarını canonical provider endpoint'lerine çözer.
-// FAL endpoint'leri → fal.provider.js | 'nano-banana' → google-genai.provider.js
+// Tüm modeller artık FAL.ai üzerinden — fal.provider.js.
 // Gerçek yönlendirme ImageRouter (providers/image-router.js) tarafından yapılır.
 const MODEL_TIER_MAP = {
     'fast':         'fal-ai/flux/schnell',  // hızlı & ucuz: $0.003/görsel
     'quality':      'fal-ai/flux/dev',      // kaliteli & detaylı: $0.030/görsel (default)
     'text':         'fal-ai/ideogram/v3',   // metin/tipografi uzmanı: $0.080/görsel
     'vector':       'fal-ai/recraft/v3/text-to-image', // vektör & screen-print: $0.080/görsel (vector_illustration style)
-    'nano-banana':  'nano-banana',          // Google GenAI — nano-banana-2 (image-router tarafından çözülür)
+    'nano-banana':  'fal-ai/nano-banana-2', // eski tier adı alias — FAL.ai üzerinden Nano Banana 2: $0.060/görsel
 };
 
 /**
@@ -147,8 +146,8 @@ function imageSizeToAspectRatio(imageSize) {
 function buildModelInput(modelId, prompt, imageSize, negativePrompt = '') {
     const base = { prompt };
 
-    // Google GenAI (nano-banana family) — only prompt is supported
-    if (modelId.startsWith('nano-banana')) {
+    // Nano Banana 2 (FAL.ai) — only prompt is supported
+    if (modelId.includes('nano-banana')) {
         return base;
     }
 
@@ -256,8 +255,6 @@ class GenerationService {
                 const payload = buildModelInput(modelId, img.promptUsed.substring(0, 1000), imageSize, negativePrompt);
 
                 // ImageRouter normalises ALL providers → { image_url, seed, raw_response }
-                // FAL models → fal.provider.js (CDN URL)
-                // nano-banana → google-genai.provider.js (buffer staged to Supabase first)
                 const falResponse = await imageRouter.generate(modelId, payload, job.workspaceId);
 
                 // ── Vision QA: gümrük kapısı ───────────────────────────────────────

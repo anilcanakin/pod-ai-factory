@@ -1560,4 +1560,18 @@ export const apiPersonalization = {
                 etsyOrderRef: data.etsyOrderRef,
             }),
         }),
+    // 'multi_photo_generative' (Owner & Pet Portrait) — 2 foto AI ile tek sahneye birleştirilir
+    petPortraitPreview: (formData: FormData) =>
+        fetch(`${BASE}/personalization/pet-portrait/preview`, { method: 'POST', credentials: 'include', body: formData }).then(async (res) => {
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `HTTP ${res.status}`);
+            }
+            return res.json() as Promise<{ success: boolean; previewId: string; previewUrl: string; storedUrl: string }>;
+        }),
+    createPetPortraitOrder: (data: { previewId: string; etsyOrderRef?: string }) =>
+        request<{ success: boolean; order: PersonalizationOrder }>('/personalization/pet-portrait/orders', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
 };
